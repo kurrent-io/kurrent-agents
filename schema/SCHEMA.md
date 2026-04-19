@@ -61,9 +61,21 @@ JSON keys are snake_case. Datetimes serialise with timezone.
 | `model` | string? | no | Model identifier. |
 | `tenant_id` | string? | no | Tenancy key, orthogonal to `app_name`. Reserved for multi-tenant deployments where one app serves multiple tenants. |
 | `user_id` | string? | no | End-user identifier. |
+| `agent_config` | `AgentConfig`? | no | Optional snapshot of the agent configuration at session start. See below. |
 | `timestamp` | datetime | yes | |
 
 `app_name`, `tenant_id`, and `user_id` form the scoping triple for app-level state, user-level state, memory, artifacts, and credentials. All three are opaque strings; `app_name` must satisfy ADK's `str.isidentifier()` rule when written by ADK (see `DESIGN.md` §6), but the canonical schema accepts any non-empty string so AFW writers remain unconstrained.
+
+**`AgentConfig`** — an optional, additive record of the agent's configuration at session start. All fields optional; frameworks populate what's meaningful to them.
+
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| `tools` | [`ToolSpec`]? | no | Tools available at session start. Each: `{ name: string, description?: string, input_schema?: object, source?: string }`. `source` is a free-form tag like `"mcp"`, `"vended"`, `"custom"`. |
+| `plugins` | [string]? | no | Plugin / context-provider / middleware names active on the agent. Portable identifiers only — internal config goes in `extensions.{framework}`. |
+| `conversation_manager` | object? | no | Conversation / history strategy, e.g. `{ "type": "sliding_window", "max_messages": 20 }`. Frameworks that prune or summarize history (Strands, ADK compaction) record intent here. |
+| `model_parameters` | object? | no | Model decoding parameters (temperature, max tokens, etc.) if known at session start. |
+
+`agent_config` is **informational**, not a contract. A cross-framework reader uses it to understand what the writer had configured; it is not something the reader is expected to reproduce. Framework-specific extras go in `extensions.{framework}` on the same `SessionStarted` event.
 
 **`SessionEnded`** — marks logical end of the session. Stream is not truncated.
 
@@ -183,6 +195,14 @@ Written to `AgentArtifact-{scope}-{filename}`.
 | `created_at` | datetime | yes |
 
 Exactly one of `inline_bytes` / `canonical_uri` is expected.
+
+### 3.8 Reserved event types (future, not in v1)
+
+The following canonical event types are **reserved** in the schema vocabulary. They are not emitted by any v1 integration and readers should not expect them. They are listed here so integrations avoid colliding with the names and so the concept is on record for a later revision.
+
+**`InterruptIssued` / `InterruptResolved`** — future support for mid-turn human-in-the-loop pauses (e.g. approval before a destructive tool call). Strands has a first-class `Interrupt` concept; other frameworks may or may not adopt it. A v2 revision will specify field shapes; in v1, Strands integrations carrying interrupt state should use `extensions.strands.interrupt` on the surrounding event and rewrite to canonical events once the schema lands.
+
+Other reserved names (not yet designed): `StreamingChunkEmitted`, `ConversationCompacted`, `MultiAgentNodeStarted`, `MultiAgentNodeCompleted`. Integrations encountering these concepts today should use `extensions.{framework}` — a future schema revision may promote one or more if a clear cross-framework shape emerges.
 
 ## 4. Framework-specific event types in the session stream
 
