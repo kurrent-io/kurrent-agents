@@ -10,7 +10,7 @@ One write path to KurrentDB; everything else — chat history, memory, workflow 
 
 ## 1. Goal
 
-Provide a pip-installable package (`kurrentdb-adk`) that lets any ADK application persist agent interactions, memory, artifacts, credentials, and evaluation results in KurrentDB by plugging in a small set of service implementations. No changes to user agent code beyond service wiring.
+Provide a pip-installable package (`kurrent-google-adk`) that lets any ADK application persist agent interactions, memory, artifacts, credentials, and evaluation results in KurrentDB by plugging in a small set of service implementations. No changes to user agent code beyond service wiring.
 
 ## 2. ADK Plug-points (as of v1.x)
 
@@ -45,12 +45,12 @@ Key implication: **ADK does not need a separate checkpoint store, group-chat man
 | `FactExtractionService` (background sub) | Out-of-process KurrentDB catch-up subscriber |
 | `EvalRunner` + `TurnScored` events | `KurrentDBEvalSetResultsManager` + `KurrentDBEvalSetsManager` |
 | `StreamCoordinator` (cross-process) | Out of scope; ADK has `a2a/` for agent-to-agent |
-| Kontext memory adapter | `kurrentdb-adk[kontext]` extra — optional |
+| Kontext memory adapter | `kurrent-google-adk[kontext]` extra — optional |
 
 ## 4. Module layout
 
 ```
-kurrentdb_adk/
+kurrent_google_adk/
   __init__.py
   client.py                     # KurrentDBClient factory, connection string helpers
   _schema/                      # Canonical event models — initially vendored inline
@@ -193,7 +193,7 @@ Behaviour:
 
 ### 7.2 `KurrentDBMemoryService`
 
-Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. `kurrentdb-adk[kontext]` replaces the search with hybrid BM25 + vector retrieval over the same event stream.
+Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. `kurrent-google-adk[kontext]` replaces the search with hybrid BM25 + vector retrieval over the same event stream.
 
 Wider scopes (`AgentMemory-{app}` app-shared, `AgentMemory` global) are reserved by the schema but not implemented in v1 — `DESIGN.md §13` open question.
 
@@ -231,7 +231,7 @@ The plugin is optional — `$usage` metadata is emitted by `KurrentDBSessionServ
 
 ### 7.7 Background fact extractor
 
-Out-of-process script using a KurrentDB catch-up subscription on `$ce-AgentSession`. For each new `UserMessageReceived` / `AssistantTextGenerated` event, invoke a user-supplied `FactExtractor` callable and append `FactRetained` events to the corresponding `AgentMemory-{app_name}-{user_id}`. Ships as `python -m kurrentdb_adk.subscriptions.fact_extractor`.
+Out-of-process script using a KurrentDB catch-up subscription on `$ce-AgentSession`. For each new `UserMessageReceived` / `AssistantTextGenerated` event, invoke a user-supplied `FactExtractor` callable and append `FactRetained` events to the corresponding `AgentMemory-{app_name}-{user_id}`. Ships as `python -m kurrent_google_adk.subscriptions.fact_extractor`.
 
 ## 8. Concurrency contract
 
@@ -296,14 +296,14 @@ Compaction events are emitted as KurrentDB event type `Compaction` (ADK-specific
 from google.adk import Agent
 from google.adk.apps import App, ResumabilityConfig
 from google.adk.runners import Runner
-from kurrentdb_adk import (
+from kurrent_google_adk import (
     KurrentDBSessionService,
     KurrentDBMemoryService,
     KurrentDBArtifactService,
     KurrentDBCredentialService,
     client as kdb_client,
 )
-from kurrentdb_adk.plugins import UsageCapturePlugin
+from kurrent_google_adk.plugins import UsageCapturePlugin
 
 kdb = kdb_client.from_connection_string("kurrentdb://localhost:2113?tls=false")
 
@@ -354,7 +354,7 @@ runner = Runner(
 
 ## 15. Next steps
 
-1. Scaffold the package structure in this repo (`src/kurrentdb_adk/`) with `pyproject.toml`.
+1. Scaffold the package structure in this repo (`kurrent_google_adk/`) with `pyproject.toml`.
 2. Land `KurrentDBSessionService` with verbatim storage + state routing + concurrency contract. Covers the biggest surface.
 3. Port ADK's session-service tests and add the concurrency/resume/rewind cases.
 4. Add `KurrentDBCredentialService` second (needed before any tool-using sample).
