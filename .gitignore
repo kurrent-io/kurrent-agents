@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
+dist/
+build/
+
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+*.ncrunchproject
+*.ncrunchsolution
+.vs/
+
+# Editors / tools
+.idea/
+.vscode/
+.qodo/
+.capacitor/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (be strict — only commit templates, not real credentials)
+*.env
+!*.env.example
+appsettings.Development.json
+appsettings.Local.json

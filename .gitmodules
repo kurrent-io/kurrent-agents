@@ -1,0 +1,3 @@
+[submodule "microsoft-agent-framework/dotnet/lib/Kurrent.Kontext"]
+	path = microsoft-agent-framework/dotnet/lib/Kurrent.Kontext
+	url = git@github.com:kurrent-io/Kurrent.Kontext.git

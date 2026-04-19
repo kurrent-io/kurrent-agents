@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/BasicAgent/BasicAgent.csproj" />
+    <Project Path="samples/EvalDemo/EvalDemo.csproj" />
+    <Project Path="samples/HybridEvalDemo/HybridEvalDemo.csproj" />
+    <Project Path="samples/MultiAgentCoordination/MultiAgentCoordination.csproj" />
+    <Project Path="samples/WorkflowWithCheckpoints/WorkflowWithCheckpoints.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
+    <Project Path="src/Kurrent.AgentFramework.Kontext/Kurrent.AgentFramework.Kontext.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kurrent.AgentFramework.IntegrationTests/Kurrent.AgentFramework.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
