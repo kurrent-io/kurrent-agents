@@ -26,6 +26,7 @@ from google.adk.sessions.base_session_service import (
     ListSessionsResponse,
 )
 from google.adk.sessions.session import Session
+from google.genai import types
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError, WrongCurrentVersionError
 
@@ -33,6 +34,7 @@ from . import _serialization
 from ._codec import canonical_to_events, event_to_canonical, extract_usage_metadata
 from ._revisions import RevisionTracker, SessionKey, StaleSessionError
 from ._schema import events as _events
+from ._schema.events import ADK_EXTENSION_KEY
 from ._schema.stream_names import for_session
 
 logger = logging.getLogger("kurrent_google_adk.session_service")
@@ -105,6 +107,11 @@ class KurrentDBSessionService(BaseSessionService):
             return None
 
         canonical_events: list = []
+        # Map: source ADK event id (from extensions.adk.id) → $usage payload.
+        # The codec's v1 reconstruction path doesn't preserve LlmResponse
+        # metadata, so we re-hydrate usage_metadata from the KurrentDB event
+        # metadata channel after reconstruction. See DEV-1479.
+        usage_by_event_id: dict[str, dict] = {}
         last_revision = -1
         last_timestamp = 0.0
         ended = False
@@ -121,6 +128,9 @@ class KurrentDBSessionService(BaseSessionService):
                 ended = True
                 last_timestamp = canonical.timestamp.timestamp()
                 continue
+
+            _collect_usage(recorded, canonical, usage_by_event_id)
+
             canonical_events.append(canonical)
             if hasattr(canonical, "timestamp"):
                 last_timestamp = max(last_timestamp, canonical.timestamp.timestamp())
@@ -131,6 +141,7 @@ class KurrentDBSessionService(BaseSessionService):
             self._revisions.record_session(key, last_revision)
 
         adk_events = canonical_to_events(canonical_events)
+        _apply_usage_metadata(adk_events, usage_by_event_id)
 
         # Apply GetSessionConfig filters to adk_events only; state is always full.
         if config is not None:
@@ -283,6 +294,55 @@ class KurrentDBSessionService(BaseSessionService):
 
 
 # -----------------------------------------------------------------------------
+
+
+def _collect_usage(
+    recorded,
+    canonical,
+    usage_by_event_id: dict[str, dict],
+) -> None:
+    """Read ``$usage`` from a RecordedEvent and index it by source ADK event id.
+
+    Only applies to assistant canonical events (which are the only ones the
+    session service writes ``$usage`` onto, per SCHEMA.md §3.4).
+    """
+    if not isinstance(canonical, _ASSISTANT_EVENT_CLASSES):
+        return
+    metadata = _serialization.read_metadata(recorded)
+    if not metadata:
+        return
+    usage = metadata.get(USAGE_METADATA_KEY)
+    if not usage:
+        return
+    if canonical.extensions is None:
+        return
+    source_id = canonical.extensions.get(ADK_EXTENSION_KEY, {}).get("id")
+    if source_id:
+        usage_by_event_id[source_id] = usage
+
+
+def _apply_usage_metadata(
+    adk_events: list[AdkEvent], usage_by_event_id: dict[str, dict]
+) -> None:
+    """Re-hydrate ``Event.usage_metadata`` from the ``$usage`` we captured on write.
+
+    The canonical ``$usage`` dict uses ``input_tokens`` / ``output_tokens`` /
+    ``total_tokens`` / ``cached_input_tokens`` / ``reasoning_tokens``; ADK's
+    ``GenerateContentResponseUsageMetadata`` uses the Gemini-native field names.
+    """
+    if not usage_by_event_id:
+        return
+    for event in adk_events:
+        usage = usage_by_event_id.get(event.id)
+        if usage is None:
+            continue
+        event.usage_metadata = types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=usage.get("input_tokens"),
+            candidates_token_count=usage.get("output_tokens"),
+            total_token_count=usage.get("total_tokens"),
+            cached_content_token_count=usage.get("cached_input_tokens"),
+            thoughts_token_count=usage.get("reasoning_tokens"),
+        )
 
 
 def _fold_session_state(canonical_events: list) -> dict[str, Any]:

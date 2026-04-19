@@ -207,6 +207,45 @@ class TestGetSessionConfig:
         assert reloaded.events == []
 
 
+class TestUsageMetadata:
+    async def test_usage_metadata_round_trips_on_reload(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """Regression test for DEV-1479.
+
+        Assistant events written with ``$usage`` metadata must emerge with
+        ``Event.usage_metadata`` populated on ``get_session`` — even though
+        the v1 codec doesn't round-trip LlmResponse metadata in-band.
+        """
+        service = KurrentDBSessionService(kurrentdb_client)
+        app, user, sid = _new_session_ids()
+        session = await service.create_session(app_name=app, user_id=user, session_id=sid)
+
+        assistant_event = AdkEvent(
+            author="root_agent",
+            invocation_id="inv_1",
+            content=types.Content(role="model", parts=[types.Part(text="hello")]),
+            usage_metadata=types.GenerateContentResponseUsageMetadata(
+                prompt_token_count=100,
+                candidates_token_count=25,
+                total_token_count=125,
+                cached_content_token_count=0,
+            ),
+        )
+        await service.append_event(session, assistant_event)
+
+        reloaded = await service.get_session(
+            app_name=app, user_id=user, session_id=sid
+        )
+        assert reloaded is not None and len(reloaded.events) == 1
+        usage = reloaded.events[0].usage_metadata
+        assert usage is not None
+        assert usage.prompt_token_count == 100
+        assert usage.candidates_token_count == 25
+        assert usage.total_token_count == 125
+        assert usage.cached_content_token_count == 0
+
+
 class TestDelete:
     async def test_soft_delete_appends_session_ended(
         self, kurrentdb_client: AsyncKurrentDBClient
