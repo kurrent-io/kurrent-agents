@@ -15,13 +15,21 @@ schema/                              canonical event schema (the source of truth
 
 google-adk/
   python/                            Kurrent integration for Google ADK (Python)
-                                     — design doc lives here; implementation in progress
 
 microsoft-agent-framework/
   python/                            Kurrent integration for MS Agent Framework (Python)
   dotnet/                            Kurrent integration for MS Agent Framework (.NET)
 
-# planned: langchain/, strands/, ...
+strands/
+  python/                            Kurrent integration for Strands Agents SDK (Python)
+
+openai-agents/
+  python/                            Kurrent integration for OpenAI Agents SDK (Python)
+
+claude-agent-sdk/
+  python/                            Kurrent SessionStore adapter for Claude Agent SDK (Python)
+
+# planned: langchain/, ...
 
 interop-tests/                       cross-framework round-trip tests
 docs/                                unified documentation
@@ -33,7 +41,10 @@ docs/                                unified documentation
 |---|---|---|---|
 | `microsoft-agent-framework/dotnet` | `Kurrent.AgentFramework` | C# | alpha |
 | `microsoft-agent-framework/python` | `kurrent-agent-framework` | Python | spike |
-| `google-adk/python` | `kurrent-google-adk` (planned) | Python | design |
+| `google-adk/python` | `kurrent-google-adk` | Python | alpha |
+| `strands/python` | `kurrent-strands` | Python | scaffolding |
+| `openai-agents/python` | `kurrent-openai-agents` | Python | scaffolding |
+| `claude-agent-sdk/python` | `kurrent-claude-agent-sdk` | Python | scaffolding |
 
 ## Getting started
 
