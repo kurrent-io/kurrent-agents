@@ -268,10 +268,13 @@ def _classify_parts(
 
 
 def _tool_call_info(fc: types.FunctionCall) -> ToolCallInfo:
+    # Preserve empty-dict args distinctly from missing args: Anthropic expects
+    # ``tool_use.input`` to be a dict even when the tool takes no parameters,
+    # so ``args={}`` must round-trip as ``{}`` rather than collapsing to ``None``.
     return ToolCallInfo(
         call_id=fc.id or "",
         tool_name=fc.name or "",
-        arguments=dict(fc.args) if fc.args else None,
+        arguments=dict(fc.args) if fc.args is not None else None,
     )
 
 
@@ -417,7 +420,10 @@ def _reconstruct_one(group: list[CanonicalEvent]) -> AdkEvent:
                         function_call=types.FunctionCall(
                             id=tc.call_id or None,
                             name=tc.tool_name or None,
-                            args=dict(tc.arguments) if tc.arguments else None,
+                            # Round-trip empty-dict args as ``{}``, not ``None``
+                            # — LLM providers (Anthropic, at least) reject
+                            # ``tool_use.input: null``.
+                            args=dict(tc.arguments) if tc.arguments is not None else None,
                         )
                     )
                 )

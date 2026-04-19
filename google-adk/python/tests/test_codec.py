@@ -173,6 +173,30 @@ class TestAssistantToolCalls:
         assert _content_text(reconstructed) == "Let me search for that."
         assert reconstructed.get_function_calls()[0].name == "search"
 
+    def test_empty_args_round_trip_as_empty_dict(self) -> None:
+        """Tools taking no parameters must keep ``args={}`` on round-trip.
+
+        Regression test: Anthropic rejects ``tool_use.input: null`` ("Input
+        should be a valid dictionary"), so the codec must not collapse an
+        empty dict to None.
+        """
+        original = _make_event(
+            author="root_agent",
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part(
+                        function_call=types.FunctionCall(
+                            id="c1", name="list_notes", args={}
+                        )
+                    )
+                ],
+            ),
+        )
+        reconstructed = _assert_round_trip(original)
+        fc = reconstructed.get_function_calls()[0]
+        assert fc.args == {}  # not None
+
     def test_long_running_tool_ids_round_trip(self) -> None:
         original = _make_event(
             author="root_agent",
