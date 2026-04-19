@@ -6,9 +6,11 @@ monorepo. See ``DESIGN.md`` in this directory.
 """
 
 from . import client
+from .memory import KurrentDBAgentMemory
 from .session_manager import KurrentDBSessionManager
 
 __all__ = [
+    "KurrentDBAgentMemory",
     "KurrentDBSessionManager",
     "client",
 ]
