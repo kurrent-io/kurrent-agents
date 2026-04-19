@@ -218,6 +218,46 @@ class TestToolResult:
         assert fr.id == "c1"
         assert fr.response == {"hits": 3}
 
+    def test_result_with_pydantic_model_payload(self) -> None:
+        """ADK's LoadMemoryTool returns a Pydantic model as the tool response.
+
+        ``_serialize_response`` must handle that instead of ``json.dumps`` it
+        directly (which raises ``TypeError``). Regression test for a crash
+        surfaced by the memory_agent sample.
+        """
+        from pydantic import BaseModel
+
+        class _FakeResponse(BaseModel):
+            hits: int
+            label: str
+
+        fake = _FakeResponse(hits=3, label="ok")
+        original = _make_event(
+            author="user",
+            content=types.Content(
+                role="user",
+                parts=[
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            id="c1",
+                            name="fetch",
+                            # google.genai normalises pydantic → dict before this
+                            # hits our codec, but ``fetch`` wrapping the dict
+                            # under ``"result"`` is enough to exercise the
+                            # non-native-JSON fallback path too.
+                            response=fake.model_dump(),
+                        )
+                    )
+                ],
+            ),
+        )
+        # Should neither raise nor drop the payload.
+        canonical = event_to_canonical(original)
+        assert len(canonical) == 1
+        reconstructed = canonical_to_events(canonical)[0]
+        fr = reconstructed.get_function_responses()[0]
+        assert fr.response == {"hits": 3, "label": "ok"}
+
     def test_result_with_string_payload(self) -> None:
         # Not valid JSON — exercises the fallback wrap in `{"result": <string>}`.
         original = _make_event(

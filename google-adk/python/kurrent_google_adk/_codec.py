@@ -275,10 +275,18 @@ def _tool_call_info(fc: types.FunctionCall) -> ToolCallInfo:
     )
 
 
-def _serialize_response(response: dict[str, Any] | None) -> str | None:
+def _serialize_response(response: Any) -> str | None:
     if response is None:
         return None
-    return json.dumps(response)
+    # Tools sometimes return Pydantic models (e.g. ADK's LoadMemoryTool returns
+    # a ``LoadMemoryResponse``). Coerce to a plain dict before serialising.
+    if hasattr(response, "model_dump"):
+        response = response.model_dump(mode="json")
+    try:
+        return json.dumps(response)
+    except TypeError:
+        # Last resort: stringify non-JSON-native types (datetimes, UUIDs, etc.).
+        return json.dumps(response, default=str)
 
 
 def _deserialize_response(result: str | None) -> dict[str, Any] | None:
