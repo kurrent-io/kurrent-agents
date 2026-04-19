@@ -29,12 +29,19 @@ class _EventBase(BaseModel):
     ``extra="ignore"`` ensures forward-compatibility: fields added in a future
     schema revision are silently dropped on read rather than raising, so older
     readers keep working against newer streams.
+
+    ``ser_json_bytes`` / ``val_json_bytes`` round-trip ``bytes`` fields as
+    base64 strings in JSON — required for binary payloads on
+    ``ArtifactVersionCreated.inline_bytes``. Matches how ADK's ``Event``
+    model handles the same shape.
     """
 
     model_config = ConfigDict(
         populate_by_name=True,
         extra="ignore",
         frozen=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
     )
 
     extensions: dict[str, dict[str, Any]] | None = None
