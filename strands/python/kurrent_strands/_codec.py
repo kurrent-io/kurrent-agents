@@ -79,6 +79,17 @@ def message_to_canonical(
     if role == "user":
         # Tool results come on user-role messages per Strands' model.
         for tr in tool_results:
+            # Preserve Strands-specific toolResult fields (notably ``status``
+            # — required by Strands' Anthropic adapter) that aren't in the
+            # canonical ToolResultReceived shape.
+            tr_extras = {
+                k: v for k, v in tr.items() if k not in {"toolUseId", "content"}
+            }
+            per_event_extensions = (
+                _merge_extensions(extensions, {"tool_result": tr_extras})
+                if tr_extras
+                else extensions
+            )
             results.append(
                 ToolResultReceived(
                     call_id=tr.get("toolUseId") or "",
@@ -86,7 +97,7 @@ def message_to_canonical(
                     result=_serialize_tool_result_content(tr.get("content")),
                     message_index=message_index,
                     timestamp=ts,
-                    extensions=extensions,
+                    extensions=per_event_extensions,
                 )
             )
         if text_content is not None:
@@ -190,6 +201,17 @@ def _build_strands_extensions(
     return {STRANDS_EXTENSION_KEY: ext}
 
 
+def _merge_extensions(
+    base: dict[str, dict[str, Any]],
+    overrides: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Shallow-merge ``overrides`` into ``base[STRANDS_EXTENSION_KEY]`` non-destructively."""
+    merged = {k: dict(v) for k, v in base.items()}
+    strands = merged.setdefault(STRANDS_EXTENSION_KEY, {})
+    strands.update(overrides)
+    return merged
+
+
 def _tool_call_info(tool_use: dict[str, Any]) -> ToolCallInfo:
     # Strands uses camelCase (toolUseId, name, input). Canonical uses snake_case
     # (call_id, tool_name, arguments).
@@ -268,14 +290,18 @@ def _reconstruct_message(events: list[CanonicalEvent]) -> Message:
                 )
         elif isinstance(event, ToolResultReceived):
             role = "user"
-            content.append(
-                {
-                    "toolResult": {
-                        "toolUseId": event.call_id,
-                        "content": _deserialize_tool_result_content(event.result),
-                    }
-                }
-            )
+            tr_block: dict[str, Any] = {
+                "toolUseId": event.call_id,
+                "content": _deserialize_tool_result_content(event.result),
+            }
+            # Restore Strands-specific fields (e.g. ``status``) from extensions.
+            if event.extensions:
+                per_event = event.extensions.get(STRANDS_EXTENSION_KEY, {}) or {}
+                tr_block.update(per_event.get("tool_result") or {})
+            # Default status if missing (e.g. if an ADK-written session is read
+            # by Strands): Strands' Anthropic adapter requires it.
+            tr_block.setdefault("status", "success")
+            content.append({"toolResult": tr_block})
 
     # Restore non-canonical content blocks (image/document/etc.) at the end.
     for block in strands_ext.get("non_canonical_blocks") or []:

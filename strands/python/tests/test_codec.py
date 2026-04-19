@@ -127,6 +127,48 @@ class TestToolResult:
         assert isinstance(events[0], ToolResultReceived)
         assert events[0].call_id == "c1"
 
+    def test_status_round_trips_via_extensions(self) -> None:
+        """Strands' ``ToolResult.status`` is required by the Anthropic adapter but
+        isn't in the canonical schema — must ride in ``extensions.strands``
+        and restore on the reconstructed message.
+        """
+        original = _msg(
+            "user",
+            [
+                {
+                    "toolResult": {
+                        "toolUseId": "c1",
+                        "content": [{"text": "boom"}],
+                        "status": "error",
+                    }
+                }
+            ],
+        )
+        events = message_to_canonical(original, message_index=0, timestamp=TS)
+        [restored] = canonical_to_messages(events)
+        assert restored["content"][0]["toolResult"]["status"] == "error"
+
+    def test_tool_result_default_status_is_success(self) -> None:
+        """If a reader encounters a ToolResultReceived with no strands extension
+        (e.g. written by an ADK agent), status defaults to ``success`` so
+        Strands' Anthropic adapter doesn't raise ``KeyError``.
+        """
+        from kurrent_strands._schema.events import ToolResultReceived
+
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                tool_name=None,
+                result='[{"text":"ok"}]',
+                message_index=0,
+                timestamp=TS,
+                # No extensions — simulates a cross-framework read.
+                extensions=None,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        assert restored["content"][0]["toolResult"]["status"] == "success"
+
     def test_tool_result_round_trip(self) -> None:
         original = _msg(
             "user",
