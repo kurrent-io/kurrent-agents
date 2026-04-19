@@ -151,27 +151,15 @@ class KurrentDBSessionStore:
             entries.append(event.raw_entry)  # type: ignore[arg-type]
         return entries or None
 
-    # ----- optional methods (unimplemented in v0) ----------------------------
-
-    async def list_sessions(
-        self, project_key: str
-    ) -> list[SessionStoreListEntry]:
-        raise NotImplementedError(
-            "list_sessions requires a category projection on $ce-AgentSession; "
-            "follow-up."
-        )
-
-    async def delete(self, key: SessionKey) -> None:
-        raise NotImplementedError(
-            "delete is a no-op for append-only storage; follow-up adds an "
-            "explicit tombstone event for callers that need it."
-        )
-
-    async def list_subkeys(self, key: SessionListSubkeysKey) -> list[str]:
-        raise NotImplementedError(
-            "list_subkeys will come with the subagent-discovery pass; v0 only "
-            "materialises the main transcript on resume."
-        )
+    # ----- optional SessionStore methods -------------------------------------
+    #
+    # ``list_sessions``, ``delete``, and ``list_subkeys`` are deliberately
+    # **absent** from this class. The SDK probes for the methods' presence at
+    # runtime (see Protocol docstring: "implementers may omit them, and call
+    # sites probe for their presence before invoking"). A method that's
+    # defined-but-raises is still "present" and the SDK surfaces the error
+    # — for true "unimplemented" semantics the methods must not exist on the
+    # object at all. Follow-up issue will add proper implementations.
 
     # ----- internals ---------------------------------------------------------
 

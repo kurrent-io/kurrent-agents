@@ -128,23 +128,29 @@ class TestSubpathScoping:
 
 
 class TestOptionalMethods:
-    async def test_list_sessions_raises(
-        self, kurrentdb_client: AsyncKurrentDBClient
-    ) -> None:
-        store = KurrentDBSessionStore(kurrentdb_client)
-        with pytest.raises(NotImplementedError):
-            await store.list_sessions("any")
+    """Optional SessionStore methods must be **absent** on the class, not
+    defined-but-raising.
 
-    async def test_delete_raises(
-        self, kurrentdb_client: AsyncKurrentDBClient
-    ) -> None:
-        store = KurrentDBSessionStore(kurrentdb_client)
-        with pytest.raises(NotImplementedError):
-            await store.delete({"project_key": "p", "session_id": "s"})
+    Per the SDK's Protocol contract: "implementers may omit them, and call
+    sites probe for their presence at runtime before invoking". A
+    defined-but-raising method is still "present" and the SDK surfaces the
+    exception instead of falling back to its main-transcript-only path.
+    """
 
-    async def test_list_subkeys_raises(
+    async def test_list_sessions_is_absent(
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         store = KurrentDBSessionStore(kurrentdb_client)
-        with pytest.raises(NotImplementedError):
-            await store.list_subkeys({"project_key": "p", "session_id": "s"})
+        assert not hasattr(store, "list_sessions")
+
+    async def test_delete_is_absent(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        store = KurrentDBSessionStore(kurrentdb_client)
+        assert not hasattr(store, "delete")
+
+    async def test_list_subkeys_is_absent(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        store = KurrentDBSessionStore(kurrentdb_client)
+        assert not hasattr(store, "list_subkeys")
