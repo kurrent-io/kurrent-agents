@@ -38,7 +38,7 @@ def get_weather(city: str) -> dict:
 
 root_agent = Agent(
     name="basic_agent",
-    model=LiteLlm(model="anthropic/claude-haiku-4-5"),
+    model=LiteLlm(model="anthropic/claude-haiku-4-5-20251001"),
     description="Helpful assistant that can look up the weather for a handful of cities.",
     instruction=(
         "You are a friendly assistant. When a user asks about weather, use the "
