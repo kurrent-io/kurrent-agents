@@ -36,8 +36,11 @@ class KurrentDBContainer(DockerContainer):
             .with_env("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")
             .with_exposed_ports(self.DEFAULT_PORT)
         )
-        if reuse:
-            # Available in testcontainers-python >= 4.
+        if reuse and hasattr(self, "with_reuse"):
+            # ``with_reuse()`` is only present in newer testcontainers-python
+            # (not in 4.14.2, the version we're currently pinned to by uv.lock).
+            # When absent, we silently fall back to "no reuse" — the container
+            # still works, it just pays full startup cost each session.
             self.with_reuse()
 
     def start(self):  # type: ignore[override]
