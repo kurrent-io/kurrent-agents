@@ -31,6 +31,13 @@ class KurrentDBContainer(DockerContainer):
         (
             self.with_env("KURRENTDB_CLUSTER_SIZE", "1")
             .with_env("KURRENTDB_RUN_PROJECTIONS", projections)
+            # Auto-start $by_category, $by_event_type, and the other built-in
+            # projections whenever projections are enabled — mirrors the
+            # docker-compose.yml setting that the ADK tests rely on.
+            .with_env(
+                "KURRENTDB_START_STANDARD_PROJECTIONS",
+                "true" if projections.lower() != "none" else "false",
+            )
             .with_env("KURRENTDB_NODE_PORT", str(self.DEFAULT_PORT))
             .with_env("KURRENTDB_INSECURE", "true")
             .with_env("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")

@@ -273,25 +273,28 @@ class KurrentDBArtifactService(BaseArtifactService):
         except NotFoundError:
             return []
 
-        async for recorded in response:
-            metadata = _serialization.read_metadata(recorded)
-            if not metadata:
-                continue
-            scope = metadata.get(_SCOPE_METADATA_KEY)
-            if not scope:
-                continue
-            if scope.get("app_name") != app_name or scope.get("user_id") != user_id:
-                continue
-            event_session = scope.get("session_id")
-            if session_id is None:
-                if event_session is not None:
+        try:
+            async for recorded in response:
+                metadata = _serialization.read_metadata(recorded)
+                if not metadata:
                     continue
-            else:
-                if event_session is not None and event_session != session_id:
+                scope = metadata.get(_SCOPE_METADATA_KEY)
+                if not scope:
                     continue
-            filename = scope.get("filename")
-            if filename:
-                keys.add(filename)
+                if scope.get("app_name") != app_name or scope.get("user_id") != user_id:
+                    continue
+                event_session = scope.get("session_id")
+                if session_id is None:
+                    if event_session is not None:
+                        continue
+                else:
+                    if event_session is not None and event_session != session_id:
+                        continue
+                filename = scope.get("filename")
+                if filename:
+                    keys.add(filename)
+        except NotFoundError:
+            return []
         return sorted(keys)
 
     # ----- internals ---------------------------------------------------------
