@@ -333,7 +333,10 @@ class TestListKeys:
 
         # Category projection is asynchronous; poll until all expected keys
         # land in both scopes or the budget runs out.
-        for _ in range(40):
+        # 240 × 0.25 s = 60 s — enough for a freshly-started Testcontainers
+        # container where the $by_category system projection may take longer
+        # to process new events than a warmed-up docker-compose instance.
+        for _ in range(240):
             session_scope = await get_keys_with_session()
             user_scope = await get_user_only_keys()
             have_all = (

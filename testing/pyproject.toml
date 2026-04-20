@@ -3,34 +3,29 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kurrent-agent-framework"
+name = "kurrent-agents-testing"
 version = "0.0.1"
-description = "KurrentDB integration for the Microsoft Agent Framework (Python)"
+description = "Shared test helpers for the kurrent-agents repo (internal; not for publication)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Kurrent, Inc." }]
-keywords = ["kurrentdb", "eventsourcing", "agent-framework", "llm"]
 dependencies = [
-  "agent-framework >= 1.0.0",
+  "testcontainers >= 4.0",
   "kurrentdbclient >= 1.2.0",
-  "pydantic >= 2.5",
-]
-
-[project.optional-dependencies]
-dev = [
   "pytest >= 8",
   "pytest-asyncio >= 0.23",
-  "ruff >= 0.6",
-  "kurrent-agents-testing",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["kurrent_agent_framework"]
+packages = ["src/kurrent_agents_testing"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "integration: requires a live Docker daemon",
+]
 
 [tool.ruff]
 line-length = 120
@@ -38,6 +33,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
-
-[tool.uv.sources]
-kurrent-agents-testing = { path = "../../testing", editable = true }
