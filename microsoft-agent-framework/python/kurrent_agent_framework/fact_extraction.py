@@ -17,7 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent
@@ -206,3 +207,51 @@ class FactExtractionService:
             await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
         except TimeoutError:
             pass
+
+
+@asynccontextmanager
+async def run_fact_extraction(
+    client: AsyncKurrentDBClient,
+    memory: AgentMemory,
+    extractor: FactExtractor,
+    options: FactExtractionOptions = FactExtractionOptions(),
+) -> AsyncIterator[FactExtractionService]:
+    """Spawn a :class:`FactExtractionService` as a background task for the
+    lifetime of the ``async with`` block.
+
+    Usage::
+
+        async with run_fact_extraction(client, memory, extractor) as service:
+            # run your agent; facts are extracted in the background
+            ...
+
+    On exit (normal or exceptional), the background task is signalled to stop,
+    cancelled, and awaited so callers never leave a dangling task behind.
+    """
+    service = FactExtractionService(client, memory, extractor, options)
+    task = asyncio.create_task(service.run_forever(), name="fact_extraction.run_forever")
+    try:
+        yield service
+    finally:
+        service.stop()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            # Distinguish the CancelledError produced by our own
+            # ``task.cancel()`` above from an outer cancellation of the
+            # task that owns this ``async with`` block. See the 3.11+
+            # cancellation-count idiom documented at
+            # https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.uncancel
+            current = asyncio.current_task()
+            if current is None or current.cancelling() == 0:
+                # No outer cancellation pending — it was our own cancel;
+                # swallow so callers don't see a spurious CancelledError.
+                pass
+            else:
+                # Outer cancellation is in flight. ``uncancel()`` decrements
+                # the pending count we've now observed and returns the
+                # remaining count; re-raise so the outer cancellation
+                # propagates without being double-counted on later awaits.
+                current.uncancel()
+                raise
