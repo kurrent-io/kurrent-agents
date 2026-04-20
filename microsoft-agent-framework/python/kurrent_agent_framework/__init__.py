@@ -7,7 +7,12 @@ same stream naming.
 
 from . import events, serialization, stream_name
 from .chat_history import KurrentDBHistoryProvider
-from .fact_extraction import FactExtractionOptions, FactExtractionService, FactExtractor
+from .fact_extraction import (
+    FactExtractionOptions,
+    FactExtractionService,
+    FactExtractor,
+    run_fact_extraction,
+)
 from .memory import AgentMemory, AgentMemoryContextProvider, KurrentDBAgentMemory
 
 __all__ = [
@@ -19,6 +24,7 @@ __all__ = [
     "KurrentDBAgentMemory",
     "KurrentDBHistoryProvider",
     "events",
+    "run_fact_extraction",
     "serialization",
     "stream_name",
 ]

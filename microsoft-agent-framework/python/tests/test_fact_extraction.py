@@ -20,6 +20,7 @@ from kurrent_agent_framework import (
     FactExtractionOptions,
     FactExtractionService,
     events as _events,
+    run_fact_extraction,
     serialization,
     stream_name,
 )
@@ -333,6 +334,85 @@ class TestFactExtraction:
             assert "   " not in memory._facts
         finally:
             await _stop(service, task)
+
+    async def test_run_fact_extraction_context_manager_lifecycle(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """``run_fact_extraction`` must spawn the task on enter and cancel it on exit."""
+        marker = f"[M-{uuid.uuid4().hex}]"
+        stream = stream_name.for_session(uuid.uuid4().hex)
+        memory = InMemoryMemory()
+
+        content = f"{marker} context-manager fact"
+        async with run_fact_extraction(
+            kurrentdb_client,
+            memory,
+            lambda c: [c] if marker in c else [],
+            FactExtractionOptions(group_name=_unique_group()),
+        ) as service:
+            assert isinstance(service, FactExtractionService)
+            # Subscription needs a beat to register before the first append.
+            await asyncio.sleep(0.2)
+            await _append(
+                kurrentdb_client,
+                stream,
+                _events.UserMessageReceived(
+                    content=content,
+                    message_id="m-1",
+                    author_name="user",
+                    created_at=_TS,
+                    message_index=0,
+                    timestamp=_TS,
+                ),
+            )
+            assert await _wait_until(lambda: content in memory._facts)
+
+        # After the context exits, the service must no longer be consuming.
+        # Append another event and confirm the extractor is never invoked.
+        post_exit = f"{marker} post-exit"
+        await _append(
+            kurrentdb_client,
+            stream,
+            _events.UserMessageReceived(
+                content=post_exit,
+                message_id="m-2",
+                author_name="user",
+                created_at=_TS,
+                message_index=1,
+                timestamp=_TS,
+            ),
+        )
+        await asyncio.sleep(0.5)
+        assert post_exit not in memory._facts, (
+            "Background task still processing events after context-manager exit."
+        )
+
+    async def test_run_fact_extraction_cancels_task_on_exception(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """Exceptions inside the ``async with`` block must still tear down the task."""
+        memory = InMemoryMemory()
+
+        class _BoomError(Exception):
+            pass
+
+        with pytest.raises(_BoomError):
+            async with run_fact_extraction(
+                kurrentdb_client,
+                memory,
+                lambda c: [],
+                FactExtractionOptions(group_name=_unique_group()),
+            ):
+                await asyncio.sleep(0.1)
+                raise _BoomError
+
+        # A leaked task would show up as a pending task referencing run_forever.
+        leaked = [
+            t
+            for t in asyncio.all_tasks()
+            if not t.done() and "run_forever" in (t.get_name() or "")
+        ]
+        assert not leaked, f"run_forever task leaked after exit: {leaked}"
 
     async def test_persistent_subscription_survives_service_restart(
         self, kurrentdb_client: AsyncKurrentDBClient

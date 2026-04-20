@@ -17,7 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent
@@ -205,4 +206,36 @@ class FactExtractionService:
         try:
             await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
         except TimeoutError:
+            pass
+
+
+@asynccontextmanager
+async def run_fact_extraction(
+    client: AsyncKurrentDBClient,
+    memory: AgentMemory,
+    extractor: FactExtractor,
+    options: FactExtractionOptions = FactExtractionOptions(),
+) -> AsyncIterator[FactExtractionService]:
+    """Spawn a :class:`FactExtractionService` as a background task for the
+    lifetime of the ``async with`` block.
+
+    Usage::
+
+        async with run_fact_extraction(client, memory, extractor) as service:
+            # run your agent; facts are extracted in the background
+            ...
+
+    On exit (normal or exceptional), the background task is signalled to stop,
+    cancelled, and awaited so callers never leave a dangling task behind.
+    """
+    service = FactExtractionService(client, memory, extractor, options)
+    task = asyncio.create_task(service.run_forever(), name="fact_extraction.run_forever")
+    try:
+        yield service
+    finally:
+        service.stop()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
             pass
