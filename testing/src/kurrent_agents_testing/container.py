@@ -56,15 +56,16 @@ class KurrentDBContainer(DockerContainer):
         last_err: Exception | None = None
         while time.monotonic() < deadline:
             try:
-                with urlopen(url, timeout=2) as resp:  # noqa: S310 — trusted host
+                with urlopen(url, timeout=2) as resp:  # trusted: local Docker container
                     if 200 <= resp.status < 300:
                         return
             except (URLError, ConnectionError, TimeoutError) as exc:
                 last_err = exc
             time.sleep(0.5)
+        container_status = getattr(self._container, "status", "unknown")
         raise RuntimeError(
             f"KurrentDB did not become ready within {timeout_s}s "
-            f"(last error: {last_err!r})"
+            f"(container status: {container_status}, last error: {last_err!r})"
         )
 
     def connection_string(self) -> str:

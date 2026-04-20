@@ -4,7 +4,6 @@ Run individually if needed:
   uv run pytest tests/test_container.py -v -m integration
 """
 
-import os
 import socket
 
 import pytest
