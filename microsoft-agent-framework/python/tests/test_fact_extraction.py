@@ -414,6 +414,31 @@ class TestFactExtraction:
         ]
         assert not leaked, f"run_forever task leaked after exit: {leaked}"
 
+    async def test_run_fact_extraction_propagates_outer_cancellation(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """Cancelling the task that owns the ``async with`` must surface as
+        CancelledError — the cleanup path must not swallow the caller's cancel.
+        """
+        memory = InMemoryMemory()
+        entered = asyncio.Event()
+
+        async def owner() -> None:
+            async with run_fact_extraction(
+                kurrentdb_client,
+                memory,
+                lambda _c: [],
+                FactExtractionOptions(group_name=_unique_group()),
+            ):
+                entered.set()
+                await asyncio.sleep(3600)
+
+        task = asyncio.create_task(owner())
+        await asyncio.wait_for(entered.wait(), timeout=5.0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
     async def test_persistent_subscription_survives_service_restart(
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:

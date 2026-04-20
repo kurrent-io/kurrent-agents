@@ -238,4 +238,10 @@ async def run_fact_extraction(
         try:
             await task
         except asyncio.CancelledError:
-            pass
+            # Only swallow the CancelledError that came from our own
+            # ``task.cancel()`` above. If the caller task is itself being
+            # cancelled, re-raise so outer cancellation / timeouts aren't
+            # silently dropped.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling() > 0:
+                raise
