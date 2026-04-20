@@ -1,14 +1,12 @@
 """Integration smoke test — requires Docker on the host.
 
-Run individually if needed:
+Run the Docker-backed tests individually if needed:
   uv run pytest tests/test_container.py -v -m integration
 """
 
 import socket
 
 import pytest
-
-pytestmark = pytest.mark.integration
 
 
 def _docker_available() -> bool:
@@ -36,6 +34,7 @@ def container():
         c.stop()
 
 
+@pytest.mark.integration
 def test_container_exposes_reachable_tcp(container):
     host = container.get_container_host_ip()
     port = int(container.get_exposed_port(2113))
@@ -43,6 +42,7 @@ def test_container_exposes_reachable_tcp(container):
         pass
 
 
+@pytest.mark.integration
 def test_connection_string_is_valid_kurrentdb_uri(container):
     cs = container.connection_string()
     assert cs.startswith("kurrentdb://")

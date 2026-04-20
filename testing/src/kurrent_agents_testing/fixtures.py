@@ -5,9 +5,10 @@ Consumers typically import the fixtures they need into their own
 
     from kurrent_agents_testing.fixtures import async_kurrentdb_client  # noqa: F401
 
-The shared ``kurrentdb_container`` fixture can be overridden per package
-(e.g. ``google-adk`` needs ``projections="All"``) using pytest's standard
-fixture-override mechanism.
+If a package needs a different container configuration (e.g. a non-default
+``projections`` value), it can override the ``kurrentdb_container`` fixture
+in its own ``conftest.py`` via pytest's standard name-based fixture-override
+mechanism — no package does today.
 """
 
 from __future__ import annotations
