@@ -18,7 +18,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest >= 8", "pytest-asyncio >= 0.23", "ruff >= 0.6"]
+dev = [
+  "pytest >= 8",
+  "pytest-asyncio >= 0.23",
+  "ruff >= 0.6",
+  "kurrent-agents-testing",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["kurrent_agent_framework"]
@@ -33,3 +38,6 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
+
+[tool.uv.sources]
+kurrent-agents-testing = { path = "../../testing", editable = true }
