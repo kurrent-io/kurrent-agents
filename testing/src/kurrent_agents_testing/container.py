@@ -14,9 +14,10 @@ from .image import resolve_image
 class KurrentDBContainer(DockerContainer):
     """Start a single-node KurrentDB for tests.
 
-    Defaults mirror the repo's docker-compose.yml: insecure mode, no
-    projections, atom-pub enabled. ``google-adk`` overrides with
-    ``projections="All"``.
+    Defaults to ``RUN_PROJECTIONS=System`` + ``START_STANDARD_PROJECTIONS=true``
+    — enough for ``$ce-*`` and the other built-in projections the integration
+    suites rely on. Callers that need something stricter or looser (``All`` /
+    ``None``) can override via the ``projections`` kwarg.
     """
 
     DEFAULT_PORT = 2113
@@ -24,23 +25,19 @@ class KurrentDBContainer(DockerContainer):
     def __init__(
         self,
         *,
-        projections: str = "None",
+        projections: str = "System",
         reuse: bool = False,
     ) -> None:
         super().__init__(resolve_image())
         (
             self.with_env("KURRENTDB_CLUSTER_SIZE", "1")
             .with_env("KURRENTDB_RUN_PROJECTIONS", projections)
-            # Auto-start $by_category, $by_event_type, and the other built-in
-            # projections whenever projections are enabled. Mirrors the
-            # ``KURRENTDB_START_STANDARD_PROJECTIONS=true`` line in the
-            # per-package docker-compose.yml files. Set to "false" when
-            # ``projections="None"`` so we don't waste startup time spinning
-            # up projections we won't use.
-            .with_env(
-                "KURRENTDB_START_STANDARD_PROJECTIONS",
-                "true" if projections.lower() != "none" else "false",
-            )
+            # $ce-* and the other built-in "system" projections (by-category,
+            # by-event-type, stream-by-category, event-by-type) are required
+            # by our integration tests and by the per-package sample apps.
+            # Always auto-start them; callers that genuinely need a minimal
+            # server can pass ``projections="None"`` explicitly.
+            .with_env("KURRENTDB_START_STANDARD_PROJECTIONS", "true")
             .with_env("KURRENTDB_NODE_PORT", str(self.DEFAULT_PORT))
             .with_env("KURRENTDB_INSECURE", "true")
             .with_env("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")

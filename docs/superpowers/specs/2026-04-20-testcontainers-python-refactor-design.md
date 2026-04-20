@@ -120,7 +120,7 @@ class KurrentDBContainer(DockerContainer):
 
 `_wait_http_ok` polls `http://<host>:<mapped-port>/gossip` until a 2xx response or timeout. This mirrors the .NET fixture's `Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(x => x.ForPath("/gossip").ForPort(2113))` so both language test suites use the same readiness signal.
 
-**Projections.** `google-adk` needs `KURRENTDB_RUN_PROJECTIONS=All` (see its compose file); the other four packages run with `None`. The `projections` kwarg is the only shape we need to vary today; if another package needs a different env var later, it can build its own `KurrentDBContainer` rather than inflating the constructor.
+**Projections.** The default is ``RUN_PROJECTIONS=System`` plus ``START_STANDARD_PROJECTIONS=true`` — this is enough to enable ``$ce-*``, ``$by_category``, and the other built-in system projections that every integration suite (including ADK's category-stream usage) depends on. Callers that want something stricter can pass ``projections="None"``; ``"All"`` remains available for users-defined projection needs. No per-package override is required today.
 
 ### `fixtures.py` — pytest fixtures
 
@@ -184,25 +184,7 @@ from kurrent_agents_testing.fixtures import kurrentdb_client  # noqa: F401
 from kurrent_agents_testing.fixtures import async_kurrentdb_client as kurrentdb_client  # noqa: F401
 ```
 
-`google-adk/python/tests/conftest.py` **overrides** the shared `kurrentdb_container` fixture (pytest's standard fixture-override mechanism) to pass `projections="All"` — the only package-specific divergence:
-
-```python
-# google-adk/python/tests/conftest.py
-import pytest
-from kurrent_agents_testing.container import KurrentDBContainer
-from kurrent_agents_testing.fixtures import reuse_enabled, async_kurrentdb_client  # noqa: F401
-
-kurrentdb_client = async_kurrentdb_client  # adk is async-native
-
-@pytest.fixture(scope="session")
-def kurrentdb_container():
-    c = KurrentDBContainer(projections="All", reuse=reuse_enabled()).start()
-    yield c
-    if not reuse_enabled():
-        c.stop()
-```
-
-This is the idiomatic pytest fixture override — `async_kurrentdb_client` still depends on `kurrentdb_connection_string`, which depends on `kurrentdb_container`, and the override is picked up by name.
+All five packages — including `google-adk` — use the same 4-line re-export because the shared default (`RUN_PROJECTIONS=System`) already covers ADK's category-stream needs. If a future package needs a non-default projections value, it can use pytest's fixture-override mechanism: define a local `kurrentdb_container` fixture in its `conftest.py` that constructs a `KurrentDBContainer(projections=...)` with the desired setting. Pytest's name-based fixture lookup picks up the local definition and uses it everywhere the shared fixture would have been resolved.
 
 The old `_connection_string`, `_kurrentdb_reachable`, and `kurrentdb_available` helpers (plus the module-level `_DEFAULT_CONNECTION_STRING` constant) are deleted. No other code references them (verified: `Grep` across all 5 tests trees shows fixture-only usage).
 
