@@ -238,10 +238,20 @@ async def run_fact_extraction(
         try:
             await task
         except asyncio.CancelledError:
-            # Only swallow the CancelledError that came from our own
-            # ``task.cancel()`` above. If the caller task is itself being
-            # cancelled, re-raise so outer cancellation / timeouts aren't
-            # silently dropped.
+            # Distinguish the CancelledError produced by our own
+            # ``task.cancel()`` above from an outer cancellation of the
+            # task that owns this ``async with`` block. See the 3.11+
+            # cancellation-count idiom documented at
+            # https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.uncancel
             current = asyncio.current_task()
-            if current is not None and current.cancelling() > 0:
+            if current is None or current.cancelling() == 0:
+                # No outer cancellation pending — it was our own cancel;
+                # swallow so callers don't see a spurious CancelledError.
+                pass
+            else:
+                # Outer cancellation is in flight. ``uncancel()`` decrements
+                # the pending count we've now observed and returns the
+                # remaining count; re-raise so the outer cancellation
+                # propagates without being double-counted on later awaits.
+                current.uncancel()
                 raise

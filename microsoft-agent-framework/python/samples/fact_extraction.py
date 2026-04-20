@@ -9,8 +9,9 @@ The framework ships no baked-in extractor — the regex patterns below live in
 sample code for exactly the reason DEV-1449 moved them out of the framework:
 what counts as a "fact" is domain-specific.
 
-Prereq: KurrentDB at ``kurrentdb://localhost:2113?Tls=false`` (``docker
-compose up -d`` in this directory).
+Prereq: KurrentDB at ``kurrentdb://localhost:2113?Tls=false``. Run
+``docker compose up -d`` from ``microsoft-agent-framework/python/`` (the
+directory containing ``docker-compose.yml``, one level above this sample).
 """
 
 from __future__ import annotations
