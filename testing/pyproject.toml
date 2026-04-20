@@ -23,6 +23,9 @@ packages = ["src/kurrent_agents_testing"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "integration: requires a live Docker daemon",
+]
 
 [tool.ruff]
 line-length = 120

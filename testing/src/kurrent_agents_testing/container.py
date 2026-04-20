@@ -1,0 +1,70 @@
+"""KurrentDB Testcontainers wrapper, matching the repo's docker-compose config."""
+
+from __future__ import annotations
+
+import time
+from urllib.error import URLError
+from urllib.request import urlopen
+
+from testcontainers.core.container import DockerContainer
+
+from .image import resolve_image
+
+
+class KurrentDBContainer(DockerContainer):
+    """Start a single-node KurrentDB for tests.
+
+    Defaults mirror the repo's docker-compose.yml: insecure mode, no
+    projections, atom-pub enabled. ``google-adk`` overrides with
+    ``projections="All"``.
+    """
+
+    DEFAULT_PORT = 2113
+
+    def __init__(
+        self,
+        *,
+        projections: str = "None",
+        reuse: bool = False,
+    ) -> None:
+        super().__init__(resolve_image())
+        (
+            self.with_env("KURRENTDB_CLUSTER_SIZE", "1")
+            .with_env("KURRENTDB_RUN_PROJECTIONS", projections)
+            .with_env("KURRENTDB_NODE_PORT", str(self.DEFAULT_PORT))
+            .with_env("KURRENTDB_INSECURE", "true")
+            .with_env("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")
+            .with_exposed_ports(self.DEFAULT_PORT)
+        )
+        if reuse:
+            # Available in testcontainers-python >= 4.
+            self.with_reuse()
+
+    def start(self):  # type: ignore[override]
+        super().start()
+        self._wait_for_gossip(timeout_s=120)
+        return self
+
+    def _wait_for_gossip(self, *, timeout_s: int) -> None:
+        host = self.get_container_host_ip()
+        port = int(self.get_exposed_port(self.DEFAULT_PORT))
+        url = f"http://{host}:{port}/gossip"
+        deadline = time.monotonic() + timeout_s
+        last_err: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                with urlopen(url, timeout=2) as resp:  # noqa: S310 — trusted host
+                    if 200 <= resp.status < 300:
+                        return
+            except (URLError, ConnectionError, TimeoutError) as exc:
+                last_err = exc
+            time.sleep(0.5)
+        raise RuntimeError(
+            f"KurrentDB did not become ready within {timeout_s}s "
+            f"(last error: {last_err!r})"
+        )
+
+    def connection_string(self) -> str:
+        host = self.get_container_host_ip()
+        port = self.get_exposed_port(self.DEFAULT_PORT)
+        return f"kurrentdb://{host}:{port}?Tls=false"
