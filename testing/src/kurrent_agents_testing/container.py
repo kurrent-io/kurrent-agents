@@ -32,8 +32,11 @@ class KurrentDBContainer(DockerContainer):
             self.with_env("KURRENTDB_CLUSTER_SIZE", "1")
             .with_env("KURRENTDB_RUN_PROJECTIONS", projections)
             # Auto-start $by_category, $by_event_type, and the other built-in
-            # projections whenever projections are enabled — mirrors the
-            # docker-compose.yml setting that the ADK tests rely on.
+            # projections whenever projections are enabled. Mirrors the
+            # ``KURRENTDB_START_STANDARD_PROJECTIONS=true`` line in the
+            # per-package docker-compose.yml files. Set to "false" when
+            # ``projections="None"`` so we don't waste startup time spinning
+            # up projections we won't use.
             .with_env(
                 "KURRENTDB_START_STANDARD_PROJECTIONS",
                 "true" if projections.lower() != "none" else "false",
@@ -43,12 +46,15 @@ class KurrentDBContainer(DockerContainer):
             .with_env("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")
             .with_exposed_ports(self.DEFAULT_PORT)
         )
+        self._reuse_applied = False
         if reuse and hasattr(self, "with_reuse"):
             # ``with_reuse()`` is only present in newer testcontainers-python
-            # (not in 4.14.2, the version we're currently pinned to by uv.lock).
-            # When absent, we silently fall back to "no reuse" — the container
-            # still works, it just pays full startup cost each session.
+            # (not in 4.14.2, the version pinned by uv.lock). When absent we
+            # silently fall back to "no reuse"; teardown in fixtures.py keys off
+            # ``_reuse_applied`` so the container is always stopped cleanly
+            # instead of orphaned.
             self.with_reuse()
+            self._reuse_applied = True
 
     def start(self):  # type: ignore[override]
         super().start()

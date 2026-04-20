@@ -25,5 +25,5 @@ def kurrentdb_container() -> Iterator[KurrentDBContainer]:
     try:
         yield c
     finally:
-        if not reuse_enabled():
+        if not getattr(c, "_reuse_applied", False):
             c.stop()

@@ -23,7 +23,12 @@ from .container import KurrentDBContainer
 
 
 def reuse_enabled() -> bool:
-    """``True`` outside of CI — enables testcontainers container reuse."""
+    """``True`` outside of CI — enables testcontainers container reuse.
+
+    ``"yes"`` is included in the CI-detection set because some CI systems
+    (e.g. certain Jenkins/GitLab setups) set ``CI=yes`` rather than the more
+    common ``CI=1`` or ``CI=true``.
+    """
     return os.environ.get("CI", "").lower() not in ("1", "true", "yes")
 
 
@@ -33,7 +38,11 @@ def kurrentdb_container() -> Iterator[KurrentDBContainer]:
     try:
         yield c
     finally:
-        if not reuse_enabled():
+        # Only skip teardown when the container is actually labelled for reuse
+        # (older testcontainers versions lack ``with_reuse``; see
+        # ``KurrentDBContainer._reuse_applied``). Otherwise always stop so we
+        # don't leak orphan containers across ``pytest`` invocations.
+        if not getattr(c, "_reuse_applied", False):
             c.stop()
 
 
