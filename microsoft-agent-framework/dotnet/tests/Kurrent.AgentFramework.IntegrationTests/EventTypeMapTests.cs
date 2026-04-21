@@ -11,6 +11,7 @@ public class EventTypeMapTests {
         (typeof(AssistantTextGenerated),      "AssistantTextGenerated"),
         (typeof(AssistantToolCallsGenerated), "AssistantToolCallsGenerated"),
         (typeof(ToolResultReceived),          "ToolResultReceived"),
+        (typeof(FactRetained),                "FactRetained"),
         (typeof(TokenUsageRecorded),          "TokenUsageRecorded"),
         (typeof(EvalRunStarted),              "EvalRunStarted"),
         (typeof(TurnScored),                  "TurnScored"),
