@@ -1,0 +1,11 @@
+{
+  "session_id": "sess-eval-0001",
+  "scorer": "factuality",
+  "criteria": "Every factual claim must be supported by the tool output.",
+  "extensions": {
+    "afw": {
+      "harness": "kurrent-agent-framework"
+    }
+  },
+  "timestamp": "2026-04-21T12:00:00Z"
+}

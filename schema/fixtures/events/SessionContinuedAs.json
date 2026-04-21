@@ -1,0 +1,10 @@
+{
+  "next_session_id": "sess-next-0002",
+  "reason": "context_overflow",
+  "extensions": {
+    "claude_code": {
+      "chain_hint": "/compact"
+    }
+  },
+  "timestamp": "2026-04-21T11:29:59Z"
+}

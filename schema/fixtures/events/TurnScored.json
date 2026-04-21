@@ -1,0 +1,15 @@
+{
+  "session_id": "sess-eval-0001",
+  "turn_index": 2,
+  "input": "What's the weather in Oslo today?",
+  "output": "Oslo is 8°C with light rain today.",
+  "score": 0.92,
+  "score_label": "pass",
+  "reason": "Factual claim supported by search tool result.",
+  "extensions": {
+    "afw": {
+      "judge_model": "claude-sonnet-4-6"
+    }
+  },
+  "timestamp": "2026-04-21T12:00:15Z"
+}

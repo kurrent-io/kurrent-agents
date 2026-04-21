@@ -1,0 +1,11 @@
+{
+  "agent_id": "sub-research-0001",
+  "outcome": "success",
+  "summary": "Filed Q1 summary with 3 key bullets.",
+  "extensions": {
+    "claude_code": {
+      "tokens_spent": 4321
+    }
+  },
+  "timestamp": "2026-04-21T10:08:42Z"
+}

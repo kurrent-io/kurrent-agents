@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj" />
+  <Project Path="Kurrent.Agent.Schema.Tests/Kurrent.Agent.Schema.Tests.csproj" />
+</Solution>

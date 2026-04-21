@@ -1,0 +1,14 @@
+{
+  "content": "The user is asking about Oslo weather. I should call the search tool with the city name.",
+  "encrypted": false,
+  "message_id": "msg-003a",
+  "author_name": "root",
+  "created_at": "2026-04-21T10:00:05Z",
+  "message_index": 1,
+  "extensions": {
+    "claude_code": {
+      "thinking_mode": "extended"
+    }
+  },
+  "timestamp": "2026-04-21T10:00:05Z"
+}
