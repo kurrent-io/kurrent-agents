@@ -1,0 +1,75 @@
+name: Publish Kurrent.Agent.Schema to NuGet
+
+on:
+  push:
+    tags:
+      - 'schema-dotnet-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack only; skip publishing (for verifying the workflow without a tag).'
+        type: boolean
+        default: false
+
+# Uses NuGet trusted publishing (OIDC) via the NuGet/login action — no API key secret.
+# The trusted publisher policy must be pre-configured on nuget.org for this repo +
+# this workflow file, and `vars.NUGET_USER` must be set to the publisher account.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Build, test, pack, push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify tag matches csproj version
+        if: startsWith(github.ref, 'refs/tags/schema-dotnet-v')
+        working-directory: schema/dotnet/Kurrent.Agent.Schema
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#schema-dotnet-v}"
+          FILE_VERSION=$(grep -oE '<Version>[^<]+</Version>' Kurrent.Agent.Schema.csproj | sed -E 's#</?Version>##g')
+          echo "tag=$TAG_VERSION file=$FILE_VERSION"
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error ::tag version ($TAG_VERSION) does not match csproj version ($FILE_VERSION)"
+            exit 1
+          fi
+
+      - name: Restore
+        working-directory: schema/dotnet
+        run: dotnet restore Kurrent.Agent.Schema.slnx
+
+      - name: Build
+        working-directory: schema/dotnet
+        run: dotnet build Kurrent.Agent.Schema.slnx -c Release --no-restore
+
+      - name: Test
+        working-directory: schema/dotnet
+        run: dotnet test Kurrent.Agent.Schema.slnx -c Release --no-build
+
+      - name: Pack
+        working-directory: schema/dotnet
+        run: dotnet pack Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj -c Release --no-build -o nupkg
+
+      - name: NuGet OIDC login
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to NuGet
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        working-directory: schema/dotnet
+        run: |
+          dotnet nuget push nupkg/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate

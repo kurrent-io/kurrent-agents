@@ -1,0 +1,43 @@
+# Dormant — manual trigger only.
+#
+# The Python integration packages in this repo (kurrent-google-adk,
+# kurrent-agent-framework, kurrent-strands, kurrent-openai-agents,
+# kurrent-claude-agent-sdk) are not yet published to PyPI, so the Python
+# schema package is a monorepo-internal dependency consumed via
+# `[tool.uv.sources]` path references. The drift-detection tests still
+# matter — they guard parity with the .NET package — but do not need to run
+# automatically on every PR until the integrations are release-ready.
+#
+# When the first Python integration is prepared for PyPI, switch this
+# workflow back to `pull_request` + `push: main` triggers (same pattern as
+# schema-ci-dotnet.yml) and add a companion schema-publish-pypi.yml.
+
+name: Schema Python CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: schema-ci-python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Drift tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+          enable-cache: true
+
+      - name: Sync dependencies
+        working-directory: schema/python
+        run: uv sync --all-extras --frozen
+
+      - name: Run drift tests
+        working-directory: schema/python
+        run: uv run pytest -v

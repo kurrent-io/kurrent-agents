@@ -1,0 +1,42 @@
+name: Schema .NET CI
+
+on:
+  pull_request:
+    paths:
+      - 'schema/dotnet/**'
+      - 'schema/fixtures/**'
+      - '.github/workflows/schema-ci-dotnet.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'schema/dotnet/**'
+      - 'schema/fixtures/**'
+      - '.github/workflows/schema-ci-dotnet.yml'
+
+concurrency:
+  group: schema-ci-dotnet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: Drift tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        working-directory: schema/dotnet
+        run: dotnet restore Kurrent.Agent.Schema.slnx
+
+      - name: Build
+        working-directory: schema/dotnet
+        run: dotnet build Kurrent.Agent.Schema.slnx -c Release --no-restore
+
+      - name: Test
+        working-directory: schema/dotnet
+        run: dotnet test Kurrent.Agent.Schema.slnx -c Release --no-build --verbosity normal
