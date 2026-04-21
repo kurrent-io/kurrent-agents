@@ -11,7 +11,7 @@ public sealed record ArtifactVersionCreated(
     string?                                    MimeType,
     byte[]?                                    InlineBytes,
     string?                                    CanonicalUri,
-    IReadOnlyDictionary<string, JsonElement>   CustomMetadata,
+    IReadOnlyDictionary<string, JsonElement>?  CustomMetadata,
     DateTimeOffset                             CreatedAt,
     IReadOnlyDictionary<string, JsonElement>?  Extensions = null
 );

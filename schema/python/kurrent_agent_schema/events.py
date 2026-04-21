@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class _EventBase(BaseModel):
@@ -243,7 +243,7 @@ class ArtifactVersionCreated(_EventBase):
     mime_type: str | None = None
     inline_bytes: bytes | None = None
     canonical_uri: str | None = None
-    custom_metadata: dict[str, Any] = Field(default_factory=dict)
+    custom_metadata: dict[str, Any] | None = None
     created_at: datetime
 
 
