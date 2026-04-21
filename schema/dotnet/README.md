@@ -50,5 +50,5 @@ dotnet test
 
 ## Version
 
-- Package: `2.0.0` (initial v2 release).
+- Package: `0.1.0` (initial pre-1.0 release carrying schema v2).
 - Schema: `SchemaVersion.Current = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.
