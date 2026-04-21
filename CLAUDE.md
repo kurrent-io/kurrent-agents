@@ -35,6 +35,7 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 - **ADK `get_session` must re-hydrate `Event.usage_metadata`.** It lives on `LlmResponse`, not in our canonical payload. Missing this silently loses token counts. See commit `de2c3eb` (DEV-1479).
 - **ADK codec handles empty-args tool calls.** Pydantic serialisation drops empty dicts; the codec must preserve them for round-trip. See commit `ff1540d`.
 - **Strands tool-result status round-trips via `extensions.strands`.** Canonical `ToolResultReceived` has no status field. See commit `2080f7a`.
+- **MAF Python depends on `agent-framework-core`, not the `agent-framework` meta-package.** The meta-package pulls in `agent-framework-azure-ai-search==0.0.0a1`, a placeholder whose 0-byte `agent_framework/__init__.py` clobbers the real re-exports during install and breaks every top-level import (`Content`, `Message`, `HistoryProvider`, …). See DEV-1495.
 
 ## When to promote something to this file
 

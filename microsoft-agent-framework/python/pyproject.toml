@@ -12,7 +12,11 @@ license = { text = "MIT" }
 authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "agent-framework", "llm"]
 dependencies = [
-  "agent-framework >= 1.0.0",
+  # Depend on the core package, not the `agent-framework` meta-package. The meta
+  # package pulls in `agent-framework-azure-ai-search==0.0.0a1`, a placeholder
+  # stub that ships a 0-byte `agent_framework/__init__.py` and clobbers the
+  # real re-exports from agent-framework-core. See DEV-1495.
+  "agent-framework-core >= 1.1.0",
   "kurrentdbclient >= 1.2.0",
   "pydantic >= 2.5",
 ]
