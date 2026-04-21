@@ -1,0 +1,14 @@
+{
+  "version": 3,
+  "mime_type": "text/plain",
+  "canonical_uri": "s3://bucket/notes/notes.txt",
+  "custom_metadata": {
+    "author": "root"
+  },
+  "created_at": "2026-04-21T10:20:00Z",
+  "extensions": {
+    "adk": {
+      "artifact_delta_key": "notes.txt"
+    }
+  }
+}

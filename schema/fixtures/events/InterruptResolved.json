@@ -1,0 +1,12 @@
+{
+  "request_id": "req-perm-001",
+  "outcome": "allow_once",
+  "extensions": {
+    "claude_code": {
+      "permission": {
+        "behavior": "allow"
+      }
+    }
+  },
+  "timestamp": "2026-04-21T10:00:12Z"
+}

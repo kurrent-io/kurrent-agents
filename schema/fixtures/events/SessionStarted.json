@@ -1,0 +1,35 @@
+{
+  "app_name": "my-app",
+  "agent_name": "root",
+  "model": "claude-sonnet-4-6",
+  "tenant_id": "tenant-42",
+  "user_id": "alice",
+  "agent_config": {
+    "tools": [
+      {
+        "name": "search",
+        "description": "Web search",
+        "source": "vended"
+      }
+    ],
+    "plugins": [
+      "history",
+      "memory"
+    ],
+    "conversation_manager": {
+      "type": "sliding_window",
+      "max_messages": 20
+    },
+    "model_parameters": {
+      "temperature": 0.2
+    }
+  },
+  "previous_session_id": "sess-prior-0001",
+  "extensions": {
+    "claude_code": {
+      "cwd": "/Users/alice/dev/example",
+      "git_branch": "main"
+    }
+  },
+  "timestamp": "2026-04-21T10:00:00Z"
+}
