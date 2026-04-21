@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
-using System.Text.Json;
+using Kurrent.AgentFramework.Events;
+using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
 namespace Kurrent.AgentFramework.Memory;
@@ -18,12 +19,6 @@ namespace Kurrent.AgentFramework.Memory;
 /// </para>
 /// </summary>
 public sealed class KurrentDBAgentMemory(KurrentDBClient client, string streamName = "AgentMemory") : IAgentMemory {
-    static readonly JsonSerializerOptions JsonOptions = new() {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-    };
-
-    const string FactEventType = "FactRetained";
-
     /// <summary>
     /// Returns every retained fact, newest first. The <paramref name="query"/> is ignored —
     /// this implementation does not filter. Consumers (LLMs) do the matching themselves.
@@ -45,19 +40,7 @@ public sealed class KurrentDBAgentMemory(KurrentDBClient client, string streamNa
                 yield break;
             }
 
-            if (resolved.Event.EventType != FactEventType) continue;
-
-            string? fact = null;
-
-            try {
-                using var doc = JsonDocument.Parse(resolved.Event.Data);
-                if (doc.RootElement.TryGetProperty("fact", out var factProp))
-                    fact = factProp.GetString();
-            } catch (JsonException) {
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(fact))
+            if (EventSerializer.Deserialize(resolved) is FactRetained { Fact: var fact } && !string.IsNullOrWhiteSpace(fact))
                 yield return fact;
         }
     }
@@ -65,12 +48,12 @@ public sealed class KurrentDBAgentMemory(KurrentDBClient client, string streamNa
     public async Task RetainAsync(string fact, CancellationToken ct = default) {
         if (string.IsNullOrWhiteSpace(fact)) return;
 
-        var data = JsonSerializer.SerializeToUtf8Bytes(new { fact, retained_at = DateTimeOffset.UtcNow }, JsonOptions);
+        var eventData = EventSerializer.Serialize(new FactRetained(fact, DateTimeOffset.UtcNow));
 
         await client.AppendToStreamAsync(
             streamName,
             StreamState.Any,
-            [new(Uuid.NewUuid(), FactEventType, data)],
+            [eventData],
             cancellationToken: ct
         ).ConfigureAwait(false);
     }
