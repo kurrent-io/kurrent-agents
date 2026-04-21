@@ -15,10 +15,11 @@ public sealed class KurrentDbFixture : IAsyncInitializer, IAsyncDisposable {
     public string ConnectionString { get; private set; } = null!;
 
     public async Task InitializeAsync() {
-        // Match the image used by docker-compose.yml at the repo root — it has the
-        // secondary-index feature (e.g. $idx-ce-AgentSession) that the OTEL projection
-        // relies on. KURRENTDB_INSECURE=true disables both TLS and auth.
-        _container = new KurrentDbBuilder("kurrentplatform/kurrentdb:26.0.2-experimental-arm64-10.0-noble")
+        // KURRENTDB_INSECURE=true disables both TLS and auth. Image tag is picked
+        // per host arch because the kurrentplatform/kurrentdb experimental track
+        // does not publish a multi-arch manifest list; set KURRENTDB_IMAGE to
+        // override in CI or for custom registries.
+        _container = new KurrentDbBuilder(KurrentDbImage.Resolve())
             .WithEnvironment("KURRENTDB_CLUSTER_SIZE",              "1")
             .WithEnvironment("KURRENTDB_RUN_PROJECTIONS",           "None")
             .WithEnvironment("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")
