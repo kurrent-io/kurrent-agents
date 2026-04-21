@@ -13,7 +13,7 @@ on:
 
 # Uses NuGet trusted publishing (OIDC) via the NuGet/login action — no API key secret.
 # The trusted publisher policy must be pre-configured on nuget.org for this repo +
-# this workflow file, and `vars.NUGET_USER` must be set to the publisher account.
+# this workflow file, and `secrets.NUGET_USER` must be set to the publisher account.
 permissions:
   id-token: write
   contents: read
@@ -63,7 +63,7 @@ jobs:
         id: nuget-login
         uses: NuGet/login@v1
         with:
-          user: ${{ vars.NUGET_USER }}
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Push to NuGet
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
