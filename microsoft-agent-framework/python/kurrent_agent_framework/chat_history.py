@@ -87,6 +87,10 @@ class KurrentDBHistoryProvider(HistoryProvider):
         try:
             response = await self._client.read_stream(stream)
             async for recorded in response:
+                # ``kurrentdbclient`` raises NotFoundError during iteration
+                # (not at ``read_stream()`` await), so the first-event iteration
+                # is the earliest safe point to mark the session started. Later
+                # iterations are a cheap no-op on the set.
                 self._started_sessions.add(session_id)
                 try:
                     event = serialization.deserialize(recorded)

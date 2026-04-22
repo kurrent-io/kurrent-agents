@@ -41,8 +41,8 @@ def serialize(
     last and wins over any caller-supplied value so the wire version stays
     authoritative.
     """
-    payload = json.loads(event.model_dump_json(exclude_none=True, by_alias=True))
-    data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    # ``model_dump_json`` produces compact UTF-8 bytes directly — no parse/reserialize round-trip.
+    data = event.model_dump_json(exclude_none=True, by_alias=True).encode("utf-8")
 
     effective: dict[str, Any] = dict(metadata) if metadata else {}
     effective[SCHEMA_VERSION_METADATA_KEY] = SCHEMA_VERSION
