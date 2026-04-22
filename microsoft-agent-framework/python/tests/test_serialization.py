@@ -18,17 +18,18 @@ from kurrent_agent_schema import (
     TurnScored,
     UserMessageReceived,
 )
-from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES, _EventBase
+from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES
+from pydantic import BaseModel
 
 from kurrent_agent_framework import serialization
 
 
-def _payload(event: _EventBase) -> dict:
+def _payload(event: BaseModel) -> dict:
     new_event = serialization.serialize(event)
     return json.loads(new_event.data)
 
 
-def _metadata(event: _EventBase) -> dict:
+def _metadata(event: BaseModel) -> dict:
     new_event = serialization.serialize(event)
     return json.loads(new_event.metadata)
 

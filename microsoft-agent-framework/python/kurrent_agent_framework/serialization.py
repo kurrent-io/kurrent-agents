@@ -14,14 +14,15 @@ import uuid
 from typing import Any
 
 from kurrent_agent_schema import SCHEMA_VERSION
-from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES, _EventBase
+from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES
 from kurrentdbclient import NewEvent, RecordedEvent
+from pydantic import BaseModel
 
 SCHEMA_VERSION_METADATA_KEY: str = "$schema_version"
 """Metadata key stamped on every canonical event. See SCHEMA_v2 §9."""
 
 
-def _name_for(event: _EventBase) -> str:
+def _name_for(event: BaseModel) -> str:
     name = EVENT_TYPE_NAMES.get(type(event))
     if name is None:
         raise ValueError(f"Unknown event type: {type(event).__name__}")
@@ -29,7 +30,7 @@ def _name_for(event: _EventBase) -> str:
 
 
 def serialize(
-    event: _EventBase,
+    event: BaseModel,
     *,
     event_id: uuid.UUID | None = None,
     metadata: dict[str, Any] | None = None,
@@ -55,7 +56,7 @@ def serialize(
     )
 
 
-def deserialize(recorded: RecordedEvent) -> _EventBase | None:
+def deserialize(recorded: RecordedEvent) -> BaseModel | None:
     """Deserialize a ``RecordedEvent`` into a canonical event, or ``None`` if
     the event type is not in the canonical map (framework-specific or unknown
     types are skipped by readers)."""

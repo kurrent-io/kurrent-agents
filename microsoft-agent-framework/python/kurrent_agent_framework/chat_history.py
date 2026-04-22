@@ -10,6 +10,7 @@ to the MAF .NET mirror.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -25,11 +26,13 @@ from kurrent_agent_schema import (
     UserMessageReceived,
     agent_session_stream,
 )
-from kurrent_agent_schema.events import _EventBase
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
+from pydantic import BaseModel, ValidationError
 
 from . import serialization
+
+logger = logging.getLogger("kurrent_agent_framework.chat_history")
 
 
 class KurrentDBHistoryProvider(HistoryProvider):
@@ -85,7 +88,19 @@ class KurrentDBHistoryProvider(HistoryProvider):
             response = await self._client.read_stream(stream)
             async for recorded in response:
                 self._started_sessions.add(session_id)
-                event = serialization.deserialize(recorded)
+                try:
+                    event = serialization.deserialize(recorded)
+                except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+                    # Skip malformed/schema-mismatched events rather than aborting
+                    # the whole history read. Matches the defensive behaviour of
+                    # ``KurrentDBAgentMemory.recall`` and ``FactExtractionService``.
+                    logger.warning(
+                        "Skipping malformed canonical event at %s:%s: %r",
+                        recorded.stream_name,
+                        recorded.stream_position,
+                        exc,
+                    )
+                    continue
                 if event is None:
                     continue
                 msg = _event_to_message(event)
@@ -161,7 +176,7 @@ def _message_to_events(
     *,
     message_index: int,
     timestamp: datetime,
-) -> Iterable[_EventBase]:
+) -> Iterable[BaseModel]:
     """Decompose a ``Message`` into one or more canonical events."""
     msg_id = message.message_id
     author = message.author_name
@@ -221,7 +236,7 @@ def _message_to_events(
             )
 
 
-def _event_to_message(event: _EventBase) -> Message | None:
+def _event_to_message(event: BaseModel) -> Message | None:
     """Reconstruct a ``Message`` from a canonical event, or ``None`` for lifecycle events."""
     if isinstance(event, UserMessageReceived):
         return Message(
