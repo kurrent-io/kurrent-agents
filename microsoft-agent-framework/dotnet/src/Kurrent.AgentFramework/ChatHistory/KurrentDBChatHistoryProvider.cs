@@ -21,7 +21,9 @@ public sealed class KurrentDBChatHistoryProvider(
         UsageCapture?   usageCapture = null,
         string?         agentName    = null,
         string?         modelName    = null,
-        string?         appName      = null
+        string?         appName      = null,
+        string?         userId       = null,
+        string?         tenantId     = null
     ) : ChatHistoryProvider {
 
     readonly ProviderSessionState<SessionState> _sessionState = new(
@@ -42,6 +44,7 @@ public sealed class KurrentDBChatHistoryProvider(
         var streamName = StreamNames.AgentSession(state.SessionId);
 
         var messages = new List<ChatMessage>();
+        var maxIndex = -1;
 
         try {
             var result = client.ReadStreamAsync(
@@ -58,6 +61,9 @@ public sealed class KurrentDBChatHistoryProvider(
 
                 if (domainEvent is null) continue;
 
+                var idx = GetMessageIndex(domainEvent);
+                if (idx > maxIndex) maxIndex = idx;
+
                 var chatMessage = ChatMessageConverter.ToChatMessage(domainEvent);
 
                 if (chatMessage is not null) {
@@ -67,6 +73,11 @@ public sealed class KurrentDBChatHistoryProvider(
         } catch (StreamNotFoundException) {
             // First interaction — no history yet
         }
+
+        // Seed monotonic message_index for the next Store call (continues across
+        // turns, rehydrates on new provider instances over existing streams).
+        state.NextMessageIndex = maxIndex + 1;
+        _sessionState.SaveState(context.Session, state);
 
         return messages;
     }
@@ -81,7 +92,7 @@ public sealed class KurrentDBChatHistoryProvider(
 
         var now          = DateTimeOffset.UtcNow;
         var events       = new List<EventData>();
-        var messageIndex = 0;
+        var messageIndex = state.NextMessageIndex;
 
         // Emit SessionStarted as the first event in a new stream
         if (!_sessionStarted) {
@@ -89,8 +100,8 @@ public sealed class KurrentDBChatHistoryProvider(
                 AppName:           appName,
                 AgentName:         agentName ?? context.Agent.Name,
                 Model:             modelName,
-                TenantId:          null,
-                UserId:            null,
+                TenantId:          tenantId,
+                UserId:            userId,
                 AgentConfig:       null,
                 PreviousSessionId: null,
                 Timestamp:         now
@@ -128,6 +139,7 @@ public sealed class KurrentDBChatHistoryProvider(
             await client.AppendToStreamAsync(streamName, StreamState.Any, events, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
+        state.NextMessageIndex = messageIndex;
         _sessionState.SaveState(context.Session, state);
     }
 
@@ -144,6 +156,57 @@ public sealed class KurrentDBChatHistoryProvider(
             cancellationToken: cancellationToken
         ).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Compute the next <c>message_index</c> for an existing session by scanning the
+    /// stream for the highest index stamped on any chat event. Returns 0 when the
+    /// stream does not exist or contains no chat events yet.
+    /// </summary>
+    /// <remarks>
+    /// This is the same logic <see cref="ProvideChatHistoryAsync"/> uses internally;
+    /// exposed as a public helper for callers that want to seed a new provider over
+    /// an existing session stream without going through a full MAF invocation, and
+    /// for test coverage of the index-continuation rule.
+    /// </remarks>
+    public static async Task<int> ReadNextMessageIndexAsync(
+            KurrentDBClient   client,
+            string            sessionId,
+            CancellationToken cancellationToken = default
+        ) {
+        var streamName = StreamNames.AgentSession(sessionId);
+        var maxIndex   = -1;
+
+        try {
+            var events = client.ReadStreamAsync(
+                Direction.Forwards,
+                streamName,
+                StreamPosition.Start,
+                cancellationToken: cancellationToken
+            );
+
+            await foreach (var resolved in events.ConfigureAwait(false)) {
+                var domainEvent = EventSerializer.Deserialize(resolved);
+
+                if (domainEvent is null) continue;
+
+                var idx = GetMessageIndex(domainEvent);
+                if (idx > maxIndex) maxIndex = idx;
+            }
+        } catch (StreamNotFoundException) {
+            // No stream yet — fall through to zero.
+        }
+
+        return maxIndex + 1;
+    }
+
+    static int GetMessageIndex(object domainEvent) => domainEvent switch {
+        UserMessageReceived x         => x.MessageIndex,
+        AssistantTextGenerated x      => x.MessageIndex,
+        AssistantToolCallsGenerated x => x.MessageIndex,
+        AssistantThinkingGenerated x  => x.MessageIndex,
+        ToolResultReceived x          => x.MessageIndex,
+        _                             => -1,
+    };
 
     static Dictionary<string, object?>? ToMetadata(AdditionalPropertiesDictionary? props) =>
         props is { Count: > 0 } ? props.ToDictionary(kv => kv.Key, kv => kv.Value) : null;
@@ -166,6 +229,7 @@ public sealed class KurrentDBChatHistoryProvider(
     }
 
     sealed class SessionState {
-        public string SessionId { get; set; } = "";
+        public string SessionId         { get; set; } = "";
+        public int    NextMessageIndex  { get; set; }
     }
 }
