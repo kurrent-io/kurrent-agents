@@ -27,9 +27,8 @@ public static class KurrentAgentFrameworkExtensions {
 
         /// <summary>
         /// Registers agent memory with the default KurrentDB-backed implementation.
-        /// To use an alternative backend (e.g. Kurrent.Kontext for hybrid search),
-        /// register your <see cref="IAgentMemory"/> before calling this method, or
-        /// use that backend's dedicated extension.
+        /// To use an alternative backend, register your <see cref="IAgentMemory"/>
+        /// before calling this method, or use that backend's dedicated extension.
         /// </summary>
         /// <param name="factExtractor">
         /// Optional pluggable fact extraction logic. Receives a user message, returns zero or

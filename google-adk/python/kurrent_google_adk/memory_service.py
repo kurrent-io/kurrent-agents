@@ -8,8 +8,8 @@ metadata (``author``, ``id``, ``timestamp``, ``custom_metadata``) rides in
 cross-framework reader still sees the fact text.
 
 Baseline ``search_memory`` returns every retained entry, matching the .NET
-``KurrentDBAgentMemory`` contract. For hybrid BM25 + vector retrieval,
-use the Kontext-backed implementation (not in v1).
+``KurrentDBAgentMemory`` contract. Subclass and override ``search_memory``
+for richer retrieval.
 """
 
 from __future__ import annotations

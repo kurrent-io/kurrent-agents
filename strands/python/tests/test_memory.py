@@ -37,7 +37,7 @@ class TestRetainRecall:
         app, user = _ids()
         mem = KurrentDBAgentMemory(kurrentdb_client, app_name=app, user_id=user)
         mem.retain("only fact")
-        # Query text doesn't filter at the baseline — Kontext extra is future.
+        # Query text doesn't filter at the baseline.
         assert mem.recall("completely unrelated") == ["only fact"]
 
     def test_empty_facts_are_dropped(

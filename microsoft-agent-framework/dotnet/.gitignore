@@ -16,6 +16,5 @@ logs/
 deploy/Pulumi.*.yaml
 .idea/
 .checkpoint.*
-kontext/
 dotnet-tools.json
 TestResults/
