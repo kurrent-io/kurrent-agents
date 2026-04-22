@@ -1,5 +1,6 @@
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.ChatHistory;
-using Kurrent.AgentFramework.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
@@ -23,7 +24,7 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         await provider.EndSessionAsync("completed");
 
         var read = await client
-            .ReadStreamAsync(Direction.Forwards, StreamName.ForSession(sessionId), StreamPosition.Start)
+            .ReadStreamAsync(Direction.Forwards, StreamNames.AgentSession(sessionId), StreamPosition.Start)
             .SingleAsync();
 
         await Assert.That(read.Event.EventType).IsEqualTo("SessionEnded");
@@ -41,7 +42,7 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         await provider.EndSessionAsync();
 
         var read = await client
-            .ReadStreamAsync(Direction.Forwards, StreamName.ForSession(sessionId), StreamPosition.Start)
+            .ReadStreamAsync(Direction.Forwards, StreamNames.AgentSession(sessionId), StreamPosition.Start)
             .SingleAsync();
 
         var ended = EventSerializer.Deserialize(read) as SessionEnded;

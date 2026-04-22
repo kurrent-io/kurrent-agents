@@ -1,5 +1,6 @@
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Capture;
-using Kurrent.AgentFramework.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Agents.AI;
@@ -19,7 +20,8 @@ public sealed class KurrentDBChatHistoryProvider(
         string          sessionId,
         UsageCapture?   usageCapture = null,
         string?         agentName    = null,
-        string?         modelName    = null
+        string?         modelName    = null,
+        string?         appName      = null
     ) : ChatHistoryProvider {
 
     readonly ProviderSessionState<SessionState> _sessionState = new(
@@ -37,7 +39,7 @@ public sealed class KurrentDBChatHistoryProvider(
             CancellationToken cancellationToken = default
         ) {
         var state      = _sessionState.GetOrInitializeState(context.Session);
-        var streamName = StreamName.ForSession(state.SessionId);
+        var streamName = StreamNames.AgentSession(state.SessionId);
 
         var messages = new List<ChatMessage>();
 
@@ -75,7 +77,7 @@ public sealed class KurrentDBChatHistoryProvider(
     /// </summary>
     protected override async ValueTask StoreChatHistoryAsync(InvokedContext context, CancellationToken cancellationToken = default) {
         var state      = _sessionState.GetOrInitializeState(context.Session);
-        var streamName = StreamName.ForSession(state.SessionId);
+        var streamName = StreamNames.AgentSession(state.SessionId);
 
         var now          = DateTimeOffset.UtcNow;
         var events       = new List<EventData>();
@@ -84,11 +86,14 @@ public sealed class KurrentDBChatHistoryProvider(
         // Emit SessionStarted as the first event in a new stream
         if (!_sessionStarted) {
             events.Add(EventSerializer.Serialize(new SessionStarted(
-                AgentName: agentName ?? context.Agent.Name,
-                Model:     modelName,
-                TenantId:  null,
-                UserId:    null,
-                Timestamp: now
+                AppName:           appName,
+                AgentName:         agentName ?? context.Agent.Name,
+                Model:             modelName,
+                TenantId:          null,
+                UserId:            null,
+                AgentConfig:       null,
+                PreviousSessionId: null,
+                Timestamp:         now
             )));
             _sessionStarted = true;
         }
@@ -130,7 +135,7 @@ public sealed class KurrentDBChatHistoryProvider(
     /// Write a SessionEnded event to close the session stream.
     /// </summary>
     public async Task EndSessionAsync(string? reason = null, CancellationToken cancellationToken = default) {
-        var streamName = StreamName.ForSession(sessionId);
+        var streamName = StreamNames.AgentSession(sessionId);
 
         await client.AppendToStreamAsync(
             streamName,
