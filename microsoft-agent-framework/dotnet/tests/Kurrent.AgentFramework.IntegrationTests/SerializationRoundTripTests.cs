@@ -174,4 +174,29 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
         await Assert.That(meta).IsNotNull();
         await Assert.That(meta!["$schema_version"].GetInt32()).IsEqualTo(SchemaVersion.Current);
     }
+
+    [Test]
+    public async Task Serialize_SchemaVersionCannotBeOverriddenByCallerMetadata() {
+        // SCHEMA_v2 §9 requires the writer's schema version to be authoritative.
+        // The serializer must stamp $schema_version last, winning over any caller value.
+        using var client     = db.CreateClient();
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+
+        var rogueMetadata = new Dictionary<string, object?> {
+            ["$schema_version"] = 99,
+            ["tenant_id"]       = "t-1",
+        };
+        var ed = EventSerializer.Serialize(new SessionEnded("done", Ts), metadata: rogueMetadata);
+        await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
+
+        var read = await client
+            .ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, maxCount: 1)
+            .SingleAsync();
+
+        var meta = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(read.Event.Metadata.Span);
+        await Assert.That(meta).IsNotNull();
+        await Assert.That(meta!["$schema_version"].GetInt32()).IsEqualTo(SchemaVersion.Current);
+        // Other caller-supplied keys still pass through untouched.
+        await Assert.That(meta["tenant_id"].GetString()).IsEqualTo("t-1");
+    }
 }

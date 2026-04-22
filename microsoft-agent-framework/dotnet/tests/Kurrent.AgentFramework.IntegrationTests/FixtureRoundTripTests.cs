@@ -18,9 +18,11 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 ///   5. Re-serialise the round-tripped record and assert structural equality with the original fixture.
 ///
 /// This pins both:
-///   - Byte-equivalent JSON parity with the fixture the Python mirror also round-trips (DEV-1546).
-///     If MAF .NET ever drifts from the fixture, this test fails.
-///   - The MAF .NET <c>EventSerializer</c> preserves the wire format end-to-end.
+///   - Structural JSON parity with the fixture the Python mirror also round-trips (DEV-1546).
+///     Equality is computed after canonicalising both sides (key sort) so property-order
+///     differences between System.Text.Json and Pydantic don't cause false positives —
+///     raw UTF-8 is not guaranteed to match byte-for-byte across the two runtimes.
+///   - The MAF .NET <c>EventSerializer</c> preserves the event payload structure end-to-end.
 /// </summary>
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class FixtureRoundTripTests(KurrentDbFixture db) {
@@ -42,8 +44,9 @@ public class FixtureRoundTripTests(KurrentDbFixture db) {
         var parsed = JsonSerializer.Deserialize(originalJson, clrType, SchemaJsonOptions.Default);
         await Assert.That(parsed).IsNotNull();
 
-        // 2) Serialise via the MAF .NET write path and assert byte-equivalent JSON with the fixture.
-        //    (Parity with the MAF Python mirror that round-trips against the same fixtures.)
+        // 2) Serialise via the MAF .NET write path and assert structural JSON parity with the fixture.
+        //    (Parity with the MAF Python mirror that round-trips against the same fixtures;
+        //    see class remarks on why this is structural-after-canonicalisation, not raw UTF-8.)
         var ed           = EventSerializer.Serialize(parsed!);
         var writtenNode  = JsonNode.Parse(ed.Data.Span)!;
         AssertStructurallyEqual(originalNode, writtenNode, $"{eventTypeName} (Serialize)");

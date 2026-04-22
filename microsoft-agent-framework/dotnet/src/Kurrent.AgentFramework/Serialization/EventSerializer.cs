@@ -14,9 +14,9 @@ public static class EventSerializer {
     const string SchemaVersionMetaKey = "$schema_version";
 
     /// <summary>
-    /// Serialize a canonical event to <see cref="EventData"/>. Any caller-supplied
-    /// metadata is preserved; <c>$schema_version</c> is always added (caller value wins
-    /// if explicitly provided).
+    /// Serialize a canonical event to <see cref="EventData"/>. Caller-supplied metadata
+    /// is preserved; <c>$schema_version</c> is always stamped last and wins over any
+    /// caller-supplied value to keep the wire version authoritative per SCHEMA_v2 §9.
     /// </summary>
     public static EventData Serialize(
             object                        @event,
@@ -26,9 +26,13 @@ public static class EventSerializer {
         var typeName = EventTypeMap.GetName(@event.GetType());
         var data     = JsonSerializer.SerializeToUtf8Bytes(@event, @event.GetType(), SchemaJsonOptions.Default);
 
-        var effective = new Dictionary<string, object?> { [SchemaVersionMetaKey] = SchemaVersion.Current };
-        if (metadata is not null)
-            foreach (var kv in metadata) effective[kv.Key] = kv.Value;
+        var effective = metadata is not null
+            ? new Dictionary<string, object?>(metadata)
+            : new Dictionary<string, object?>();
+
+        // Stamp last so the writer's schema version always wins — callers cannot
+        // forge a different version by supplying it in metadata.
+        effective[SchemaVersionMetaKey] = SchemaVersion.Current;
 
         var metadataBytes = JsonSerializer.SerializeToUtf8Bytes(effective, SchemaJsonOptions.Default);
 
