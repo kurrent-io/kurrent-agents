@@ -1,20 +1,17 @@
-# Dormant — manual trigger only.
-#
-# The Python integration packages in this repo (kurrent-google-adk,
-# kurrent-agent-framework, kurrent-strands, kurrent-openai-agents,
-# kurrent-claude-agent-sdk) are not yet published to PyPI, so the Python
-# schema package is a monorepo-internal dependency consumed via
-# `[tool.uv.sources]` path references. The drift-detection tests still
-# matter — they guard parity with the .NET package — but do not need to run
-# automatically on every PR until the integrations are release-ready.
-#
-# When the first Python integration is prepared for PyPI, switch this
-# workflow back to `pull_request` + `push: main` triggers (same pattern as
-# schema-ci-dotnet.yml) and add a companion schema-publish-pypi.yml.
-
 name: Schema Python CI
 
 on:
+  pull_request:
+    paths:
+      - 'schema/python/**'
+      - 'schema/fixtures/**'
+      - '.github/workflows/schema-ci-python.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'schema/python/**'
+      - 'schema/fixtures/**'
+      - '.github/workflows/schema-ci-python.yml'
   workflow_dispatch:
 
 concurrency:
@@ -29,7 +26,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           python-version: '3.11'
           enable-cache: true
