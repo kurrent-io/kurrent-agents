@@ -58,14 +58,6 @@ The canonical event schema (`schema/SCHEMA.md`) is shared across every integrati
 
 Per-language tooling (`uv` for Python, NuGet for .NET, etc.) coexists via path-filtered CI workflows. Each package has independent versioning and release cadence.
 
-## Submodules
-
-The MS Agent Framework .NET integration depends on [Kurrent.Kontext](https://github.com/kurrent-io/Kurrent.Kontext) for optional hybrid memory search. After cloning:
-
-```bash
-git submodule update --init --recursive
-```
-
 ## License
 
 Apache License 2.0 — see [LICENSE](./LICENSE).

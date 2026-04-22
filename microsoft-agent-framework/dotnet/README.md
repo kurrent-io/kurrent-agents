@@ -37,7 +37,7 @@ Agent Run → Rich Typed Events → KurrentDB Stream
 |---|---|
 | **Message persistence** | `KurrentDBChatHistoryProvider` decomposes `ChatMessage` objects into typed events and reconstructs them on read |
 | **Token usage tracking** | `UsageCapture` IChatClient middleware captures `UsageDetails` and attaches it as `$usage` metadata on assistant message events |
-| **Cross-session memory** | `IAgentMemory` abstraction with a default KurrentDB-backed implementation; optional `Kurrent.AgentFramework.Kontext` adapter for hybrid BM25 + vector search |
+| **Cross-session memory** | `IAgentMemory` abstraction with a default KurrentDB-backed implementation; pluggable for alternative backends |
 | **Automatic fact extraction** | `FactExtractionService` background subscription watches conversation events and retains facts using a pluggable `FactExtractor` delegate |
 | **Session lifecycle** | `SessionStarted` / `SessionEnded` events frame each conversation stream |
 | **Workflow checkpointing** | `KurrentDBCheckpointStore` stores workflow state at each superstep boundary, resumable across process restarts |
@@ -175,14 +175,7 @@ builder.Services.AddKurrentAgentMemory(message => {
 });
 ```
 
-The default `KurrentDBAgentMemory` returns *every* retained fact on recall — simple, adequate for small fact sets. For hybrid BM25 + vector search, add the Kontext-backed implementation from `Kurrent.AgentFramework.Kontext`:
-
-```csharp
-builder.Services.AddKontextWithExternalClient(builder.Configuration);
-builder.Services.AddKontextAgentMemory();  // replaces IAgentMemory with Kontext-backed impl
-```
-
-Bring your own `IAgentMemory` for other backends (Redis, Postgres, etc.).
+The default `KurrentDBAgentMemory` returns *every* retained fact on recall — simple, adequate for small fact sets. Bring your own `IAgentMemory` implementation for other backends (Redis, Postgres, a dedicated vector store, etc.).
 
 ### Workflow checkpointing
 
@@ -297,9 +290,9 @@ await historyProvider.EndSessionAsync("completed");
 
 A multi-turn conversational agent with Anthropic Claude that demonstrates the full integration:
 
-1. **Session 1** — User introduces themselves ("My name is Alexey, I work at Kurrent, I prefer dark mode"). The agent calls `RetainFact` tool to store 3 facts in Kontext memory, then answers a weather question using `GetWeather` tool. All messages, tool calls, and token usage are persisted as events.
+1. **Session 1** — User introduces themselves ("My name is Alexey, I work at Kurrent, I prefer dark mode"). A `FactExtractor` delegate pulls personal facts from the user message and retains them via the default `KurrentDBAgentMemory`; the agent then answers a weather question using `GetWeather` tool. All messages, tool calls, and token usage are persisted as events.
 
-2. **Session 2** — A completely new agent instance with no shared conversation history. The `KontextMemoryProvider` recalls facts from Session 1 via hybrid search and injects them as context. The agent correctly answers "What do you know about my preferences?" with all three facts.
+2. **Session 2** — A completely new agent instance with no shared conversation history. `AgentMemoryContextProvider` recalls the retained facts and injects them as context. The agent correctly answers "What do you know about my preferences?" with all three facts.
 
 Demonstrates: chat persistence, tool call capture, inline usage metadata, cross-session memory recall, session lifecycle events.
 
@@ -413,11 +406,10 @@ Every agent interaction is stored as typed events in an `AgentSession-{id}` stre
 | `WorkflowCheckpoint-{id}` | Workflow state at each superstep boundary |
 | `GroupChat-{id}` | Multi-agent group chat turn history |
 | `EvalRun-{id}` | Eval scores for a session (TurnScored, EvalRunCompleted) |
-| `kontext-memory` | Retained facts (via Kurrent.Kontext) |
+| `AgentMemory` | Retained facts (default `KurrentDBAgentMemory`) |
 
 ## Dependencies
 
 - [KurrentDB.Client](https://www.nuget.org/packages/KurrentDB.Client) 1.3.1
 - [Microsoft.Agents.AI](https://www.nuget.org/packages/Microsoft.Agents.AI) 1.0.0
 - [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows) 1.0.0
-- [Kurrent.Kontext](https://github.com/kurrent-io/Kurrent.Kontext) (git submodule)

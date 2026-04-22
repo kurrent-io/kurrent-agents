@@ -45,7 +45,6 @@ Key implication: **ADK does not need a separate checkpoint store, group-chat man
 | `FactExtractionService` (background sub) | Out-of-process KurrentDB catch-up subscriber |
 | `EvalRunner` + `TurnScored` events | `KurrentDBEvalSetResultsManager` + `KurrentDBEvalSetsManager` |
 | `StreamCoordinator` (cross-process) | Out of scope; ADK has `a2a/` for agent-to-agent |
-| Kontext memory adapter | `kurrent-google-adk[kontext]` extra — optional |
 
 ## 4. Module layout
 
@@ -76,8 +75,6 @@ kurrent_google_adk/
   subscriptions/
     __init__.py
     fact_extractor.py           # Background subscriber for cross-session fact extraction
-  extras/
-    kontext_memory.py           # Optional Kontext-backed memory
 ```
 
 The `_schema/` subpackage is initially vendored — the same Pydantic models the AFW-Python integration defines. Once a shared `kurrent-agent-schema` package exists (see repo-structure discussion below), `_schema` becomes a thin re-export of that package.
@@ -193,7 +190,7 @@ Behaviour:
 
 ### 7.2 `KurrentDBMemoryService`
 
-Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. `kurrent-google-adk[kontext]` replaces the search with hybrid BM25 + vector retrieval over the same event stream.
+Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. For richer retrieval, subclass `KurrentDBMemoryService` and override `search_memory` over the same event stream.
 
 Wider scopes (`AgentMemory-{app}` app-shared, `AgentMemory` global) are reserved by the schema but not implemented in v1 — `DESIGN.md §13` open question.
 

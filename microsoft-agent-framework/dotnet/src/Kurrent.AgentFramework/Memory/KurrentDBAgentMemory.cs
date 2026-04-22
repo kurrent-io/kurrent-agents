@@ -9,7 +9,8 @@ namespace Kurrent.AgentFramework.Memory;
 /// Simple KurrentDB-backed agent memory: facts are appended as events to a single
 /// stream, and recall reads them back. No indexing, no embeddings.
 /// Adequate for small fact sets (dozens to low hundreds). For larger or
-/// semantically-indexed memory, use <c>Kurrent.AgentFramework.Kontext</c>.
+/// semantically-indexed memory, provide a custom <see cref="IAgentMemory"/>
+/// implementation.
 /// <para>
 /// <b>Scope:</b> facts are stored in a single shared stream (default: <c>"AgentMemory"</c>).
 /// This means memory is <b>global across all sessions/tenants</b> using the same process.

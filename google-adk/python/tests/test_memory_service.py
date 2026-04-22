@@ -151,7 +151,7 @@ class TestSearchMemory:
                 )
             ],
         )
-        # Any query returns everything retained; Kontext extra will change this.
+        # Any query returns everything retained at the baseline.
         r1 = await service.search_memory(app_name=app, user_id=user, query="nothing-related")
         r2 = await service.search_memory(app_name=app, user_id=user, query="only")
         assert [_text(m) for m in r1.memories] == ["only fact"]

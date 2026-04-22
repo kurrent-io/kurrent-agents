@@ -27,4 +27,4 @@ python -m samples.memory_agent.main
 
 - **No built-in `LoadMemoryTool`.** Strands doesn't ship a memory abstraction, so this sample exposes both the write and read sides as explicit tools (`remember` and `recall_memory`) closed over a single `KurrentDBAgentMemory` instance.
 - **Sync.** Both the `KurrentDBAgentMemory` and the `SessionManager` use the sync `KurrentDBClient` because Strands' hook callbacks and tool functions are synchronous.
-- **`query` ignored at the baseline.** `recall_memory` returns every retained fact; a Kontext-backed implementation can add hybrid BM25 + vector retrieval later.
+- **`query` ignored at the baseline.** `recall_memory` returns every retained fact; swap in a custom `KurrentDBAgentMemory` subclass for richer retrieval.

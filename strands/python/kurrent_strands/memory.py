@@ -7,8 +7,8 @@ A Strands agent's retained facts are visible to ADK agents for the same
 
 Strands has no built-in memory-service abstraction to extend, so this is a
 plain class the sample wires into tool callbacks via closure. v1 search is
-baseline (returns every retained fact, newest-first, query ignored). A
-Kontext-backed implementation could replace it later with hybrid retrieval.
+baseline (returns every retained fact, newest-first, query ignored). Swap
+in your own class for richer retrieval.
 
 Sync — matches the rest of the Strands integration.
 """

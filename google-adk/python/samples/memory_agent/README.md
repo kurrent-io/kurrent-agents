@@ -5,7 +5,7 @@ Cross-session memory demo backed by `KurrentDBMemoryService`. An agent retains f
 ## What it demonstrates
 
 - **Writing to memory from a tool call.** A custom `remember(fact)` tool calls `tool_context.add_memory(...)`, which routes to `KurrentDBMemoryService.add_memory` and lands a canonical `FactRetained` event on `AgentMemory-{app_name}-{user_id}`.
-- **Reading memory from a tool call.** ADK's built-in `load_memory_tool` exposes `load_memory(query)` to the LLM, which delegates to `BaseMemoryService.search_memory` — our implementation returns every retained entry (baseline; Kontext extra will add hybrid retrieval later).
+- **Reading memory from a tool call.** ADK's built-in `load_memory_tool` exposes `load_memory(query)` to the LLM, which delegates to `BaseMemoryService.search_memory` — our implementation returns every retained entry (baseline; subclass `KurrentDBMemoryService` for richer retrieval).
 - **Cross-session reachability.** Session A and Session B have different `session_id`s (and therefore different `AgentSession-*` streams), but the agent sees the facts from Session A in Session B because memory is scoped per `(app_name, user_id)`, not per session.
 
 ## Prerequisites
