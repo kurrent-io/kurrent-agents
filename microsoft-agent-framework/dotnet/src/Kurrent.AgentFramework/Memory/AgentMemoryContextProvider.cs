@@ -32,14 +32,11 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
         if (string.IsNullOrWhiteSpace(userMessage))
             return new();
 
-        var bullets = new List<string>();
-        await foreach (var fact in memory.RecallAsync(userMessage, cancellationToken).ConfigureAwait(false)) {
-            var normalised = NormaliseFact(fact);
-            if (normalised.Length > 0)
-                bullets.Add(normalised);
-        }
+        var facts = new List<string>();
+        await foreach (var fact in memory.RecallAsync(userMessage, cancellationToken).ConfigureAwait(false))
+            facts.Add(fact);
 
-        var instructions = BuildMemoryInstructions(bullets);
+        var instructions = BuildMemoryInstructions(facts);
         return instructions is null ? new() : new() { Instructions = instructions };
     }
 
@@ -52,18 +49,44 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
             CancellationToken cancellationToken = default
         ) => default;
 
-    internal static string? BuildMemoryInstructions(IReadOnlyList<string> normalisedFacts) {
-        if (normalisedFacts.Count == 0) return null;
+    internal static string? BuildMemoryInstructions(IReadOnlyList<string> facts) {
+        var bullets = new List<string>(facts.Count);
+        foreach (var fact in facts) {
+            var normalised = NormaliseFact(fact);
+            if (normalised.Length > 0)
+                bullets.Add(normalised);
+        }
+
+        if (bullets.Count == 0) return null;
+
+        // A fact containing the literal fence token could otherwise close our block
+        // early; pick a fence longer than any backtick run present in the bullets.
+        var fence = BuildSafeFence(bullets);
 
         var sb = new StringBuilder();
         sb.Append(RecallHeader).Append('\n');
-        sb.Append("```text").Append('\n');
-        foreach (var fact in normalisedFacts)
+        sb.Append(fence).Append("text").Append('\n');
+        foreach (var fact in bullets)
             sb.Append("- ").Append(fact).Append('\n');
-        sb.Append("```");
+        sb.Append(fence);
         return sb.ToString();
     }
 
     internal static string NormaliseFact(string fact) =>
         string.Join(' ', fact.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    static string BuildSafeFence(IReadOnlyList<string> bullets) {
+        var longestRun = 0;
+        foreach (var bullet in bullets) {
+            var current = 0;
+            foreach (var ch in bullet) {
+                if (ch == '`') {
+                    if (++current > longestRun) longestRun = current;
+                } else {
+                    current = 0;
+                }
+            }
+        }
+        return new string('`', Math.Max(3, longestRun + 1));
+    }
 }
