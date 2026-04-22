@@ -5,9 +5,10 @@
 // No LLM required — uses the heuristic scorer. Swap in EvalRunner.LlmJudge() for LLM scoring.
 
 using System.Text;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Eval;
-using Kurrent.AgentFramework.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,7 +25,7 @@ var kurrentDb = host.Services.GetRequiredService<KurrentDBClient>();
 // Step 1: Create a synthetic session with known turns
 // ============================================================
 var sessionId  = Guid.NewGuid().ToString();
-var streamName = StreamName.ForSession(sessionId);
+var streamName = StreamNames.AgentSession(sessionId);
 var now        = DateTimeOffset.UtcNow;
 
 Console.WriteLine("========================================");
@@ -33,7 +34,15 @@ Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
 var events = new List<EventData> {
-    EventSerializer.Serialize(new SessionStarted("EvalTestAgent", "test-model", null, null, now)),
+    EventSerializer.Serialize(new SessionStarted(
+        AppName:           null,
+        AgentName:         "EvalTestAgent",
+        Model:             "test-model",
+        TenantId:          null,
+        UserId:            null,
+        AgentConfig:       null,
+        PreviousSessionId: null,
+        Timestamp:         now)),
 
     // Turn 1: good response
     EventSerializer.Serialize(new UserMessageReceived("What's the weather in London?", null, null, null, 0, now)),

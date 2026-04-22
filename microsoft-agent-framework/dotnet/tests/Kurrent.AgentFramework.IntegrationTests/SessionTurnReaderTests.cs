@@ -1,6 +1,7 @@
 using System.Text.Json;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Eval;
-using Kurrent.AgentFramework.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
@@ -30,10 +31,18 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_SingleUserAssistantPair_YieldsOneTurn() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         await AppendAsync(client, streamName,
-            EventFor(new SessionStarted("agent", "model", null, null, Ts)),
+            EventFor(new SessionStarted(
+                AppName:           null,
+                AgentName:         "agent",
+                Model:             "model",
+                TenantId:          null,
+                UserId:            null,
+                AgentConfig:       null,
+                PreviousSessionId: null,
+                Timestamp:         Ts)),
             EventFor(new UserMessageReceived("hello", "m-1", "user", Ts, 0, Ts)),
             EventFor(new AssistantTextGenerated("hi back", "m-2", "agent", Ts, 1, Ts)));
 
@@ -50,7 +59,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_MultipleTurns_AreSegmentedOnUserMessage() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         await AppendAsync(client, streamName,
             EventFor(new UserMessageReceived("Q1", "m-1", "user", Ts, 0, Ts)),
@@ -72,7 +81,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_ToolCallAndResult_AreCorrelated() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         var args = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" });
 
@@ -102,7 +111,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_AggregatesUsageFromMetadata() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         static Dictionary<string, object?> Usage(long input, long output) => new() {
             ["$usage"] = new Dictionary<string, object?> {
@@ -137,7 +146,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_UserMessageWithoutAssistantReply_StillProducesTurn() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         // Mid-flight session: user asked, agent hasn't responded yet.
         await AppendAsync(client, streamName,
@@ -154,7 +163,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
     public async Task ReadTurns_UnknownEventTypes_AreSkipped() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamName.ForSession(sessionId);
+        var streamName   = StreamNames.AgentSession(sessionId);
 
         // An event whose type isn't in EventTypeMap should not derail the reader.
         var raw = new EventData(Uuid.NewUuid(), "TotallyUnknown", "{}"u8.ToArray());

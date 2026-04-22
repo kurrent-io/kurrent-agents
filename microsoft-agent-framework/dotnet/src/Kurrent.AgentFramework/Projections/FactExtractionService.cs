@@ -1,5 +1,6 @@
 using Grpc.Core;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Memory;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
@@ -31,7 +32,7 @@ public sealed partial class FactExtractionService(
         FactExtractionOptions                  options,
         ILogger<FactExtractionService>         logger
     ) : BackgroundService {
-    const string StreamPrefix = "AgentSession-";
+    const string StreamPrefix = StreamNames.AgentSessionPrefix;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         while (!stoppingToken.IsCancellationRequested) {

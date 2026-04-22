@@ -1,6 +1,7 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
+using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
 
@@ -33,11 +34,6 @@ public sealed record EvalResult(
 /// - Any async function that takes a Turn and returns a score
 /// </summary>
 public sealed class EvalRunner(KurrentDBClient client) {
-    static readonly JsonSerializerOptions JsonOptions = new() {
-        PropertyNamingPolicy   = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     /// <summary>
     /// Run an evaluation against a session using a custom scoring function.
     /// Writes EvalRunStarted, TurnScored, and EvalRunCompleted events to an EvalRun-{id} stream.
@@ -51,11 +47,11 @@ public sealed class EvalRunner(KurrentDBClient client) {
         ) {
         var turns  = await SessionTurnReader.ReadTurnsAsync(client, sessionId, ct).ConfigureAwait(false);
         var evalId = Guid.NewGuid().ToString("N");
-        var stream = $"EvalRun-{evalId}";
+        var stream = StreamNames.EvalRun(evalId);
         var now    = DateTimeOffset.UtcNow;
 
         // Write EvalRunStarted
-        await AppendAsync(stream, "EvalRunStarted", new EvalRunStarted(sessionId, scorerName, criteria, now), ct).ConfigureAwait(false);
+        await AppendAsync(stream, new EvalRunStarted(sessionId, scorerName, criteria, now), ct).ConfigureAwait(false);
 
         // Score each turn
         var scoredTurns = new List<ScoredTurn>();
@@ -66,7 +62,6 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
             await AppendAsync(
                 stream,
-                "TurnScored",
                 new TurnScored(
                     SessionId: sessionId,
                     TurnIndex: turn.Index,
@@ -86,7 +81,6 @@ public sealed class EvalRunner(KurrentDBClient client) {
         // Write EvalRunCompleted
         await AppendAsync(
             stream,
-            "EvalRunCompleted",
             new EvalRunCompleted(
                 SessionId: sessionId,
                 TurnsScored: scoredTurns.Count,
@@ -148,15 +142,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
             }
         };
 
-    async Task AppendAsync<T>(string stream, string eventType, T payload, CancellationToken ct) {
-        var data = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
-
+    async Task AppendAsync(string stream, object @event, CancellationToken ct) =>
         await client.AppendToStreamAsync(
                 stream,
                 StreamState.Any,
-                [new(Uuid.NewUuid(), eventType, data)],
+                [EventSerializer.Serialize(@event)],
                 cancellationToken: ct
             )
             .ConfigureAwait(false);
-    }
 }

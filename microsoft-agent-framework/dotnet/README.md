@@ -4,6 +4,8 @@ KurrentDB integration for [Microsoft Agent Framework](https://learn.microsoft.co
 
 Instead of scattering agent data across separate systems for persistence, memory, observability, and evaluation, write it once to KurrentDB and derive everything else as projections.
 
+Events are the canonical Kurrent agent event schema (v2). Records, stream-name builders, JSON wire-format options, and the event-type registry come from the shared [`Kurrent.Agent.Schema`](../../schema/dotnet/) package. See [`schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md) for the full field-level spec. MAF-specific payload fields go under the `afw` extension slug (see `SCHEMA_v2.md §5.2`). Parity with the [MAF Python integration](../python/) is drift-tested against [`schema/fixtures/`](../../schema/fixtures/) in both directions.
+
 ## Why KurrentDB
 
 Traditional agent frameworks treat message persistence, memory, observability, and evaluation as separate concerns — each with its own database, pipeline, and schema. The same data gets written to multiple places, in multiple formats, with multiple failure modes.
@@ -66,7 +68,7 @@ dotnet add package Microsoft.Agents.AI.Abstractions
 dotnet add package Microsoft.Agents.AI.Workflows  # if using workflows
 ```
 
-Add a project reference to `Kurrent.AgentFramework` (not yet published as a NuGet package).
+Add a project reference to `Kurrent.AgentFramework` (not yet published as a NuGet package). The integration transitively pulls in [`Kurrent.Agent.Schema`](../../schema/dotnet/) for the canonical event vocabulary (schema v2).
 
 ### 3. Configure
 
@@ -385,31 +387,38 @@ Requires an Anthropic API key under `Anthropic:ApiKey` in `appsettings.Developme
 
 ## Event Model
 
-Every agent interaction is stored as typed events in an `AgentSession-{id}` stream:
+Every agent interaction is stored as typed canonical events (from `Kurrent.Agent.Schema.Events`) in an `AgentSession-{id}` stream:
 
 ```
-[0] SessionStarted              { agent_name, model, timestamp }
-[1] UserMessageReceived          { content, message_id, author_name }
+[0] SessionStarted              { app_name, agent_name, model, tenant_id, user_id, agent_config, previous_session_id, timestamp }
+    metadata: { $schema_version: 2 }
+[1] UserMessageReceived          { content, message_id, author_name, message_index, timestamp }
 [2] AssistantToolCallsGenerated  { tool_calls: [{call_id, tool_name, arguments}] }
-    metadata: { $usage: { input_tokens: 1507, output_tokens: 203 } }
-[3] ToolResultReceived           { call_id, result }
-[4] AssistantTextGenerated       { content, message_id, author_name }
-    metadata: { $usage: { input_tokens: 897, output_tokens: 44 } }
+    metadata: { $schema_version: 2, $usage: { input_tokens: 1507, output_tokens: 203 } }
+[3] ToolResultReceived           { call_id, tool_name, result, message_index, timestamp }
+[4] AssistantTextGenerated       { content, message_id, author_name, message_index, timestamp }
+    metadata: { $schema_version: 2, $usage: { input_tokens: 897, output_tokens: 44 } }
 [5] SessionEnded                { reason, timestamp }
 ```
 
+Every canonical event accepts an `extensions: { <slug>: {...} }` block. MAF .NET writes framework-specific fields under the `afw` slug; readers from other integrations pass it through untouched. Full canonical vocabulary (including `AssistantThinkingGenerated`, `SessionContinuedAs`, `SubagentStarted`/`SubagentCompleted`, `InterruptIssued`/`InterruptResolved`, `ArtifactVersionCreated`, and the eval events) lives in `Kurrent.Agent.Schema.Events` — add emit paths as needed.
+
 ## Stream Naming
 
-| Stream | Purpose |
-|---|---|
-| `AgentSession-{id}` | Conversation events for one session |
-| `WorkflowCheckpoint-{id}` | Workflow state at each superstep boundary |
-| `GroupChat-{id}` | Multi-agent group chat turn history |
-| `EvalRun-{id}` | Eval scores for a session (TurnScored, EvalRunCompleted) |
-| `AgentMemory` | Retained facts (default `KurrentDBAgentMemory`) |
+Stream names are built with the shared `Kurrent.Agent.Schema.StreamNames` helpers — never concatenate prefixes by hand.
+
+| Stream | Builder | Purpose |
+|---|---|---|
+| `AgentSession-{id}` | `StreamNames.AgentSession(id)` | Conversation events for one session |
+| `AgentSubsession-{parent}-{agent_id}` | `StreamNames.AgentSubsession(parent, agentId)` | Subagent conversation stream (schema v2) |
+| `AgentMemory-{app}-{user}` | `StreamNames.AgentMemory(app, user)` | Retained facts, per app + user |
+| `EvalRun-{id}` | `StreamNames.EvalRun(id)` | Eval scores for a session |
+| `WorkflowCheckpoint-{id}` | — (MAF-specific) | Workflow state at each superstep boundary |
+| `GroupChat-{id}` | — (MAF-specific) | Multi-agent group chat turn history |
 
 ## Dependencies
 
 - [KurrentDB.Client](https://www.nuget.org/packages/KurrentDB.Client) 1.3.1
 - [Microsoft.Agents.AI](https://www.nuget.org/packages/Microsoft.Agents.AI) 1.0.0
 - [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows) 1.0.0
+- [Kurrent.Agent.Schema](https://www.nuget.org/packages/Kurrent.Agent.Schema) 0.1.0 — canonical event records, `StreamNames`, `SchemaJsonOptions`, `EventTypeMap`, `TokenUsage`, `SchemaVersion` (schema v2). Source: [`schema/dotnet/`](../../schema/dotnet/).

@@ -5,9 +5,10 @@
 
 using System.Text;
 using Anthropic;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Eval;
-using Kurrent.AgentFramework.Events;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,7 +35,7 @@ var              judgeClient = anthropic.AsIChatClient(model, 1024);
 // Step 1: Synthetic session covering confident + ambiguous turns
 // ============================================================
 var sessionId  = Guid.NewGuid().ToString();
-var streamName = StreamName.ForSession(sessionId);
+var streamName = StreamNames.AgentSession(sessionId);
 var now        = DateTimeOffset.UtcNow;
 
 Console.WriteLine("========================================");
@@ -43,7 +44,15 @@ Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
 var events = new List<EventData> {
-    Serialize(new SessionStarted("HybridEvalAgent", "test-model", null, null, now)),
+    Serialize(new SessionStarted(
+        AppName:           null,
+        AgentName:         "HybridEvalAgent",
+        Model:             "test-model",
+        TenantId:          null,
+        UserId:            null,
+        AgentConfig:       null,
+        PreviousSessionId: null,
+        Timestamp:         now)),
 
     // Turn 0 — confident pass: long answer + correct tool call
     Serialize(new UserMessageReceived("What's the weather in London?", null, null, null, 0, now)),

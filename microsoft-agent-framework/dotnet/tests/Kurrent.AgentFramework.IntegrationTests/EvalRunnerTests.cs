@@ -1,7 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Eval;
-using Kurrent.AgentFramework.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
@@ -13,7 +14,7 @@ public class EvalRunnerTests(KurrentDbFixture db) {
     static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
 
     static async Task SeedSessionAsync(KurrentDBClient client, string sessionId, params EventData[] events) {
-        await client.AppendToStreamAsync(StreamName.ForSession(sessionId), StreamState.Any, events);
+        await client.AppendToStreamAsync(StreamNames.AgentSession(sessionId), StreamState.Any, events);
     }
 
     static EventData EventFor(object @event, IDictionary<string, object?>? metadata = null) =>

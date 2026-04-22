@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Text;
 using System.Text.RegularExpressions;
 using Anthropic;
+using Kurrent.Agent.Schema;
 using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Capture;
 using Kurrent.AgentFramework.ChatHistory;
@@ -94,8 +95,8 @@ Console.WriteLine("========================================");
 Console.WriteLine("EVENTS IN KURRENTDB");
 Console.WriteLine("========================================\n");
 
-await DumpStream(StreamName.ForSession(session1Id));
-await DumpStream(StreamName.ForSession(session2Id));
+await DumpStream(StreamNames.AgentSession(session1Id));
+await DumpStream(StreamNames.AgentSession(session2Id));
 
 await host.StopAsync();
 

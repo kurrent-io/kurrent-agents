@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 

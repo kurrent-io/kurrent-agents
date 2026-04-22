@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using Microsoft.Extensions.AI;
 
@@ -135,7 +135,15 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToChatMessage_NonChatEvent_ReturnsNull() {
-        var e = new SessionStarted("a", "m", null, null, Ts);
+        var e = new SessionStarted(
+            AppName:           null,
+            AgentName:         "a",
+            Model:             "m",
+            TenantId:          null,
+            UserId:            null,
+            AgentConfig:       null,
+            PreviousSessionId: null,
+            Timestamp:         Ts);
 
         await Assert.That(ChatMessageConverter.ToChatMessage(e)).IsNull();
     }

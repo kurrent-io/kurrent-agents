@@ -15,7 +15,7 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 | Framework | DESIGN doc | Storage style |
 |---|---|---|
 | Google ADK (Python) | [`google-adk/python/DESIGN.md`](./google-adk/python/DESIGN.md) | verbatim `Event` with state-scope routing (app / user / session streams) |
-| MS Agent Framework (.NET) | upstream — see `microsoft-agent-framework/dotnet/` | typed events (`ChatMessageReceived`, `ToolCallRequested`, …) |
+| MS Agent Framework (.NET) | [`microsoft-agent-framework/dotnet/README.md`](./microsoft-agent-framework/dotnet/README.md) | typed canonical events via shared `Kurrent.Agent.Schema` (.NET); MAF-specific fields under `extensions.afw` |
 | MS Agent Framework (Python) | `microsoft-agent-framework/python/README.md` | typed events, parity with .NET |
 | Strands (Python) | [`strands/python/DESIGN.md`](./strands/python/DESIGN.md) | snapshot-to-events on each turn; Strands-specific state in `extensions.strands` + `StrandsAgentState` event |
 | OpenAI Agents (Python) | [`openai-agents/python/DESIGN.md`](./openai-agents/python/DESIGN.md) | decompose items to canonical events; full original dict in `extensions.openai.raw_item` for lossless round-trip; non-canonical items wrap as `OpenAIItem` |

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema.Events;
 using Microsoft.Extensions.AI;
 
 namespace Kurrent.AgentFramework.Serialization;

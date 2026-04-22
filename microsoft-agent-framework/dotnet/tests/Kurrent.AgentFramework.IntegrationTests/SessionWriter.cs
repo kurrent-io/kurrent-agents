@@ -1,4 +1,5 @@
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
@@ -14,7 +15,7 @@ public static class SessionWriter {
             IReadOnlyList<object> events,
             CancellationToken     ct = default
         ) {
-        var streamName = StreamName.ForSession(sessionId);
+        var streamName = StreamNames.AgentSession(sessionId);
         var data       = events.Select(e => EventSerializer.Serialize(e)).ToArray();
         await client.AppendToStreamAsync(streamName, StreamState.Any, data, cancellationToken: ct);
     }
@@ -28,7 +29,15 @@ public static class SessionWriter {
         var now = DateTimeOffset.UtcNow;
 
         return [
-            new SessionStarted(agentName, model, null, null, now),
+            new SessionStarted(
+                AppName:           null,
+                AgentName:         agentName,
+                Model:             model,
+                TenantId:          null,
+                UserId:            null,
+                AgentConfig:       null,
+                PreviousSessionId: null,
+                Timestamp:         now),
             new UserMessageReceived(userText, Guid.NewGuid().ToString("N"), "user", now, 0, now),
             new AssistantTextGenerated(reply, Guid.NewGuid().ToString("N"), agentName, now, 1, now.AddMilliseconds(50)),
             new SessionEnded("completed", now.AddSeconds(1))

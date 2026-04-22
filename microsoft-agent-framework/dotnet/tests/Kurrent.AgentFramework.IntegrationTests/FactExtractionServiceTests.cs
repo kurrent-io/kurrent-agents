@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Memory;
 using Kurrent.AgentFramework.Projections;
 using Kurrent.AgentFramework.Serialization;
@@ -108,7 +109,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task UserMessage_TriggersFactRetention() {
         var marker        = $"[M-{Guid.NewGuid():N}]";
-        var streamName    = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName    = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         await using var h = await StartService(marker);
 
@@ -124,7 +125,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task NonUserMessageEvents_AreIgnored() {
         var marker       = $"[M-{Guid.NewGuid():N}]";
-        var streamName   = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName   = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
         var sentinel     = $"{marker} sentinel";
 
         await using var h = await StartService(marker);
@@ -132,7 +133,15 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // SessionStarted + AssistantTextGenerated embed the marker but aren't
         // UserMessageReceived, so the service must not route them to the extractor.
         await AppendAsync(h.Client, streamName,
-            new SessionStarted($"{marker} agent", "model", null, null, Ts),
+            new SessionStarted(
+                AppName:           null,
+                AgentName:         $"{marker} agent",
+                Model:             "model",
+                TenantId:          null,
+                UserId:            null,
+                AgentConfig:       null,
+                PreviousSessionId: null,
+                Timestamp:         Ts),
             new AssistantTextGenerated($"{marker} assistant", "m-1", "agent", Ts, 0, Ts),
             new UserMessageReceived(sentinel, "m-2", "user", Ts, 1, Ts));
 
@@ -149,7 +158,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task EmptyUserMessageContent_IsSkippedBeforeExtractor() {
         var marker     = $"[M-{Guid.NewGuid():N}]";
-        var streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
         var sentinel   = $"{marker} sentinel";
 
         await using var h = await StartService(marker);
@@ -173,7 +182,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task EventsOutsideAgentSessionPrefix_AreFilteredServerSide() {
         var marker          = $"[M-{Guid.NewGuid():N}]";
-        var agentStream     = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var agentStream     = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
         var outsidePrefix   = $"OtherStream-{Guid.NewGuid():N}";
         var sentinelContent = $"{marker} sentinel";
         var outsideContent  = $"{marker} outside";
@@ -202,7 +211,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task ExtractorReturningNoFacts_RetainsNothing() {
         var marker     = $"[M-{Guid.NewGuid():N}]";
-        var streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         await using var h = await StartService(marker);
 
@@ -223,7 +232,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task WhitespaceFactsFromExtractor_AreNotRetained() {
         var marker     = $"[M-{Guid.NewGuid():N}]";
-        var streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         var client   = db.CreateClient();
         var psClient = db.CreatePersistentClient();
@@ -258,7 +267,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
     [Test]
     public async Task PersistentSubscription_SurvivesServiceRestart() {
         var marker      = $"[M-{Guid.NewGuid():N}]";
-        var streamName  = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var streamName  = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
         var options     = UniqueOptions();
 
         var client   = db.CreateClient();

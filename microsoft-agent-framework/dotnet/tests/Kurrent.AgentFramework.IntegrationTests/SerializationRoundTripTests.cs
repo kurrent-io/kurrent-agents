@@ -1,5 +1,6 @@
 using System.Text.Json;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
@@ -15,7 +16,7 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
 
     async Task<object?> RoundTrip(object @event) {
         using var client     = db.CreateClient();
-        var       streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         await client.AppendToStreamAsync(
             streamName, StreamState.NoStream, [EventSerializer.Serialize(@event)]);
@@ -29,7 +30,15 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
 
     [Test]
     public async Task SessionStarted_RoundTrips() {
-        var original = new SessionStarted("agent-x", "claude-test", "tenant-1", "user-1", Ts);
+        var original = new SessionStarted(
+            AppName:           "demo-app",
+            AgentName:         "agent-x",
+            Model:             "claude-test",
+            TenantId:          "tenant-1",
+            UserId:            "user-1",
+            AgentConfig:       null,
+            PreviousSessionId: "sess-prior",
+            Timestamp:         Ts);
 
         var decoded = await RoundTrip(original);
 
@@ -91,33 +100,6 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
     }
 
     [Test]
-    public async Task TokenUsageRecorded_RoundTrips() {
-        var original = new TokenUsageRecorded(
-            InputTokens: 100,
-            OutputTokens: 50,
-            TotalTokens: 150,
-            CachedInputTokens: 10,
-            ReasoningTokens: 5,
-            AdditionalCounts: new Dictionary<string, long> { ["tool_tokens"] = 7 },
-            Model: "claude-test",
-            FinishReason: "stop",
-            ResponseId: "resp-1",
-            Timestamp: Ts
-        );
-
-        var decoded = await RoundTrip(original) as TokenUsageRecorded;
-
-        await Assert.That(decoded).IsNotNull();
-        await Assert.That(decoded!.InputTokens).IsEqualTo(100L);
-        await Assert.That(decoded.OutputTokens).IsEqualTo(50L);
-        await Assert.That(decoded.TotalTokens).IsEqualTo(150L);
-        await Assert.That(decoded.CachedInputTokens).IsEqualTo(10L);
-        await Assert.That(decoded.ReasoningTokens).IsEqualTo(5L);
-        await Assert.That(decoded.Model).IsEqualTo("claude-test");
-        await Assert.That(decoded.AdditionalCounts!["tool_tokens"]).IsEqualTo(7L);
-    }
-
-    [Test]
     public async Task EvalEvents_RoundTrip() {
         var started   = new EvalRunStarted("sess-1", "heuristic", "correctness", Ts);
         var scored    = new TurnScored("sess-1", 0, "in", "out", 0.85, "good", "solid answer", Ts);
@@ -131,7 +113,7 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
     [Test]
     public async Task UnknownEventType_DeserializesAsNull() {
         using var client     = db.CreateClient();
-        var       streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         // Write a bare EventData with a type name that isn't registered in EventTypeMap.
         var raw = new EventData(Uuid.NewUuid(), "NotARegisteredEventType", "{}"u8.ToArray());
@@ -147,10 +129,20 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
     [Test]
     public async Task Serialize_StoresMetadataWhenProvided() {
         using var client     = db.CreateClient();
-        var       streamName = StreamName.ForSession(Guid.NewGuid().ToString("N"));
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         var metadata = new Dictionary<string, object?> { ["tenant_id"] = "t-1", ["trace_id"] = "abc" };
-        var ed       = EventSerializer.Serialize(new SessionStarted("a", "m", null, null, Ts), metadata: metadata);
+        var ed       = EventSerializer.Serialize(
+            new SessionStarted(
+                AppName:           null,
+                AgentName:         "a",
+                Model:             "m",
+                TenantId:          null,
+                UserId:            null,
+                AgentConfig:       null,
+                PreviousSessionId: null,
+                Timestamp:         Ts),
+            metadata: metadata);
 
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
 
@@ -162,5 +154,49 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
         await Assert.That(meta).IsNotNull();
         await Assert.That(meta!["tenant_id"].GetString()).IsEqualTo("t-1");
         await Assert.That(meta["trace_id"].GetString()).IsEqualTo("abc");
+        // SCHEMA_v2 §9: writers stamp $schema_version on every canonical event.
+        await Assert.That(meta["$schema_version"].GetInt32()).IsEqualTo(SchemaVersion.Current);
+    }
+
+    [Test]
+    public async Task Serialize_StampsSchemaVersionEvenWithoutCallerMetadata() {
+        using var client     = db.CreateClient();
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+
+        var ed = EventSerializer.Serialize(new SessionEnded("done", Ts));
+        await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
+
+        var read = await client
+            .ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, maxCount: 1)
+            .SingleAsync();
+
+        var meta = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(read.Event.Metadata.Span);
+        await Assert.That(meta).IsNotNull();
+        await Assert.That(meta!["$schema_version"].GetInt32()).IsEqualTo(SchemaVersion.Current);
+    }
+
+    [Test]
+    public async Task Serialize_SchemaVersionCannotBeOverriddenByCallerMetadata() {
+        // SCHEMA_v2 §9 requires the writer's schema version to be authoritative.
+        // The serializer must stamp $schema_version last, winning over any caller value.
+        using var client     = db.CreateClient();
+        var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+
+        var rogueMetadata = new Dictionary<string, object?> {
+            ["$schema_version"] = 99,
+            ["tenant_id"]       = "t-1",
+        };
+        var ed = EventSerializer.Serialize(new SessionEnded("done", Ts), metadata: rogueMetadata);
+        await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
+
+        var read = await client
+            .ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, maxCount: 1)
+            .SingleAsync();
+
+        var meta = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(read.Event.Metadata.Span);
+        await Assert.That(meta).IsNotNull();
+        await Assert.That(meta!["$schema_version"].GetInt32()).IsEqualTo(SchemaVersion.Current);
+        // Other caller-supplied keys still pass through untouched.
+        await Assert.That(meta["tenant_id"].GetString()).IsEqualTo("t-1");
     }
 }

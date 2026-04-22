@@ -1,5 +1,6 @@
 using System.Text.Json;
-using Kurrent.AgentFramework.Events;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 
@@ -11,7 +12,7 @@ namespace Kurrent.AgentFramework.Eval;
 /// </summary>
 public static class SessionTurnReader {
     public static async Task<IReadOnlyList<Turn>> ReadTurnsAsync(KurrentDBClient client, string sessionId, CancellationToken ct = default) {
-        var streamName = StreamName.ForSession(sessionId);
+        var streamName = StreamNames.AgentSession(sessionId);
         var turns      = new List<Turn>();
 
         string? currentInput  = null;
