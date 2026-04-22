@@ -33,7 +33,21 @@ from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_agent_framework import serialization
 
-FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "schema" / "fixtures"
+def _locate_fixtures_root() -> Path:
+    """Walk up from this test file until a directory containing
+    ``schema/fixtures/events`` is found. Mirrors the MAF .NET side's
+    ``LocateFixturesRoot`` so a repo relayout does not silently break fixture
+    discovery the way a hard-coded ``parents[N]`` hop would."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "schema" / "fixtures"
+        if (candidate / "events").is_dir():
+            return candidate
+    raise FileNotFoundError(
+        "Could not locate schema/fixtures relative to the MAF Python test tree."
+    )
+
+
+FIXTURES_ROOT = _locate_fixtures_root()
 EVENTS_DIR = FIXTURES_ROOT / "events"
 
 
@@ -51,7 +65,9 @@ def _fixture_cases() -> list[Path]:
 
 
 def _parse(fixture_path: Path) -> tuple[dict, _EventBase]:
-    original = json.loads(fixture_path.read_text())
+    # Pin UTF-8 so the drift tests stay deterministic on non-UTF-8 locales —
+    # at least one fixture (AssistantTextGenerated.json) contains ``°C``.
+    original = json.loads(fixture_path.read_text(encoding="utf-8"))
     model = EVENT_TYPE_BY_NAME.get(fixture_path.stem)
     assert model is not None, f"No canonical model registered for '{fixture_path.stem}'"
     parsed = model.model_validate(original)
