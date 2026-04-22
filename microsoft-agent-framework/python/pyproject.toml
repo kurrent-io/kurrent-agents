@@ -17,6 +17,7 @@ dependencies = [
   # stub that ships a 0-byte `agent_framework/__init__.py` and clobbers the
   # real re-exports from agent-framework-core. See DEV-1495.
   "agent-framework-core >= 1.1.0",
+  "kurrent-agent-schema >= 0.1.0",
   "kurrentdbclient >= 1.2.0",
   "pydantic >= 2.5",
 ]
@@ -44,4 +45,5 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
 
 [tool.uv.sources]
+kurrent-agent-schema = { path = "../../schema/python", editable = true }
 kurrent-agents-testing = { path = "../../testing", editable = true }

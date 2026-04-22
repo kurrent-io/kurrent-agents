@@ -1,8 +1,8 @@
-"""Wire-format tests.
+"""Wire-format tests for the MAF Python serializer adapter.
 
-These lock in the JSON shape of every event so the Python and C# implementations
-stay mutually intelligible. If a C# event record changes, the equivalent Pydantic
-model and this test must change together.
+Pins the on-the-wire JSON shape of events emitted via :mod:`kurrent_agent_framework.serialization`
+and verifies ``$schema_version`` metadata stamping per SCHEMA_v2 §9. Drift-detection
+against the shared canonical fixtures lives in ``test_fixtures_round_trip.py``.
 """
 
 from __future__ import annotations
@@ -10,22 +10,36 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from kurrent_agent_framework import events, serialization
+from kurrent_agent_schema import (
+    AssistantToolCallsGenerated,
+    FactRetained,
+    SessionStarted,
+    ToolCallInfo,
+    TurnScored,
+    UserMessageReceived,
+)
+from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES, _EventBase
+
+from kurrent_agent_framework import serialization
 
 
-def _roundtrip_bytes(event: events._EventBase) -> dict:
+def _payload(event: _EventBase) -> dict:
     new_event = serialization.serialize(event)
     return json.loads(new_event.data)
 
 
+def _metadata(event: _EventBase) -> dict:
+    new_event = serialization.serialize(event)
+    return json.loads(new_event.metadata)
+
+
 def test_session_started_wire_format() -> None:
-    evt = events.SessionStarted(
+    evt = SessionStarted(
         agent_name="demo",
         model="gpt-4o",
         timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
     )
-    payload = _roundtrip_bytes(evt)
-    assert payload == {
+    assert _payload(evt) == {
         "agent_name": "demo",
         "model": "gpt-4o",
         "timestamp": "2026-04-13T12:00:00Z",
@@ -33,13 +47,13 @@ def test_session_started_wire_format() -> None:
 
 
 def test_user_message_wire_format() -> None:
-    evt = events.UserMessageReceived(
+    evt = UserMessageReceived(
         content="hello",
         message_id="m1",
         message_index=0,
         timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
     )
-    payload = _roundtrip_bytes(evt)
+    payload = _payload(evt)
     assert payload["content"] == "hello"
     assert payload["message_id"] == "m1"
     assert payload["message_index"] == 0
@@ -47,9 +61,9 @@ def test_user_message_wire_format() -> None:
 
 
 def test_assistant_tool_calls_wire_format() -> None:
-    evt = events.AssistantToolCallsGenerated(
+    evt = AssistantToolCallsGenerated(
         tool_calls=[
-            events.ToolCallInfo(
+            ToolCallInfo(
                 call_id="c1",
                 tool_name="get_weather",
                 arguments={"city": "London"},
@@ -58,7 +72,7 @@ def test_assistant_tool_calls_wire_format() -> None:
         message_index=1,
         timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
     )
-    payload = _roundtrip_bytes(evt)
+    payload = _payload(evt)
     assert payload["tool_calls"] == [
         {"call_id": "c1", "tool_name": "get_weather", "arguments": {"city": "London"}}
     ]
@@ -66,7 +80,7 @@ def test_assistant_tool_calls_wire_format() -> None:
 
 
 def test_turn_scored_wire_format() -> None:
-    evt = events.TurnScored(
+    evt = TurnScored(
         session_id="s1",
         turn_index=0,
         input="What's the weather?",
@@ -76,8 +90,7 @@ def test_turn_scored_wire_format() -> None:
         reason="used tool",
         timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
     )
-    payload = _roundtrip_bytes(evt)
-    assert payload == {
+    assert _payload(evt) == {
         "session_id": "s1",
         "turn_index": 0,
         "input": "What's the weather?",
@@ -90,33 +103,53 @@ def test_turn_scored_wire_format() -> None:
 
 
 def test_fact_retained_wire_format() -> None:
-    """Matches the C# KurrentDBAgentMemory inline shape: {fact, retained_at}."""
-    evt = events.FactRetained(
+    evt = FactRetained(
         fact="user prefers concise answers",
         retained_at=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
     )
-    payload = _roundtrip_bytes(evt)
-    assert payload == {
+    assert _payload(evt) == {
         "fact": "user prefers concise answers",
         "retained_at": "2026-04-13T12:00:00Z",
     }
 
 
-def test_event_type_names_match_csharp() -> None:
-    """The CLR-name strings on the wire must match the C# EventTypeMap exactly."""
-    expected = {
-        events.SessionStarted:              "SessionStarted",
-        events.SessionEnded:                "SessionEnded",
-        events.UserMessageReceived:         "UserMessageReceived",
-        events.AssistantTextGenerated:      "AssistantTextGenerated",
-        events.AssistantToolCallsGenerated: "AssistantToolCallsGenerated",
-        events.ToolResultReceived:          "ToolResultReceived",
-        events.FactRetained:                "FactRetained",
-        events.TokenUsageRecorded:          "TokenUsageRecorded",
-        events.EvalRunStarted:              "EvalRunStarted",
-        events.TurnScored:                  "TurnScored",
-        events.EvalRunCompleted:            "EvalRunCompleted",
-    }
-    for cls, expected_name in expected.items():
-        assert serialization._TYPE_TO_NAME[cls] == expected_name
-        assert serialization._NAME_TO_TYPE[expected_name] is cls
+def test_event_type_name_registry_round_trips() -> None:
+    """Sanity check: every registered canonical type resolves in both directions."""
+    for cls, name in EVENT_TYPE_NAMES.items():
+        assert EVENT_TYPE_BY_NAME[name] is cls
+
+
+def test_schema_version_is_stamped_on_metadata() -> None:
+    """Writers must stamp ``$schema_version = 2`` on every canonical event
+    (SCHEMA_v2 §9). The writer's version always wins over caller-supplied
+    metadata so the wire version stays authoritative."""
+    evt = UserMessageReceived(
+        content="hi",
+        message_index=0,
+        timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
+    )
+    assert _metadata(evt) == {"$schema_version": 2}
+
+
+def test_caller_metadata_is_preserved_alongside_schema_version() -> None:
+    evt = UserMessageReceived(
+        content="hi",
+        message_index=0,
+        timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
+    )
+    new_event = serialization.serialize(evt, metadata={"request_id": "r1"})
+    meta = json.loads(new_event.metadata)
+    assert meta == {"request_id": "r1", "$schema_version": 2}
+
+
+def test_caller_cannot_override_schema_version() -> None:
+    """A caller supplying ``$schema_version`` in metadata cannot forge the
+    wire version — the writer's value always wins (stamped last)."""
+    evt = UserMessageReceived(
+        content="hi",
+        message_index=0,
+        timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
+    )
+    new_event = serialization.serialize(evt, metadata={"$schema_version": 99})
+    meta = json.loads(new_event.metadata)
+    assert meta["$schema_version"] == 2

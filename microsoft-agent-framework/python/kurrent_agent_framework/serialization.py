@@ -1,8 +1,10 @@
-"""Event serialization to/from KurrentDB ``NewEvent`` and ``RecordedEvent``.
+"""Thin adapter that packages canonical :mod:`kurrent_agent_schema` events into
+KurrentDB ``NewEvent``s.
 
-Mirrors the C# ``EventSerializer`` and ``EventTypeMap``. JSON is encoded as
-snake_case UTF-8 bytes, with optional metadata stored as a separate JSON object
-in the event metadata slot.
+Uses the shared :data:`EVENT_TYPE_NAMES` / :data:`EVENT_TYPE_BY_NAME` registries
+for wire naming and stamps ``$schema_version`` on every event's metadata per
+``schema/SCHEMA_v2.md §9``. Mirrors ``Kurrent.AgentFramework.Serialization.EventSerializer``
+on the .NET side.
 """
 
 from __future__ import annotations
@@ -11,32 +13,16 @@ import json
 import uuid
 from typing import Any
 
+from kurrent_agent_schema import SCHEMA_VERSION
+from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES, _EventBase
 from kurrentdbclient import NewEvent, RecordedEvent
 
-from . import events as _events
-from .events import _EventBase
-
-# Bidirectional CLR-name <-> Pydantic-class map. Keep in sync with
-# Kurrent.AgentFramework.Serialization.EventTypeMap on the C# side.
-_NAME_TO_TYPE: dict[str, type[_EventBase]] = {
-    "SessionStarted":              _events.SessionStarted,
-    "SessionEnded":                _events.SessionEnded,
-    "UserMessageReceived":         _events.UserMessageReceived,
-    "AssistantTextGenerated":      _events.AssistantTextGenerated,
-    "AssistantToolCallsGenerated": _events.AssistantToolCallsGenerated,
-    "ToolResultReceived":          _events.ToolResultReceived,
-    "FactRetained":                _events.FactRetained,
-    "TokenUsageRecorded":          _events.TokenUsageRecorded,
-    "EvalRunStarted":              _events.EvalRunStarted,
-    "TurnScored":                  _events.TurnScored,
-    "EvalRunCompleted":            _events.EvalRunCompleted,
-}
-
-_TYPE_TO_NAME: dict[type[_EventBase], str] = {v: k for k, v in _NAME_TO_TYPE.items()}
+SCHEMA_VERSION_METADATA_KEY: str = "$schema_version"
+"""Metadata key stamped on every canonical event. See SCHEMA_v2 §9."""
 
 
 def _name_for(event: _EventBase) -> str:
-    name = _TYPE_TO_NAME.get(type(event))
+    name = EVENT_TYPE_NAMES.get(type(event))
     if name is None:
         raise ValueError(f"Unknown event type: {type(event).__name__}")
     return name
@@ -48,14 +34,19 @@ def serialize(
     event_id: uuid.UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> NewEvent:
-    """Serialize a Pydantic event into a KurrentDB ``NewEvent``."""
-    payload = event.model_dump(mode="json", exclude_none=True)
+    """Serialize a canonical event into a KurrentDB ``NewEvent``.
+
+    Caller-supplied metadata is preserved; ``$schema_version`` is always stamped
+    last and wins over any caller-supplied value so the wire version stays
+    authoritative.
+    """
+    payload = json.loads(event.model_dump_json(exclude_none=True, by_alias=True))
     data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    metadata_bytes = (
-        json.dumps(metadata, separators=(",", ":")).encode("utf-8")
-        if metadata
-        else b""
-    )
+
+    effective: dict[str, Any] = dict(metadata) if metadata else {}
+    effective[SCHEMA_VERSION_METADATA_KEY] = SCHEMA_VERSION
+    metadata_bytes = json.dumps(effective, separators=(",", ":")).encode("utf-8")
+
     return NewEvent(
         id=event_id or uuid.uuid4(),
         type=_name_for(event),
@@ -65,8 +56,10 @@ def serialize(
 
 
 def deserialize(recorded: RecordedEvent) -> _EventBase | None:
-    """Deserialize a ``RecordedEvent`` into a Pydantic event, or ``None`` if unknown."""
-    cls = _NAME_TO_TYPE.get(recorded.type)
+    """Deserialize a ``RecordedEvent`` into a canonical event, or ``None`` if
+    the event type is not in the canonical map (framework-specific or unknown
+    types are skipped by readers)."""
+    cls = EVENT_TYPE_BY_NAME.get(recorded.type)
     if cls is None:
         return None
     payload = json.loads(recorded.data) if recorded.data else {}

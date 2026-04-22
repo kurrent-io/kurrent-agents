@@ -1,8 +1,10 @@
 """Event-sourced chat history backed by KurrentDB.
 
-Each ``Message`` is decomposed into typed domain events on save and reconstructed
-on load. Session lifecycle events (``SessionStarted`` / ``SessionEnded``) frame
-each stream.
+Each ``Message`` is decomposed into typed canonical events on save and
+reconstructed on load. Session lifecycle events (``SessionStarted`` /
+``SessionEnded``) frame each stream. Event types come from the shared
+:mod:`kurrent_agent_schema` package so the write/read path stays byte-identical
+to the MAF .NET mirror.
 """
 
 from __future__ import annotations
@@ -13,17 +15,27 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_framework import Content, HistoryProvider, Message
+from kurrent_agent_schema import (
+    AssistantTextGenerated,
+    AssistantToolCallsGenerated,
+    SessionEnded,
+    SessionStarted,
+    ToolCallInfo,
+    ToolResultReceived,
+    UserMessageReceived,
+    agent_session_stream,
+)
+from kurrent_agent_schema.events import _EventBase
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
 
-from . import events as _events
-from . import serialization, stream_name
+from . import serialization
 
 
 class KurrentDBHistoryProvider(HistoryProvider):
     """Persists chat history as rich typed events in KurrentDB.
 
-    Each stored message is decomposed into one or more domain events
+    Each stored message is decomposed into one or more canonical events
     (``UserMessageReceived``, ``AssistantTextGenerated``,
     ``AssistantToolCallsGenerated``, ``ToolResultReceived``) and reconstructed
     on read.
@@ -37,6 +49,7 @@ class KurrentDBHistoryProvider(HistoryProvider):
         source_id: Unique identifier for this provider (used by the context pipeline).
         agent_name: Recorded in the ``SessionStarted`` event. Optional.
         model_name: Recorded in the ``SessionStarted`` event. Optional.
+        app_name: Recorded in the ``SessionStarted`` event. Optional. New in v2.
     """
 
     def __init__(
@@ -46,11 +59,13 @@ class KurrentDBHistoryProvider(HistoryProvider):
         source_id: str = "kurrentdb_history",
         agent_name: str | None = None,
         model_name: str | None = None,
+        app_name: str | None = None,
     ) -> None:
         super().__init__(source_id)
         self._client = client
         self._agent_name = agent_name
         self._model_name = model_name
+        self._app_name = app_name
         self._started_sessions: set[str] = set()
 
     async def get_messages(
@@ -63,7 +78,7 @@ class KurrentDBHistoryProvider(HistoryProvider):
         if not session_id:
             return []
 
-        stream = stream_name.for_session(session_id)
+        stream = agent_session_stream(session_id)
         messages: list[Message] = []
 
         try:
@@ -93,14 +108,15 @@ class KurrentDBHistoryProvider(HistoryProvider):
         if not session_id or not messages:
             return
 
-        stream = stream_name.for_session(session_id)
+        stream = agent_session_stream(session_id)
         now = datetime.now(UTC)
         to_append = []
 
         if session_id not in self._started_sessions:
             to_append.append(
                 serialization.serialize(
-                    _events.SessionStarted(
+                    SessionStarted(
+                        app_name=self._app_name,
                         agent_name=self._agent_name,
                         model=self._model_name,
                         timestamp=now,
@@ -122,13 +138,13 @@ class KurrentDBHistoryProvider(HistoryProvider):
 
     async def end_session(self, session_id: str, reason: str | None = None) -> None:
         """Append a ``SessionEnded`` event to close the session stream."""
-        stream = stream_name.for_session(session_id)
+        stream = agent_session_stream(session_id)
         await self._client.append_to_stream(
             stream_name=stream,
             current_version=StreamState.ANY,
             events=[
                 serialization.serialize(
-                    _events.SessionEnded(
+                    SessionEnded(
                         reason=reason,
                         timestamp=datetime.now(UTC),
                     )
@@ -145,14 +161,14 @@ def _message_to_events(
     *,
     message_index: int,
     timestamp: datetime,
-) -> Iterable[_events._EventBase]:
-    """Decompose a ``Message`` into one or more domain events."""
+) -> Iterable[_EventBase]:
+    """Decompose a ``Message`` into one or more canonical events."""
     msg_id = message.message_id
     author = message.author_name
     role = message.role
 
     if role == "user":
-        yield _events.UserMessageReceived(
+        yield UserMessageReceived(
             content=message.text,
             message_id=msg_id,
             author_name=author,
@@ -163,7 +179,7 @@ def _message_to_events(
 
     if role == "assistant":
         tool_calls = [
-            _events.ToolCallInfo(
+            ToolCallInfo(
                 call_id=c.call_id or "",
                 tool_name=c.name or "",
                 arguments=_coerce_arguments(c.arguments),
@@ -172,7 +188,7 @@ def _message_to_events(
             if c.type == "function_call"
         ]
         if tool_calls:
-            yield _events.AssistantToolCallsGenerated(
+            yield AssistantToolCallsGenerated(
                 tool_calls=tool_calls,
                 content=message.text,
                 message_id=msg_id,
@@ -181,7 +197,7 @@ def _message_to_events(
                 timestamp=timestamp,
             )
         else:
-            yield _events.AssistantTextGenerated(
+            yield AssistantTextGenerated(
                 content=message.text,
                 message_id=msg_id,
                 author_name=author,
@@ -194,7 +210,7 @@ def _message_to_events(
         for c in message.contents:
             if c.type != "function_result":
                 continue
-            yield _events.ToolResultReceived(
+            yield ToolResultReceived(
                 call_id=c.call_id or "",
                 tool_name=None,
                 result=_coerce_result(c.result),
@@ -205,23 +221,23 @@ def _message_to_events(
             )
 
 
-def _event_to_message(event: _events._EventBase) -> Message | None:
-    """Reconstruct a ``Message`` from a domain event, or ``None`` for lifecycle events."""
-    if isinstance(event, _events.UserMessageReceived):
+def _event_to_message(event: _EventBase) -> Message | None:
+    """Reconstruct a ``Message`` from a canonical event, or ``None`` for lifecycle events."""
+    if isinstance(event, UserMessageReceived):
         return Message(
             role="user",
             contents=[Content(type="text", text=event.content or "")],
             message_id=event.message_id,
             author_name=event.author_name,
         )
-    if isinstance(event, _events.AssistantTextGenerated):
+    if isinstance(event, AssistantTextGenerated):
         return Message(
             role="assistant",
             contents=[Content(type="text", text=event.content or "")],
             message_id=event.message_id,
             author_name=event.author_name,
         )
-    if isinstance(event, _events.AssistantToolCallsGenerated):
+    if isinstance(event, AssistantToolCallsGenerated):
         contents: list[Content] = []
         if event.content:
             contents.append(Content(type="text", text=event.content))
@@ -240,7 +256,7 @@ def _event_to_message(event: _events._EventBase) -> Message | None:
             message_id=event.message_id,
             author_name=event.author_name,
         )
-    if isinstance(event, _events.ToolResultReceived):
+    if isinstance(event, ToolResultReceived):
         return Message(
             role="tool",
             contents=[Content(type="function_result", call_id=event.call_id, result=event.result)],

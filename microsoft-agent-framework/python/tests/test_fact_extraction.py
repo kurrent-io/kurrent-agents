@@ -14,15 +14,19 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import pytest
+from kurrent_agent_schema import (
+    AssistantTextGenerated,
+    SessionStarted,
+    UserMessageReceived,
+    agent_session_stream,
+)
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_agent_framework import (
     FactExtractionOptions,
     FactExtractionService,
-    events as _events,
     run_fact_extraction,
     serialization,
-    stream_name,
 )
 from kurrent_agent_framework.memory import AgentMemory
 
@@ -103,7 +107,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         memory = InMemoryMemory()
         service, task = await _run_service(
             kurrentdb_client,
@@ -116,7 +120,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=content,
                     message_id="m-1",
                     author_name="user",
@@ -134,7 +138,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         sentinel = f"{marker} sentinel"
         calls: list[str] = []
         memory = InMemoryMemory()
@@ -153,10 +157,10 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.SessionStarted(
+                SessionStarted(
                     agent_name=f"{marker} agent", model="model", timestamp=_TS
                 ),
-                _events.AssistantTextGenerated(
+                AssistantTextGenerated(
                     content=f"{marker} assistant",
                     message_id="m-1",
                     author_name="agent",
@@ -164,7 +168,7 @@ class TestFactExtraction:
                     message_index=0,
                     timestamp=_TS,
                 ),
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=sentinel,
                     message_id="m-2",
                     author_name="user",
@@ -185,7 +189,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         sentinel = f"{marker} sentinel"
         calls: list[str] = []
         memory = InMemoryMemory()
@@ -204,15 +208,15 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content="", message_id="m-1", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content="   ", message_id="m-2", author_name="user",
                     created_at=_TS, message_index=1, timestamp=_TS,
                 ),
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=sentinel, message_id="m-3", author_name="user",
                     created_at=_TS, message_index=2, timestamp=_TS,
                 ),
@@ -228,7 +232,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        agent_stream = stream_name.for_session(uuid.uuid4().hex)
+        agent_stream = agent_session_stream(uuid.uuid4().hex)
         outside_stream = f"OtherStream-{uuid.uuid4().hex}"
         sentinel = f"{marker} sentinel"
         outside = f"{marker} outside"
@@ -249,7 +253,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 outside_stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=outside, message_id="m-1", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
@@ -257,7 +261,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 agent_stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=sentinel, message_id="m-2", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
@@ -274,7 +278,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         memory = InMemoryMemory()
         service, task = await _run_service(
             kurrentdb_client,
@@ -288,11 +292,11 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=non_matching, message_id="m-1", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=sentinel, message_id="m-2", author_name="user",
                     created_at=_TS, message_index=1, timestamp=_TS,
                 ),
@@ -306,7 +310,7 @@ class TestFactExtraction:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         memory = InMemoryMemory()
 
         # Extractor returns a whitespace-only fact alongside a real one — the
@@ -325,7 +329,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=content, message_id="m-1", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
@@ -340,7 +344,7 @@ class TestFactExtraction:
     ) -> None:
         """``run_fact_extraction`` must spawn the task on enter and cancel it on exit."""
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         memory = InMemoryMemory()
 
         content = f"{marker} context-manager fact"
@@ -356,7 +360,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=content,
                     message_id="m-1",
                     author_name="user",
@@ -373,7 +377,7 @@ class TestFactExtraction:
         await _append(
             kurrentdb_client,
             stream,
-            _events.UserMessageReceived(
+            UserMessageReceived(
                 content=post_exit,
                 message_id="m-2",
                 author_name="user",
@@ -444,7 +448,7 @@ class TestFactExtraction:
     ) -> None:
         """Second run with the same group must not replay previously acked events."""
         marker = f"[M-{uuid.uuid4().hex}]"
-        stream = stream_name.for_session(uuid.uuid4().hex)
+        stream = agent_session_stream(uuid.uuid4().hex)
         options = FactExtractionOptions(group_name=_unique_group())
 
         # First run — consume and ack the initial fact.
@@ -460,7 +464,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=first, message_id="m-1", author_name="user",
                     created_at=_TS, message_index=0, timestamp=_TS,
                 ),
@@ -487,7 +491,7 @@ class TestFactExtraction:
             await _append(
                 kurrentdb_client,
                 stream,
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=second, message_id="m-2", author_name="user",
                     created_at=_TS, message_index=1, timestamp=_TS,
                 ),

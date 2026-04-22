@@ -15,11 +15,11 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 from agent_framework import ContextProvider, Message
+from kurrent_agent_schema import FactRetained
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
 from pydantic import ValidationError
 
-from . import events as _events
 from . import serialization
 
 
@@ -86,7 +86,7 @@ class KurrentDBAgentMemory:
                     event = serialization.deserialize(recorded)
                 except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
                     continue
-                if not isinstance(event, _events.FactRetained):
+                if not isinstance(event, FactRetained):
                     continue
                 if event.fact.strip():
                     yield event.fact
@@ -98,7 +98,7 @@ class KurrentDBAgentMemory:
             return
 
         new_event = serialization.serialize(
-            _events.FactRetained(
+            FactRetained(
                 fact=fact,
                 retained_at=datetime.now(UTC),
             )
