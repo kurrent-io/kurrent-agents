@@ -1,11 +1,22 @@
-"""Shared fixtures — delegates to kurrent-agents-testing."""
+"""Shared fixtures — delegates to kurrent-agents-testing.
+
+``__all__`` lists the fixtures we re-export so pytest's resolver can chain
+``kurrentdb_client → kurrentdb_connection_string → kurrentdb_container``
+without ruff's isort fixer treating the intermediate fixtures as unused.
+"""
 
 from __future__ import annotations
 
-# Re-exported so tests referencing ``kurrentdb_client`` still work. The async
-# flavour is the one this suite has always used.
-from kurrent_agents_testing.fixtures import (  # noqa: F401
+from kurrent_agents_testing.fixtures import (
     async_kurrentdb_client as kurrentdb_client,
+)
+from kurrent_agents_testing.fixtures import (
     kurrentdb_connection_string,
     kurrentdb_container,
 )
+
+__all__ = [
+    "kurrentdb_client",
+    "kurrentdb_connection_string",
+    "kurrentdb_container",
+]

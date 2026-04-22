@@ -22,15 +22,14 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from kurrent_agent_schema import UserMessageReceived, agent_session_stream
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_agent_framework import (
     FactExtractionOptions,
     KurrentDBAgentMemory,
-    events,
     run_fact_extraction,
     serialization,
-    stream_name,
 )
 
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -66,7 +65,7 @@ async def _append_user_message(
         stream,
         events=[
             serialization.serialize(
-                events.UserMessageReceived(
+                UserMessageReceived(
                     content=content,
                     message_id=f"m-{index}",
                     author_name="user",
@@ -85,7 +84,7 @@ async def main() -> None:
     await client.connect()
 
     session_id = uuid.uuid4().hex
-    stream = stream_name.for_session(session_id)
+    stream = agent_session_stream(session_id)
     memory_stream = f"AgentMemory-demo-{session_id}"
     memory = KurrentDBAgentMemory(client, stream_name=memory_stream)
 

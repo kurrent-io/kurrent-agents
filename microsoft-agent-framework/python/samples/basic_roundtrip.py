@@ -15,9 +15,10 @@ import asyncio
 import uuid
 
 from agent_framework import Content, Message
+from kurrent_agent_schema import agent_session_stream
 from kurrentdbclient import AsyncKurrentDBClient
 
-from kurrent_agent_framework import KurrentDBHistoryProvider, stream_name
+from kurrent_agent_framework import KurrentDBHistoryProvider
 
 
 async def main() -> None:
@@ -78,8 +79,8 @@ async def main() -> None:
                     print(f"    <- result for {content.call_id}: {content.result}")
 
         # --- dump raw events ---
-        print(f"\n=== Raw events in {stream_name.for_session(session_id)} ===\n")
-        response = await client.read_stream(stream_name.for_session(session_id))
+        print(f"\n=== Raw events in {agent_session_stream(session_id)} ===\n")
+        response = await client.read_stream(agent_session_stream(session_id))
         async for recorded in response:
             print(f"  [{recorded.stream_position}] {recorded.type}")
             print(f"       {recorded.data.decode('utf-8')}")

@@ -21,24 +21,25 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+from kurrent_agent_schema import UserMessageReceived
+from kurrent_agent_schema.streams import AGENT_SESSION_PREFIX
 from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent
 from kurrentdbclient.exceptions import AlreadyExistsError, NotFoundError
 from pydantic import ValidationError
 
-from . import events as _events
 from . import serialization
 from .memory import AgentMemory
 
 logger = logging.getLogger("kurrent_agent_framework.fact_extraction")
 
-# Must match the C# StreamName.ForSession prefix.
-_STREAM_PREFIX = "AgentSession-"
+# Canonical session-stream prefix from the shared schema package.
+_STREAM_PREFIX = AGENT_SESSION_PREFIX
 
 # Python client filter is a regex sequence (unlike the C#
 # StreamFilter.Prefix helper). KurrentDB applies RE2 full-string matching on
 # stream names, so we must cover the remainder of the name with ``.+``.
 # Anchors (``^`` / ``$``) are implicit; adding them produces the same effect.
-_STREAM_PREFIX_REGEX = r"AgentSession-.+"
+_STREAM_PREFIX_REGEX = rf"{AGENT_SESSION_PREFIX}.+"
 
 # Backoff on subscription drop / transient failure; matches the C# 5s Task.Delay.
 _RESUBSCRIBE_BACKOFF_SECONDS = 5.0
@@ -184,7 +185,7 @@ class FactExtractionService:
             domain_event = serialization.deserialize(event)
         except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
             return
-        if not isinstance(domain_event, _events.UserMessageReceived):
+        if not isinstance(domain_event, UserMessageReceived):
             return
         content = (domain_event.content or "").strip()
         if not content:

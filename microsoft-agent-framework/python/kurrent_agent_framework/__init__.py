@@ -1,11 +1,13 @@
 """Kurrent.AgentFramework for Python.
 
 Event-sourced persistence for the Microsoft Agent Framework, backed by KurrentDB.
-Wire-compatible with the C# implementation — same event names, same JSON schema,
-same stream naming.
+Canonical event types and stream-name helpers come from the shared
+:mod:`kurrent_agent_schema` package (schema v2), so the wire format stays
+byte-compatible with every other Kurrent agent integration — including the
+MAF .NET mirror.
 """
 
-from . import events, serialization, stream_name
+from . import serialization
 from .chat_history import KurrentDBHistoryProvider
 from .fact_extraction import (
     FactExtractionOptions,
@@ -23,8 +25,6 @@ __all__ = [
     "FactExtractor",
     "KurrentDBAgentMemory",
     "KurrentDBHistoryProvider",
-    "events",
     "run_fact_extraction",
     "serialization",
-    "stream_name",
 ]
