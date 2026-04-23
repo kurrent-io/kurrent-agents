@@ -27,9 +27,13 @@ public static class KurrentAgentFrameworkExtensions {
 
         /// <summary>
         /// Registers agent memory with the default KurrentDB-backed implementation.
-        /// To use an alternative backend, register your <see cref="IAgentMemory"/>
-        /// before calling this method, or use that backend's dedicated extension.
+        /// Facts are stored in <c>AgentMemory-{appName}-{userId}</c> (canonical per
+        /// <c>SCHEMA_v2.md §2.1</c>). To use an alternative backend, register your
+        /// <see cref="IAgentMemory"/> before calling this method, or use that
+        /// backend's dedicated extension.
         /// </summary>
+        /// <param name="appName">Application identifier — the canonical per-tenant scope.</param>
+        /// <param name="userId">User identifier — the canonical per-tenant scope.</param>
         /// <param name="factExtractor">
         /// Optional pluggable fact extraction logic. Receives a user message, returns zero or
         /// more facts to retain. If null, no automatic fact extraction runs (facts can still
@@ -39,11 +43,23 @@ public static class KurrentAgentFrameworkExtensions {
         /// Optional tuning for the fact-extraction persistent subscription (group name, start
         /// position). Ignored when <paramref name="factExtractor"/> is null.
         /// </param>
+        /// <param name="streamName">
+        /// Optional explicit stream override — bypasses the canonical builder for a
+        /// deliberately shared cross-tenant stream or a custom scope.
+        /// </param>
         public IServiceCollection AddKurrentAgentMemory(
+            string                 appName,
+            string                 userId,
             FactExtractor?         factExtractor          = null,
-            FactExtractionOptions? factExtractionOptions  = null
+            FactExtractionOptions? factExtractionOptions  = null,
+            string?                streamName             = null
         ) {
-            services.TryAddSingleton<IAgentMemory, KurrentDBAgentMemory>();
+            services.TryAddSingleton<IAgentMemory>(sp => new KurrentDBAgentMemory(
+                sp.GetRequiredService<KurrentDBClient>(),
+                appName,
+                userId,
+                streamName
+            ));
             services.TryAddSingleton<AgentMemoryContextProvider>();
 
             if (factExtractor is not null) {
