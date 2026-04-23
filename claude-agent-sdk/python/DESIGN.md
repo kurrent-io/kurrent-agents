@@ -16,25 +16,28 @@ Consequence: `KurrentDBSessionStore` is a thin streaming mirror, not a full sess
 
 ## 3. Contract
 
-The SDK's `SessionStore` protocol has two required methods and three optional:
+The SDK's `SessionStore` protocol has two required methods and four optional:
 
 | Method | Required? | Our implementation |
 |---|---|---|
-| `append(key, entries)` | ✅ | Decompose entries into `ClaudeSDKEntry` events; append to `AgentSession-{session_id}`. Exceptions are logged — subprocess keeps running per SDK contract. |
-| `load(key)` | ✅ | Read every `ClaudeSDKEntry` from the stream matching `key.subpath`; return `entry.raw_entry` dicts in stream order. |
-| `list_sessions(project_key)` | Optional | v0 stub — `NotImplementedError`. Follow-up wires to a `$ce-AgentSession` projection. |
-| `delete(key)` | Optional | v0 stub — no-op per SDK contract for append-only stores. Follow-up adds a tombstone-marker event. |
-| `list_subkeys(key)` | Optional | v0 stub — main transcript only. Follow-up discovers subagent transcripts. |
+| `append(key, entries)` | ✅ | Wrap each entry as a `ClaudeSDKEntry` event; append to `AgentSession-{session_id}` for the main transcript or `AgentSession-{session_id}__{normalised_subpath}` for subagents (see §5). Exceptions are logged — subprocess keeps running per SDK contract. |
+| `load(key)` | ✅ | Read every `ClaudeSDKEntry` from the stream for `key` (same naming rule as `append`); return `entry.raw_entry` dicts in stream order. Returns `None` when no entries exist for `key` — the stream is missing, has no `ClaudeSDKEntry` events at all, or no entries match the requested `subpath` scope. |
+| `list_sessions(project_key)` | Optional | **Absent** — the SDK probes via `hasattr` and skips when missing. Follow-up can wire this to a `$ce-AgentSession` projection. |
+| `list_session_summaries(project_key)` | Optional | **Absent.** Added in SDK 0.1.65 for incrementally-maintained summaries computed inside `append()`. Adding it means giving up at-most-once/fire-and-forget semantics, so deferred. |
+| `delete(key)` | Optional | **Absent** — no-op per SDK contract for append-only stores. A future tombstone-marker event could fulfil it without breaking the append-only invariant. |
+| `list_subkeys(key)` | Optional | **Absent** — main transcript only. Follow-up to discover subagent transcripts. |
 
-## 4. Entries are opaque in v0
+> The optional methods must be **absent from the class**, not defined-but-raising. The SDK duck-types presence with `hasattr`; a defined-but-raising method is still "present" and surfaces the error instead of falling back. See commit `6a33c21`.
+
+## 4. Entries are stored verbatim; canonical view comes from a read-side projection
 
 The SDK documents that `SessionStoreEntry` is a discriminated union whose concrete shape is internal and unstable, and that the only guaranteed invariant is **`load(append(entries)) == entries`** (deep-equal, not byte-equal). We respect that: every entry is wrapped in one `ClaudeSDKEntry` event carrying `raw_entry: dict[str, Any]` verbatim, plus its `type` / `uuid` / `timestamp` fields promoted for projection convenience.
 
-**A follow-up can add canonical decomposition** for recognised entry shapes (`user_message` → `UserMessageReceived`, `assistant_message` → `AssistantTextGenerated` / `AssistantToolCallsGenerated`, `tool_result` → `ToolResultReceived`). That lets cross-framework readers see the conversation. Deferred because:
+Cross-framework readers need canonical events, not opaque CLI entries. Inspecting a live transcript (DEV-1508) confirmed the JSONL shape is fully decomposable — the content-block vocabulary (`text` / `thinking` / `tool_use` / `tool_result`) and field names are exactly the Anthropic Messages API, which is structurally identical to MAF .NET's shape. The mapping onto `SCHEMA.md §3` events (and the `$usage` metadata shim) is recorded on DEV-1508.
 
-- The CLI's transcript shape isn't part of the SDK's public API.
-- v0 correctness requires the verbatim invariant hold unconditionally.
-- Canonical decomposition can be layered on later as a write-side projection without changing the adapter contract.
+**The decomposer is implemented read-side**, not write-side: a separate subscriber reads `ClaudeSDKEntry` streams and emits canonical events to a parallel stream. This preserves the adapter's `load(append) == entries` invariant unconditionally; write-side decomposition would require the canonical encoding itself to be lossless, which is an extra constraint with no benefit. See §10 Q3.
+
+Known partiality: CLI built-in tools (`Read`/`Write`/`Bash`/…) are resolved inside the CLI and never surface as `tool_use`/`tool_result` blocks — only MCP-backed tools do. Canonical decomposition of a CLI-tool-heavy session will show assistant text but not the tool turns. This is §8, not the decomposer's fault.
 
 ## 5. Stream layout
 
@@ -61,8 +64,8 @@ This is a property of the SDK, not our integration — documented here so users 
 
 ## 9. Out of scope for v0
 
-- Canonical decomposition of CLI entries (see §4).
-- `list_sessions` / `delete` / `list_subkeys` (stubs raise — SDK tolerates).
+- Canonical decomposition subscriber (tracked under DEV-1508 step 2; mapping recorded, implementation TBD — see §4).
+- `list_sessions` / `delete` / `list_subkeys` / `list_session_summaries` (all deliberately absent from the adapter — SDK probes for presence at runtime and skips when missing).
 - Memory and artifact classes parallel to `KurrentDBAgentMemory` / `KurrentDBAgentArtifacts`. Tracked as follow-ups; the SDK doesn't ship either concept itself.
 - Hook-mutation capture — if a `PreToolUse` hook modifies tool input, the delta isn't visible to the SessionStore. Would need SDK-side instrumentation.
 - Streaming-event capture for UI replay (SDK's `StreamEvent` messages). Not persisted by the CLI transcript; would require a separate subscriber.
@@ -71,4 +74,4 @@ This is a property of the SDK, not our integration — documented here so users 
 
 1. **Subagent discovery.** `list_subkeys` is how the SDK materialises subagent transcripts on resume. We can fulfil this with a stream-name regex scan over `$all`, or by indexing subpaths into a per-session helper stream. Revisit when a concrete resume-with-subagents test case is available.
 2. **Per-project metadata stream.** `list_sessions` could be backed by a `$ce-AgentSession` category scan filtered by `project_key`. Needs the KurrentDB category projection enabled (ours is).
-3. **Canonical decomposition trigger.** Write-side in the adapter, or read-side via a separate subscriber that re-emits canonical events from `ClaudeSDKEntry` streams? Read-side keeps the adapter's round-trip invariant rock-solid; defer the decision until we need cross-framework reads.
+3. **Canonical decomposition trigger.** ~~Write-side in the adapter, or read-side via a separate subscriber?~~ **Decided (DEV-1508): read-side.** Keeps the adapter's `load(append) == entries` invariant unconditional; decomposer lives in its own module against an already-persisted `ClaudeSDKEntry` stream. Implementation TBD (step 2 of DEV-1508).

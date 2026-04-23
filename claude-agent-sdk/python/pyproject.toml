@@ -12,7 +12,12 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "claude-agent-sdk", "anthropic", "agents"]
 dependencies = [
-  "claude-agent-sdk >= 0.1.0",
+  # 0.1.65 is the first release exposing the ``SessionStore`` protocol and
+  # the ``ClaudeAgentOptions.session_store`` kwarg this adapter plugs into.
+  # Upper-bounded against 0.2 because the SDK is still in 0.x; its JSONL entry
+  # shape is documented internal-and-unstable (DESIGN.md §4), so we don't want
+  # downstream installs silently resolving to a breaking bump.
+  "claude-agent-sdk >= 0.1.65, < 0.2",
   "kurrentdbclient >= 1.2.0",
   "pydantic >= 2.5",
 ]

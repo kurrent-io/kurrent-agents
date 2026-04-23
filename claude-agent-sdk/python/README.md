@@ -2,9 +2,9 @@
 
 KurrentDB `SessionStore` adapter for the [Claude Agent SDK (Python)](https://github.com/anthropics/claude-agent-sdk-python). Mirrors every JSONL transcript line the Claude Code CLI writes locally out to a KurrentDB stream; `load` reconstructs entries on `--resume`.
 
-**Status: scaffolding.** `append` + `load` are implemented and round-trip the opaque entry dicts byte-for-byte. `list_sessions`, `delete`, and `list_subkeys` are stubbed with `NotImplementedError` (the SDK's protocol allows this — call sites probe for presence at runtime).
+**Status: v0.** `append` + `load` are implemented and round-trip entry dicts verbatim; verified end-to-end against `claude-agent-sdk >= 0.1.65` (the first release exposing the `SessionStore` protocol). `list_sessions`, `delete`, `list_subkeys`, and `list_session_summaries` are deliberately absent — the SDK's protocol probes for them at runtime and skips when missing.
 
-Shares the canonical schema with the rest of the monorepo — see [`schema/SCHEMA.md`](../../schema/SCHEMA.md). Because the CLI's JSONL format is internal and unstable per the SDK docs, entries are preserved verbatim inside `ClaudeSDKEntry` framework-specific events in v0. A follow-up pass can add canonical decomposition for recognised shapes.
+Shares the canonical schema with the rest of the monorepo — see [`schema/SCHEMA.md`](../../schema/SCHEMA.md). The CLI's JSONL format is documented internal-and-unstable, so entries are stored deep-equal via JSON round-trip inside `ClaudeSDKEntry` framework-specific events — this matches the SDK's `load(append(entries)) == entries` guarantee (deep-equal, not byte-equal, per the `SessionStore` protocol docs). Canonical decomposition (so cross-framework readers see a normal conversation) is planned as a read-side subscriber; the mapping and rationale are recorded on DEV-1508.
 
 ## Design
 
@@ -16,7 +16,7 @@ Full design spec: [`DESIGN.md`](./DESIGN.md).
 pip install -e ".[dev]"
 ```
 
-## Usage (planned)
+## Usage
 
 ```python
 from claude_agent_sdk import ClaudeAgentOptions, query
