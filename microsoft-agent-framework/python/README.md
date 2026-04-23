@@ -11,6 +11,8 @@ MAF-specific payload fields go under the `afw` extension slug (see `SCHEMA_v2.md
 - **`KurrentDBHistoryProvider`** — a MAF `HistoryProvider` that decomposes each `Message` into typed canonical events (`UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived`) on save, and reconstructs them on read. `SessionStarted` / `SessionEnded` frame each conversation stream.
 - **`KurrentDBAgentMemory`** + **`AgentMemoryContextProvider`** — fact recall and retention as `FactRetained` events in an `AgentMemory-{app}-{user}` stream, injected into each run as untrusted context.
 - **`FactExtractionService`** / **`run_fact_extraction`** — background persistent subscription over every `AgentSession-*` stream that feeds each `UserMessageReceived` to a pluggable `FactExtractor` and retains the result via `AgentMemory`.
+- **`KurrentDBCheckpointStorage`** — implements MAF's `CheckpointStorage` protocol, persisting `WorkflowCheckpoint`s into `WorkflowCheckpoint-{workflow_name}` streams so long-running workflows can be paused and resumed across process restarts.
+- **`KurrentDBGroupChatRecorder`** — observes a workflow's streamed `WorkflowEvent`s and records canonical `AgentTurnTaken` / `GroupChatCompleted` events into `GroupChat-{chat_id}` for durable, auditable multi-agent coordination.
 
 ## Dependency gotcha (DEV-1495)
 
@@ -93,6 +95,46 @@ If you need per-session scope, cross-tenant shared memory (pass `stream_name=...
 
 See `samples/fact_extraction.py` for a runnable personal-assistant demo.
 
+### Workflow checkpointing
+
+`KurrentDBCheckpointStorage` implements the MAF `CheckpointStorage` protocol. Each checkpoint becomes a `WorkflowCheckpoint` event in a `WorkflowCheckpoint-{workflow_name}` stream, so a long-running workflow can be paused, the process restarted, and the work resumed against the same KurrentDB. Checkpoint state is encoded via the upstream `encode_checkpoint_value` helper, so complex Python objects (including `agent_framework` internal types and OpenAI SDK types) round-trip cleanly.
+
+```python
+from kurrent_agent_framework import KurrentDBCheckpointStorage
+
+storage = KurrentDBCheckpointStorage(client)
+
+# Save
+result = await workflow.run(message, checkpoint_storage=storage)
+
+# …later, possibly in another process — resume from the newest checkpoint
+latest = await storage.get_latest(workflow_name="my_workflow")
+result = await workflow.run(
+    responses={...},
+    checkpoint_id=latest.checkpoint_id,
+    checkpoint_storage=storage,
+)
+```
+
+`delete` is a no-op (KurrentDB streams are append-only); use `list_checkpoint_ids(workflow_name=...)` for cheap indexing, `get_latest(workflow_name=...)` to resume the newest, and `load(checkpoint_id)` to fetch a specific checkpoint — `load` scans via the `$ce-WorkflowCheckpoint` category projection so you don't have to know the originating workflow name. The category projection is eventually consistent, so `load` retries briefly before giving up.
+
+### Multi-agent group-chat recording
+
+`KurrentDBGroupChatRecorder` wraps any workflow's streamed `WorkflowEvent` output, writing canonical `AgentTurnTaken` / `GroupChatCompleted` events to a `GroupChat-{chat_id}` stream. It pairs with `GroupChatBuilder` / `HandoffBuilder` / `MagenticBuilder` / `SequentialBuilder` / `ConcurrentBuilder` from `agent-framework-orchestrations`, and with hand-built `WorkflowBuilder` graphs — the recorder prefers `group_chat` events (which carry `round_index` + `participant_name` explicitly) and falls back to `executor_completed` for patterns that don't emit them:
+
+```python
+from kurrent_agent_framework import KurrentDBGroupChatRecorder
+
+recorder = KurrentDBGroupChatRecorder(client, chat_id="product-review-42")
+
+async for event in recorder.record(workflow.run(task, stream=True)):
+    ...  # consumer still sees every WorkflowEvent in real time
+
+history = await recorder.read_history()  # list[AgentTurnTaken]
+```
+
+This mirrors the MAF .NET `KurrentDBGroupChatManager`. Python's orchestration layer is executor-based (no `GroupChatManager` subclass to override), so the integration point is the workflow event stream rather than strategy-function hooks — the same recorder class works against every orchestration pattern.
+
 ## Event model
 
 Every agent interaction is stored as typed canonical events (from `kurrent_agent_schema`) in an `AgentSession-{id}` stream. A typical session looks like:
@@ -123,6 +165,8 @@ Stream names are built with the shared `kurrent_agent_schema` helpers — never 
 | `AgentSubsession-{parent}-{agent_id}` | `agent_subsession_stream(parent, agent_id)` | Subagent conversation stream (schema v2) |
 | `AgentMemory-{app}-{user}` | `agent_memory_stream(app, user)` | Retained facts, per app + user |
 | `EvalRun-{id}` | `eval_run_stream(id)` | Eval scores for a session |
+| `WorkflowCheckpoint-{workflow_name}` | `workflow_checkpoint_stream(name)` | MAF workflow checkpoints (AFW-only) |
+| `GroupChat-{chat_id}` | `group_chat_stream(chat_id)` | Multi-agent turn history (AFW-only) |
 
 ## Run tests
 

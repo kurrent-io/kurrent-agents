@@ -28,6 +28,10 @@ dev = [
   "pytest-asyncio >= 0.23",
   "ruff >= 0.6",
   "kurrent-agents-testing",
+  # Required by test_workflows.py — exercises KurrentDBGroupChatRecorder
+  # against GroupChatResponseReceivedEvent, which the orchestrations package
+  # ships (`from agent_framework_orchestrations import ...`).
+  "agent-framework-orchestrations",
 ]
 
 [tool.hatch.build.targets.wheel]
