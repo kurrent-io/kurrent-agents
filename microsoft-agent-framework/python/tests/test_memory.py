@@ -192,16 +192,22 @@ def test_empty_identifiers_rejected(app_name: str, user_id: str) -> None:
         KurrentDBAgentMemory(client, app_name=app_name, user_id=user_id)  # type: ignore[arg-type]
 
 
-def test_empty_identifiers_allowed_when_stream_name_overrides() -> None:
-    """The override bypasses the canonical builder; the ids are never consulted."""
+def test_stream_name_override_does_not_require_identifiers() -> None:
+    """The override bypasses the canonical builder, so app_name/user_id are optional."""
     client = FakeClient()
     memory = KurrentDBAgentMemory(  # type: ignore[arg-type]
         client,
-        app_name="",
-        user_id="",
         stream_name="AgentMemory-explicit",
     )
     assert memory._stream_name == "AgentMemory-explicit"
+
+
+def test_missing_identifiers_rejected_without_stream_name() -> None:
+    """Without a stream_name override, both ids must be supplied — otherwise we'd
+    build a degenerate canonical stream."""
+    client = FakeClient()
+    with pytest.raises(ValueError):
+        KurrentDBAgentMemory(client)  # type: ignore[arg-type]
 
 
 async def test_custom_stream_name_override() -> None:

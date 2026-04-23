@@ -52,37 +52,40 @@ class KurrentDBAgentMemory:
     read back newest-first on recall. No indexing, no embeddings — the LLM is
     expected to do the relevance matching itself.
 
-    **Scope.** Facts land in ``AgentMemory-{app_name}-{user_id}`` (see
+    **Scope.** By default, facts land in ``AgentMemory-{app_name}-{user_id}`` (see
     ``SCHEMA_v2.md §2.1``), matching the canonical convention used by every other
     integration in this monorepo. Pass ``stream_name`` to override — e.g. a
-    deliberately shared cross-tenant stream or a custom scope.
+    deliberately shared cross-tenant stream or a custom scope — in which case
+    ``app_name`` and ``user_id`` are not needed.
 
     Args:
         client: Async KurrentDB client.
-        app_name: Application identifier for the memory stream.
-        user_id: User identifier for the memory stream.
-        stream_name: Explicit stream override; bypasses the canonical builder.
+        app_name: Application identifier. Required unless ``stream_name`` is set.
+        user_id: User identifier. Required unless ``stream_name`` is set.
+        stream_name: Explicit stream override; bypasses the canonical builder and
+            makes ``app_name`` / ``user_id`` unnecessary.
     """
 
     def __init__(
         self,
         client: AsyncKurrentDBClient,
         *,
-        app_name: str,
-        user_id: str,
+        app_name: str | None = None,
+        user_id: str | None = None,
         stream_name: str | None = None,
     ) -> None:
         self._client = client
-        if stream_name is None:
-            # Empty identifiers would silently collapse per-tenant scope into a
-            # shared stream (e.g. ``AgentMemory--``), so reject them at the boundary.
-            if not app_name or not app_name.strip():
-                raise ValueError("app_name must be a non-empty, non-whitespace string")
-            if not user_id or not user_id.strip():
-                raise ValueError("user_id must be a non-empty, non-whitespace string")
-            self._stream_name = agent_memory_stream(app_name, user_id)
-        else:
+        if stream_name is not None:
             self._stream_name = stream_name
+            return
+
+        # Canonical path: empty identifiers would silently collapse per-tenant
+        # scope into a shared stream (e.g. ``AgentMemory--``), so reject them.
+        if app_name is None or not app_name.strip():
+            raise ValueError("app_name must be a non-empty, non-whitespace string (or pass stream_name)")
+        if user_id is None or not user_id.strip():
+            raise ValueError("user_id must be a non-empty, non-whitespace string (or pass stream_name)")
+        self._stream_name = agent_memory_stream(app_name, user_id)
 
     async def recall(self, query: str) -> AsyncIterator[str]:
         """Yield every retained fact, newest first. ``query`` is ignored.
