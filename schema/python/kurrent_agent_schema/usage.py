@@ -9,6 +9,8 @@ See ``schema/SCHEMA_v2.md §3.6``.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 USAGE_METADATA_KEY: str = "$usage"
@@ -20,6 +22,11 @@ class TokenUsage(BaseModel):
 
     All fields optional — providers differ in which counts they return.
     For ``AssistantThinkingGenerated``, populate ``reasoning_tokens``.
+    Provider-specific counters that don't map onto the canonical slots
+    (Anthropic's ``cache_creation_input_tokens`` / ``server_tool_use`` /
+    ``service_tier``, OpenAI's reasoning breakdown, …) ride in
+    ``additional_counts``. MAF .NET already emits this field via
+    ``UsageDetails.AdditionalCounts``.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore", frozen=True)
@@ -30,3 +37,4 @@ class TokenUsage(BaseModel):
     cached_input_tokens: int | None = None
     reasoning_tokens: int | None = None
     model: str | None = None
+    additional_counts: dict[str, Any] | None = None
