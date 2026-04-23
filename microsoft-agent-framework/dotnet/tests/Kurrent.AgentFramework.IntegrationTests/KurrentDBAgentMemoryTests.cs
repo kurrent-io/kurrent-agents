@@ -1,4 +1,7 @@
+using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Memory;
+using KurrentDB.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurrent.AgentFramework.IntegrationTests;
 
@@ -130,6 +133,27 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
 
         var recalled = await Collect(memory.RecallAsync(""));
         await Assert.That(recalled).IsEquivalentTo(new[] { "scoped fact" });
+    }
+
+    [Test]
+    public async Task AddKurrentAgentMemory_StreamNameOnly_RegistersSharedMemoryWithoutIds() {
+        // Regression for the DI-vs-docs mismatch: the extension must allow registering
+        // a shared / cross-tenant memory instance using only streamName, matching the
+        // constructor's escape-hatch semantics.
+        using var client = db.CreateClient();
+        var streamName   = $"AgentMemory-shared-{Guid.NewGuid():N}";
+
+        var services = new ServiceCollection();
+        services.AddSingleton(client);
+        services.AddKurrentAgentMemory(streamName: streamName);
+
+        await using var sp = services.BuildServiceProvider();
+        var memory         = sp.GetRequiredService<IAgentMemory>();
+
+        await memory.RetainAsync("shared fact");
+        var recalled = await Collect(memory.RecallAsync(""));
+
+        await Assert.That(recalled).IsEquivalentTo(new[] { "shared fact" });
     }
 
     [Test]

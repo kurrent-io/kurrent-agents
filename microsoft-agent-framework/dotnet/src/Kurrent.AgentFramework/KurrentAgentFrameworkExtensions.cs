@@ -32,8 +32,14 @@ public static class KurrentAgentFrameworkExtensions {
         /// <see cref="IAgentMemory"/> before calling this method, or use that
         /// backend's dedicated extension.
         /// </summary>
-        /// <param name="appName">Application identifier — the canonical per-tenant scope.</param>
-        /// <param name="userId">User identifier — the canonical per-tenant scope.</param>
+        /// <param name="appName">
+        /// Application identifier — the canonical per-tenant scope. Required unless
+        /// <paramref name="streamName"/> is set.
+        /// </param>
+        /// <param name="userId">
+        /// User identifier — the canonical per-tenant scope. Required unless
+        /// <paramref name="streamName"/> is set.
+        /// </param>
         /// <param name="factExtractor">
         /// Optional pluggable fact extraction logic. Receives a user message, returns zero or
         /// more facts to retain. If null, no automatic fact extraction runs (facts can still
@@ -45,11 +51,12 @@ public static class KurrentAgentFrameworkExtensions {
         /// </param>
         /// <param name="streamName">
         /// Optional explicit stream override — bypasses the canonical builder for a
-        /// deliberately shared cross-tenant stream or a custom scope.
+        /// deliberately shared cross-tenant stream or a custom scope. When set,
+        /// <paramref name="appName"/> and <paramref name="userId"/> are not needed.
         /// </param>
         public IServiceCollection AddKurrentAgentMemory(
-            string                 appName,
-            string                 userId,
+            string?                appName                = null,
+            string?                userId                 = null,
             FactExtractor?         factExtractor          = null,
             FactExtractionOptions? factExtractionOptions  = null,
             string?                streamName             = null
