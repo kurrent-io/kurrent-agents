@@ -15,8 +15,8 @@ namespace Kurrent.Agent.Schema;
 /// </para>
 /// <para>
 /// <c>AdditionalCounts</c> is modelled as a <see cref="JsonObject"/> rather
-/// than an <c>IDictionary</c> on purpose: the shared <see cref="SchemaJsonOptions"/>
-/// apply <c>DictionaryKeyPolicy = SnakeCaseLower</c>, which would rewrite
+/// than an <c>IDictionary</c> on purpose: <see cref="SchemaJsonOptions.Default"/>
+/// applies <c>DictionaryKeyPolicy = SnakeCaseLower</c>, which would rewrite
 /// provider-specific keys on write. Using <see cref="JsonObject"/> bypasses
 /// that policy and preserves keys byte-for-byte, matching Python's
 /// <c>dict[str, Any]</c> behaviour for cross-language round-trip parity.
