@@ -41,6 +41,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_framework import WorkflowCheckpoint, WorkflowEvent
+
+# ``_checkpoint_encoding`` is under a private module path (leading underscore),
+# but it is the same helper the upstream ``FileCheckpointStorage`` relies on —
+# there's no public re-export. Pinning ``agent-framework-core >= 1.1.0`` in
+# pyproject.toml keeps this aligned with the version we've validated against;
+# if upstream moves/renames the module this import will fail fast at startup.
 from agent_framework._workflows._checkpoint_encoding import (
     decode_checkpoint_value,
     encode_checkpoint_value,
@@ -260,12 +266,15 @@ class KurrentDBCheckpointStorage:
 
         Uses the built-in ``$ce-WorkflowCheckpoint`` category stream so we scan
         once across every workflow's checkpoint stream instead of iterating
-        them sequentially.
+        them sequentially. Reads newest-first so retries don't repeatedly
+        rescan the oldest history on each attempt (a newly-saved checkpoint
+        lands at the end of the category stream).
         """
         try:
             response = await self._client.read_stream(
                 stream_name=f"$ce-{WORKFLOW_CHECKPOINT_STREAM_PREFIX.rstrip('-')}",
                 resolve_links=True,
+                backwards=True,
             )
             async for recorded in response:
                 if not recorded.metadata:
@@ -519,7 +528,15 @@ def _turn_from_event(event: WorkflowEvent[Any]) -> tuple[str, int | None] | None
         if type(data).__name__ != "GroupChatResponseReceivedEvent":
             return None
         round_index = getattr(data, "round_index", None)
-        return (str(participant), int(round_index) if round_index is not None else None)
+        if round_index is None:
+            return (str(participant), None)
+        # Defensive: if an upstream payload ever carries a non-int round_index,
+        # fall through to the recorder's fallback numbering rather than crash
+        # the whole event stream.
+        try:
+            return (str(participant), int(round_index))
+        except (TypeError, ValueError):
+            return (str(participant), None)
 
     if event.type == "executor_completed" and event.executor_id:
         return (event.executor_id, None)

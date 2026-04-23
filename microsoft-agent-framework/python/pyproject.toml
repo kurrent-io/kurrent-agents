@@ -29,8 +29,8 @@ dev = [
   "ruff >= 0.6",
   "kurrent-agents-testing",
   # Required by test_workflows.py — exercises KurrentDBGroupChatRecorder
-  # against GroupChatResponseReceivedEvent, which only agent-framework's
-  # orchestrations extra ships (`from agent_framework.orchestrations import ...`).
+  # against GroupChatResponseReceivedEvent, which the orchestrations package
+  # ships (`from agent_framework_orchestrations import ...`).
   "agent-framework-orchestrations",
 ]
 

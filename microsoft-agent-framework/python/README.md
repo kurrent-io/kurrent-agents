@@ -104,10 +104,16 @@ from kurrent_agent_framework import KurrentDBCheckpointStorage
 
 storage = KurrentDBCheckpointStorage(client)
 
-# Save / resume a workflow
+# Save
 result = await workflow.run(message, checkpoint_storage=storage)
-# …later, possibly in another process:
-result = await workflow.run(responses={...}, checkpoint_id=cp_id, checkpoint_storage=storage)
+
+# …later, possibly in another process — resume from the newest checkpoint
+latest = await storage.get_latest(workflow_name="my_workflow")
+result = await workflow.run(
+    responses={...},
+    checkpoint_id=latest.checkpoint_id,
+    checkpoint_storage=storage,
+)
 ```
 
 `delete` is a no-op (KurrentDB streams are append-only); use `list_checkpoint_ids(workflow_name=...)` for cheap indexing, `get_latest(workflow_name=...)` to resume the newest, and `load(checkpoint_id)` to fetch a specific checkpoint — `load` scans via the `$ce-WorkflowCheckpoint` category projection so you don't have to know the originating workflow name. The category projection is eventually consistent, so `load` retries briefly before giving up.

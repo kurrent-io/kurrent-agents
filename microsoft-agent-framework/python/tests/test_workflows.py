@@ -221,11 +221,10 @@ async def test_delete_returns_false_and_is_noop(
 
 
 def _group_chat_response_event(participant: str, round_index: int) -> WorkflowEvent[Any]:
-    """Build a WorkflowEvent that looks like what GroupChatOrchestrator emits.
+    """Build a WorkflowEvent shaped like what ``GroupChatOrchestrator`` emits.
 
-    We reach into ``agent_framework_orchestrations`` lazily because the
-    orchestrations package is an optional-extra; tests that use this helper
-    will be skipped in environments where it isn't installed.
+    ``agent_framework_orchestrations`` is pulled in as a ``[dev]`` extra —
+    tests that use this helper require ``pip install -e ".[dev]"``.
     """
     from agent_framework_orchestrations import GroupChatResponseReceivedEvent
 
