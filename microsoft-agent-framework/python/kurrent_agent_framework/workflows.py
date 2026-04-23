@@ -65,12 +65,24 @@ _PREVIOUS_CHECKPOINT_META_KEY: str = "$previousCheckpointId"
 
 
 def workflow_checkpoint_stream(workflow_name: str) -> str:
-    """Stream name for workflow checkpoints scoped to a workflow definition."""
+    """Stream name for workflow checkpoints scoped to a workflow definition.
+
+    Rejects empty / whitespace-only names so independent workflows can't
+    silently collapse into a shared ``WorkflowCheckpoint-`` stream — the same
+    guard :class:`KurrentDBAgentMemory` applies to app/user identifiers.
+    """
+    if workflow_name is None or not workflow_name.strip():
+        raise ValueError("workflow_name must be a non-empty, non-whitespace string")
     return f"{WORKFLOW_CHECKPOINT_STREAM_PREFIX}{workflow_name}"
 
 
 def group_chat_stream(chat_id: str) -> str:
-    """Stream name for a multi-agent group chat's turn history."""
+    """Stream name for a multi-agent group chat's turn history.
+
+    Rejects empty / whitespace-only ids — see :func:`workflow_checkpoint_stream`.
+    """
+    if chat_id is None or not chat_id.strip():
+        raise ValueError("chat_id must be a non-empty, non-whitespace string")
     return f"{GROUP_CHAT_STREAM_PREFIX}{chat_id}"
 
 
@@ -157,13 +169,14 @@ class KurrentDBCheckpointStorage:
         write-then-resume-immediately (e.g. in tests) needs the grace
         period.
         """
-        deadline = asyncio.get_event_loop().time() + resolve_timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + resolve_timeout
         delay = 0.05
         while True:
             checkpoint = await self._find_checkpoint(checkpoint_id)
             if checkpoint is not None:
                 return checkpoint
-            if asyncio.get_event_loop().time() >= deadline:
+            if loop.time() >= deadline:
                 break
             await asyncio.sleep(delay)
             delay = min(delay * 2, 0.5)
@@ -356,6 +369,7 @@ class KurrentDBGroupChatRecorder:
         self._chat_id = chat_id
         self._stream = group_chat_stream(chat_id)
         self._round_counter = 0
+        self._counter_primed = False
 
     async def record(
         self,
@@ -374,14 +388,40 @@ class KurrentDBGroupChatRecorder:
             if turn is not None:
                 participant, round_index = turn
                 if round_index is None:
+                    # Fallback (executor_completed) path has no explicit index.
+                    # Prime from the stream on first use so that restarting a
+                    # recorder for an existing chat_id continues numbering
+                    # instead of colliding with existing AgentTurnTaken turns.
+                    if not self._counter_primed:
+                        await self._prime_round_counter()
                     round_index = self._round_counter
                     self._round_counter += 1
                 else:
                     self._round_counter = max(self._round_counter, round_index + 1)
+                    self._counter_primed = True
                 await self._append_turn(participant, round_index)
             yield event
 
         await self._append_completion(completion_reason)
+
+    async def _prime_round_counter(self) -> None:
+        """Read the newest ``AgentTurnTaken`` and continue numbering from it."""
+        self._counter_primed = True
+        try:
+            response = await self._client.read_stream(stream_name=self._stream, backwards=True)
+            async for recorded in response:
+                if recorded.type != AGENT_TURN_TAKEN_EVENT_TYPE:
+                    continue
+                try:
+                    payload = json.loads(recorded.data) if recorded.data else {}
+                    round_index = int(payload.get("round_index", -1))
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                if round_index >= 0:
+                    self._round_counter = round_index + 1
+                    return
+        except NotFoundError:
+            return
 
     async def read_history(self) -> list[AgentTurnTaken]:
         """Read every ``AgentTurnTaken`` back from the chat's KurrentDB stream."""
@@ -401,10 +441,19 @@ class KurrentDBGroupChatRecorder:
                     parsed_ts = datetime.fromisoformat(timestamp) if isinstance(timestamp, str) else datetime.now(UTC)
                 except ValueError:
                     parsed_ts = datetime.now(UTC)
+                try:
+                    round_index = int(payload.get("round_index", 0))
+                except (TypeError, ValueError):
+                    # Skip turns with malformed round_index rather than aborting
+                    # the whole read — same defensive stance as the JSON guard.
+                    continue
+                participant = payload.get("participant_name")
+                if not isinstance(participant, str):
+                    continue
                 turns.append(
                     AgentTurnTaken(
-                        participant_name=str(payload.get("participant_name", "")),
-                        round_index=int(payload.get("round_index", 0)),
+                        participant_name=participant,
+                        round_index=round_index,
                         timestamp=parsed_ts,
                     )
                 )

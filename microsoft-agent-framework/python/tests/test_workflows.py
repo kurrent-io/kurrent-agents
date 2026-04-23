@@ -339,6 +339,45 @@ async def test_read_history_returns_empty_for_unknown_chat(
     assert history == []
 
 
+async def test_recorder_resumes_round_counter_across_restarts(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    """When only fallback (``executor_completed``) events drive the counter, a
+    second recorder for the same ``chat_id`` must continue numbering from the
+    last stored turn rather than starting back at 0."""
+    chat_id = uuid.uuid4().hex
+
+    first = KurrentDBGroupChatRecorder(kurrentdb_client, chat_id=chat_id)
+    async for _ in first.record(
+        _StaticEvents([WorkflowEvent.executor_completed("writer"), WorkflowEvent.executor_completed("reviewer")])
+    ):
+        pass
+
+    second = KurrentDBGroupChatRecorder(kurrentdb_client, chat_id=chat_id)
+    async for _ in second.record(_StaticEvents([WorkflowEvent.executor_completed("editor")])):
+        pass
+
+    history = await second.read_history()
+
+    assert [t.round_index for t in history] == [0, 1, 2]
+    assert [t.participant_name for t in history] == ["writer", "reviewer", "editor"]
+
+
+async def test_stream_name_builders_reject_blank_identifiers() -> None:
+    """Empty / whitespace-only ids would silently collapse independent
+    workflows or chats into a shared stream — same guard as memory.py."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        workflow_checkpoint_stream("")
+    with pytest.raises(ValueError):
+        workflow_checkpoint_stream("   ")
+    with pytest.raises(ValueError):
+        group_chat_stream("")
+    with pytest.raises(ValueError):
+        group_chat_stream("\t")
+
+
 async def test_read_history_round_trip_preserves_turn_fields(
     kurrentdb_client: AsyncKurrentDBClient,
 ) -> None:
