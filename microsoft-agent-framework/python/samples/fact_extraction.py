@@ -22,7 +22,7 @@ import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-from kurrent_agent_schema import UserMessageReceived, agent_session_stream
+from kurrent_agent_schema import UserMessageReceived, agent_memory_stream, agent_session_stream
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_agent_framework import (
@@ -57,9 +57,7 @@ def personal_fact_extractor(message: str) -> Iterable[str]:
             yield template.format(extracted)
 
 
-async def _append_user_message(
-    client: AsyncKurrentDBClient, stream: str, index: int, content: str
-) -> None:
+async def _append_user_message(client: AsyncKurrentDBClient, stream: str, index: int, content: str) -> None:
     now = datetime.now(UTC)
     await client.append_to_stream(
         stream,
@@ -85,8 +83,10 @@ async def main() -> None:
 
     session_id = uuid.uuid4().hex
     stream = agent_session_stream(session_id)
-    memory_stream = f"AgentMemory-demo-{session_id}"
-    memory = KurrentDBAgentMemory(client, stream_name=memory_stream)
+    app_name = "demo"
+    user_id = session_id
+    memory_stream = agent_memory_stream(app_name, user_id)
+    memory = KurrentDBAgentMemory(client, app_name=app_name, user_id=user_id)
 
     try:
         # Fresh group + start_from_end keeps this demo self-contained: it only

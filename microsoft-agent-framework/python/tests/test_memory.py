@@ -87,17 +87,24 @@ class FakeClient:
 # --- KurrentDBAgentMemory ----------------------------------------------------
 
 
+_DEFAULT_STREAM = "AgentMemory-app1-user1"
+
+
+def _make_memory(client: FakeClient) -> KurrentDBAgentMemory:
+    return KurrentDBAgentMemory(client, app_name="app1", user_id="user1")  # type: ignore[arg-type]
+
+
 async def _collect(aiter: AsyncIterator[str]) -> list[str]:
     return [x async for x in aiter]
 
 
 async def test_retain_appends_fact_retained_event() -> None:
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     await memory.retain("user prefers concise answers")
 
-    events = client.streams["AgentMemory"]
+    events = client.streams[_DEFAULT_STREAM]
     assert len(events) == 1
     assert events[0].type == "FactRetained"
     payload = json.loads(events[0].data)
@@ -105,9 +112,20 @@ async def test_retain_appends_fact_retained_event() -> None:
     assert "retained_at" in payload
 
 
+async def test_default_stream_follows_canonical_convention() -> None:
+    """SCHEMA_v2 §2.1: facts land in AgentMemory-{app}-{user}."""
+    client = FakeClient()
+    memory = KurrentDBAgentMemory(client, app_name="my-app", user_id="alice")  # type: ignore[arg-type]
+
+    await memory.retain("hello")
+
+    assert "AgentMemory-my-app-alice" in client.streams
+    assert "AgentMemory" not in client.streams
+
+
 async def test_recall_returns_facts_newest_first() -> None:
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     await memory.retain("fact one")
     await memory.retain("fact two")
@@ -119,7 +137,7 @@ async def test_recall_returns_facts_newest_first() -> None:
 
 async def test_recall_on_missing_stream_yields_nothing() -> None:
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     recalled = await _collect(memory.recall("q"))
     assert recalled == []
@@ -127,22 +145,22 @@ async def test_recall_on_missing_stream_yields_nothing() -> None:
 
 async def test_retain_ignores_empty_fact() -> None:
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     await memory.retain("")
     await memory.retain("   ")
 
-    assert "AgentMemory" not in client.streams
+    assert _DEFAULT_STREAM not in client.streams
 
 
 async def test_recall_skips_unrelated_events() -> None:
     """A stream mixing FactRetained with other event types should only surface facts."""
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     # Hand-craft an unrelated event in the same stream.
     await client.append_to_stream(
-        stream_name="AgentMemory",
+        stream_name=_DEFAULT_STREAM,
         current_version=None,
         events=[
             NewEvent(
@@ -157,30 +175,72 @@ async def test_recall_skips_unrelated_events() -> None:
     assert recalled == ["the real fact"]
 
 
-async def test_custom_stream_name() -> None:
+@pytest.mark.parametrize(
+    "app_name,user_id",
+    [
+        ("", "user1"),
+        ("   ", "user1"),
+        ("app1", ""),
+        ("app1", "\t"),
+    ],
+)
+def test_empty_identifiers_rejected(app_name: str, user_id: str) -> None:
+    """Blank identifiers would collapse tenant isolation into `AgentMemory--`-style
+    streams — reject at the boundary rather than silently sharing memory."""
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client, stream_name="AgentMemory-tenant-42")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        KurrentDBAgentMemory(client, app_name=app_name, user_id=user_id)  # type: ignore[arg-type]
+
+
+def test_stream_name_override_does_not_require_identifiers() -> None:
+    """The override bypasses the canonical builder, so app_name/user_id are optional."""
+    client = FakeClient()
+    memory = KurrentDBAgentMemory(  # type: ignore[arg-type]
+        client,
+        stream_name="AgentMemory-explicit",
+    )
+    assert memory._stream_name == "AgentMemory-explicit"
+
+
+def test_missing_identifiers_rejected_without_stream_name() -> None:
+    """Without a stream_name override, both ids must be supplied — otherwise we'd
+    build a degenerate canonical stream."""
+    client = FakeClient()
+    with pytest.raises(ValueError):
+        KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+
+
+async def test_custom_stream_name_override() -> None:
+    """The stream_name override bypasses the canonical builder — the escape hatch for
+    deliberately shared / cross-tenant memory."""
+    client = FakeClient()
+    memory = KurrentDBAgentMemory(  # type: ignore[arg-type]
+        client,
+        app_name="app1",
+        user_id="user1",
+        stream_name="AgentMemory-global",
+    )
 
     await memory.retain("scoped fact")
 
-    assert "AgentMemory-tenant-42" in client.streams
-    assert "AgentMemory" not in client.streams
+    assert "AgentMemory-global" in client.streams
+    assert _DEFAULT_STREAM not in client.streams
 
 
 async def test_recall_skips_malformed_fact_events() -> None:
     """Matches the C# defensive JsonException handling: bad payloads are skipped, not fatal."""
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
 
     # Broken JSON for a known event type
     await client.append_to_stream(
-        stream_name="AgentMemory",
+        stream_name=_DEFAULT_STREAM,
         current_version=None,
         events=[NewEvent(type="FactRetained", data=b"not json at all")],
     )
     # Valid JSON but missing required 'fact' field
     await client.append_to_stream(
-        stream_name="AgentMemory",
+        stream_name=_DEFAULT_STREAM,
         current_version=None,
         events=[NewEvent(type="FactRetained", data=b'{"retained_at":"2026-04-13T12:00:00Z"}')],
     )
@@ -192,7 +252,7 @@ async def test_recall_skips_malformed_fact_events() -> None:
 
 def test_agent_memory_protocol_structural_check() -> None:
     client = FakeClient()
-    memory = KurrentDBAgentMemory(client)  # type: ignore[arg-type]
+    memory = _make_memory(client)
     assert isinstance(memory, AgentMemory)
 
 
@@ -216,10 +276,7 @@ class _FakeMemory:
 
 
 def _ctx(user_texts: list[str]) -> SessionContext:
-    messages = [
-        Message(role="user", contents=[Content(type="text", text=text)])
-        for text in user_texts
-    ]
+    messages = [Message(role="user", contents=[Content(type="text", text=text)]) for text in user_texts]
     return SessionContext(session_id="s1", input_messages=messages)
 
 
