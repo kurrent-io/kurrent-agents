@@ -21,7 +21,7 @@ The SDK's `SessionStore` protocol has two required methods and four optional:
 | Method | Required? | Our implementation |
 |---|---|---|
 | `append(key, entries)` | ✅ | Wrap each entry as a `ClaudeSDKEntry` event; append to `AgentSession-{session_id}` for the main transcript or `AgentSession-{session_id}__{normalised_subpath}` for subagents (see §5). Exceptions are logged — subprocess keeps running per SDK contract. |
-| `load(key)` | ✅ | Read every `ClaudeSDKEntry` from the stream for `key` (same naming rule as `append`); return `entry.raw_entry` dicts in stream order. Returns `None` if the stream doesn't exist. |
+| `load(key)` | ✅ | Read every `ClaudeSDKEntry` from the stream for `key` (same naming rule as `append`); return `entry.raw_entry` dicts in stream order. Returns `None` when no entries exist for `key` — the stream is missing, has no `ClaudeSDKEntry` events at all, or no entries match the requested `subpath` scope. |
 | `list_sessions(project_key)` | Optional | **Absent** — the SDK probes via `hasattr` and skips when missing. Follow-up can wire this to a `$ce-AgentSession` projection. |
 | `list_session_summaries(project_key)` | Optional | **Absent.** Added in SDK 0.1.65 for incrementally-maintained summaries computed inside `append()`. Adding it means giving up at-most-once/fire-and-forget semantics, so deferred. |
 | `delete(key)` | Optional | **Absent** — no-op per SDK contract for append-only stores. A future tombstone-marker event could fulfil it without breaking the append-only invariant. |
