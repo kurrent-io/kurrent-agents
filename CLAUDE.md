@@ -25,7 +25,7 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 
 - **Canonical events are lingua franca.** `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived` must match `SCHEMA.md §3` exactly. Framework-specific shapes go in `extensions.<framework>.*` or in a distinct event type (`OpenAIItem`, `ClaudeSDKEntry`, `StrandsAgentState`, …).
 - **`app_name` / `user_id` are constructor kwargs.** SDKs that don't have these concepts (Strands, OpenAI Agents, Claude SDK) take them as explicit configuration. See `SCHEMA.md §5.3`.
-- **Token usage rides on `$usage` KurrentDB event metadata**, not in payload. Field-name shims (e.g. Strands' `inputTokens` → canonical `input_tokens`) live in each integration's write path.
+- **Token usage rides on `$usage` KurrentDB event metadata**, not in payload. Field-name shims (e.g. Strands' `inputTokens` → canonical `input_tokens`) live in each integration's write path. When adding a new integration, fold known upstream keys into canonical `$usage` slots (`cached_input_tokens`, `reasoning_tokens`, …) — `additional_counts` is for counters with no canonical home, not a dumping ground. See `SCHEMA.md §3.4.1` for the per-SDK translation table.
 - **Sync vs async clients.** ADK uses `AsyncKurrentDBClient` (ADK is async-native). Strands uses sync `KurrentDBClient` (its `SessionManager` hooks are sync). Follow the upstream SDK's style.
 - **Concurrency.** Only ADK implements optimistic-concurrency today (last-seen-revision + one retry on `WrongExpectedVersion`). Other integrations use `StreamState.ANY` until a concrete contention case appears.
 

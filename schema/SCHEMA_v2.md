@@ -201,6 +201,8 @@ Schema unchanged from v1 §3.4, including the open `additional_counts` bucket fo
 }
 ```
 
+See v1 §3.4.1 for the SDK-specific translation table — new integrations should fold known upstream keys into canonical slots and reserve `additional_counts` for genuinely unmapped counters, rather than copying the source dict wholesale.
+
 ### 3.7 Memory, artifacts, evaluation (unchanged)
 
 `FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted` / `TurnScored` / `EvalRunCompleted` — identical to v1 §3.5–§3.7. Capacitor does not emit these today but is expected to adopt them as it grows beyond session tracing.
