@@ -54,7 +54,7 @@ agent = Agent(
 
 ### Background fact extraction
 
-`FactExtractionService` subscribes to **every** `AgentSession-*` stream and feeds each `UserMessageReceived` to the extractor you pass in. `KurrentDBAgentMemory` scopes facts per app + user by default (`AgentMemory-{app_name}-{user_id}`, per `SCHEMA_v2.md §3.7`):
+`FactExtractionService` subscribes to **every** `AgentSession-*` stream and feeds each `UserMessageReceived` to the extractor you pass in. `KurrentDBAgentMemory` scopes facts per app + user by default (`AgentMemory-{app_name}-{user_id}`, per `SCHEMA_v2.md §2.1`):
 
 ```python
 from kurrent_agent_framework import (

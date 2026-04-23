@@ -28,7 +28,7 @@ def agent_subsession_stream(parent_session_id: str, agent_id: str) -> str:
 def agent_memory_stream(app_name: str, user_id: str) -> str:
     """Per-app, per-user retained facts. v1 default scope.
 
-    See ``schema/SCHEMA_v2.md §3.7`` (inherited from v1 §3.6).
+    See ``schema/SCHEMA_v2.md §2.1`` (Stream layout).
     """
     return f"{AGENT_MEMORY_PREFIX}{app_name}-{user_id}"
 

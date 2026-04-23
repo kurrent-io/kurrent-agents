@@ -53,7 +53,7 @@ class KurrentDBAgentMemory:
     expected to do the relevance matching itself.
 
     **Scope.** Facts land in ``AgentMemory-{app_name}-{user_id}`` (see
-    ``SCHEMA_v2.md §3.7``), matching the canonical convention used by every other
+    ``SCHEMA_v2.md §2.1``), matching the canonical convention used by every other
     integration in this monorepo. Pass ``stream_name`` to override — e.g. a
     deliberately shared cross-tenant stream or a custom scope.
 
@@ -73,7 +73,16 @@ class KurrentDBAgentMemory:
         stream_name: str | None = None,
     ) -> None:
         self._client = client
-        self._stream_name = stream_name if stream_name is not None else agent_memory_stream(app_name, user_id)
+        if stream_name is None:
+            # Empty identifiers would silently collapse per-tenant scope into a
+            # shared stream (e.g. ``AgentMemory--``), so reject them at the boundary.
+            if not app_name or not app_name.strip():
+                raise ValueError("app_name must be a non-empty, non-whitespace string")
+            if not user_id or not user_id.strip():
+                raise ValueError("user_id must be a non-empty, non-whitespace string")
+            self._stream_name = agent_memory_stream(app_name, user_id)
+        else:
+            self._stream_name = stream_name
 
     async def recall(self, query: str) -> AsyncIterator[str]:
         """Yield every retained fact, newest first. ``query`` is ignored.

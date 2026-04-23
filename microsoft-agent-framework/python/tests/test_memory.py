@@ -113,7 +113,7 @@ async def test_retain_appends_fact_retained_event() -> None:
 
 
 async def test_default_stream_follows_canonical_convention() -> None:
-    """SCHEMA_v2 §3.7: facts land in AgentMemory-{app}-{user}."""
+    """SCHEMA_v2 §2.1: facts land in AgentMemory-{app}-{user}."""
     client = FakeClient()
     memory = KurrentDBAgentMemory(client, app_name="my-app", user_id="alice")  # type: ignore[arg-type]
 
@@ -173,6 +173,35 @@ async def test_recall_skips_unrelated_events() -> None:
 
     recalled = await _collect(memory.recall("q"))
     assert recalled == ["the real fact"]
+
+
+@pytest.mark.parametrize(
+    "app_name,user_id",
+    [
+        ("", "user1"),
+        ("   ", "user1"),
+        ("app1", ""),
+        ("app1", "\t"),
+    ],
+)
+def test_empty_identifiers_rejected(app_name: str, user_id: str) -> None:
+    """Blank identifiers would collapse tenant isolation into `AgentMemory--`-style
+    streams — reject at the boundary rather than silently sharing memory."""
+    client = FakeClient()
+    with pytest.raises(ValueError):
+        KurrentDBAgentMemory(client, app_name=app_name, user_id=user_id)  # type: ignore[arg-type]
+
+
+def test_empty_identifiers_allowed_when_stream_name_overrides() -> None:
+    """The override bypasses the canonical builder; the ids are never consulted."""
+    client = FakeClient()
+    memory = KurrentDBAgentMemory(  # type: ignore[arg-type]
+        client,
+        app_name="",
+        user_id="",
+        stream_name="AgentMemory-explicit",
+    )
+    assert memory._stream_name == "AgentMemory-explicit"
 
 
 async def test_custom_stream_name_override() -> None:
