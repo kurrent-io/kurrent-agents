@@ -122,6 +122,19 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     }
 
     [Test]
+    [Arguments("")]
+    [Arguments("   ")]
+    [Arguments("\t")]
+    public async Task StreamName_BlankOverride_Rejected(string blankStreamName) {
+        // Fail fast at the boundary rather than pushing a blank stream name through
+        // to KurrentDB where it surfaces as an opaque error on first append.
+        using var client = db.CreateClient();
+
+        await Assert.That(() => new KurrentDBAgentMemory(client, streamName: blankStreamName))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task StreamName_Override_BypassesIdentifierValidation() {
         // The override is the escape hatch for deliberately shared / cross-tenant
         // memory; appName/userId are irrelevant once it's set.
@@ -163,12 +176,12 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
         var overrideStream    = $"AgentMemory-override-{Guid.NewGuid():N}";
 
         var canonical = new KurrentDBAgentMemory(client, appName, userId);
-        var overriden = new KurrentDBAgentMemory(client, appName, userId, streamName: overrideStream);
+        var overridden = new KurrentDBAgentMemory(client, appName, userId, streamName: overrideStream);
 
         await canonical.RetainAsync("in-canonical");
-        await overriden.RetainAsync("in-override");
+        await overridden.RetainAsync("in-override");
 
         await Assert.That(await Collect(canonical.RecallAsync(""))).IsEquivalentTo(new[] { "in-canonical" });
-        await Assert.That(await Collect(overriden.RecallAsync(""))).IsEquivalentTo(new[] { "in-override" });
+        await Assert.That(await Collect(overridden.RecallAsync(""))).IsEquivalentTo(new[] { "in-override" });
     }
 }

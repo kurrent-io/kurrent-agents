@@ -34,6 +34,10 @@ public sealed class KurrentDBAgentMemory : IAgentMemory {
         _client = client;
 
         if (streamName is not null) {
+            // Reject blank overrides at the boundary — an empty stream name would
+            // otherwise surface as an opaque KurrentDB error on the first append.
+            if (string.IsNullOrWhiteSpace(streamName))
+                throw new ArgumentException("streamName must be non-empty when provided.", nameof(streamName));
             _streamName = streamName;
             return;
         }
