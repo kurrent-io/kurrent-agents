@@ -198,7 +198,7 @@ class TestUsageFixtureRoundTrip:
     .NET."""
 
     def test_usage_fixture_loads_into_token_usage(self) -> None:
-        fixture = json.loads(USAGE_FIXTURE.read_text())
+        fixture = json.loads(USAGE_FIXTURE.read_text(encoding="utf-8"))
         token_usage = TokenUsage.model_validate(fixture)
         assert token_usage.input_tokens == 1507
         assert token_usage.output_tokens == 203
@@ -214,7 +214,7 @@ class TestUsageFixtureRoundTrip:
     def test_usage_fixture_round_trips_byte_equivalent(self) -> None:
         """Serialise through the integration's ``$usage``-bearing event and
         verify the fixture survives round-trip untouched."""
-        fixture = json.loads(USAGE_FIXTURE.read_text())
+        fixture = json.loads(USAGE_FIXTURE.read_text(encoding="utf-8"))
         token_usage = TokenUsage.model_validate(fixture)
 
         event = AssistantTextGenerated(

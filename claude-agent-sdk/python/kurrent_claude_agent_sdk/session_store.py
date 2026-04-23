@@ -18,12 +18,15 @@ Stream layout (schema v2):
 
 - Main transcript: ``AgentSession-{session_id}``.
 - Subagent transcript: ``AgentSubsession-{session_id}-{agent_id}`` where
-  ``agent_id`` is the final path component of the SDK's
-  ``SessionKey.subpath`` (e.g. ``subagents/agent-abc123`` → ``agent-abc123``).
-  Per SCHEMA_v2 §3.5, subagent streams do **not** carry their own
-  ``SessionStarted`` — that role is fulfilled by ``SubagentStarted`` on the
-  parent stream, which this adapter does not emit today (the SDK's
-  ``SessionStore`` protocol doesn't expose subagent lifecycle signals).
+  ``agent_id`` is derived from the SDK's ``SessionKey.subpath`` after the
+  documented ``subagents/`` prefix is stripped, with any remaining path
+  separators collapsed to ``_`` so multi-segment inputs stay distinct — e.g.
+  ``subagents/agent-abc123`` → ``agent-abc123`` and hypothetical
+  ``subagents/team/worker-1`` → ``team_worker-1``. Per SCHEMA_v2 §3.5,
+  subagent streams do **not** carry their own ``SessionStarted`` — that role
+  is fulfilled by ``SubagentStarted`` on the parent stream, which this
+  adapter does not emit today (the SDK's ``SessionStore`` protocol doesn't
+  expose subagent lifecycle signals).
 
 ``project_key`` is stashed on ``SessionStarted`` and on every
 ``ClaudeSDKEntry``'s ``extensions.claude_sdk.project_key`` for traceability
@@ -68,13 +71,18 @@ def _subagent_id_from_subpath(subpath: str) -> str:
     (after normalisation) is rejected so trailing-slash / malformed subpaths
     don't silently route into an ``AgentSubsession-{session}-`` collision.
     """
-    # Strip only leading whitespace + leading slashes here so trailing-slash
-    # shapes like "subagents/" fall through the prefix strip into an empty
-    # agent_id and trip the final check (rather than silently collapsing to
-    # the bare prefix string).
+    # Strip whitespace and leading slashes first so the ``subagents/`` prefix
+    # can be recognised. Trailing slashes are *not* stripped until AFTER the
+    # prefix step so a bare ``subagents/`` falls through into an empty
+    # agent_id (which the final check rejects) rather than silently becoming
+    # the literal string "subagents". Trailing slashes *after* real content
+    # (``subagents/agent-abc123/``) are then trimmed so the result is the
+    # same as the slashless form — otherwise the trailing ``/`` would become
+    # ``_`` and the two inputs would route to distinct streams.
     normalized = subpath.strip().lstrip("/")
     if normalized.startswith(_SUBAGENT_PATH_PREFIX):
         normalized = normalized[len(_SUBAGENT_PATH_PREFIX):]
+    normalized = normalized.rstrip("/")
     agent_id = normalized.replace("/", "_")
     if not agent_id:
         raise ValueError(
@@ -106,8 +114,14 @@ class KurrentDBSessionStore:
         self._app_name = app_name
         self._user_id = user_id
         # Per-process cache of streams we've already written SessionStarted to.
-        # Cross-process races are benign: the second writer's NO_STREAM append
-        # fails, we log+swallow, and move on.
+        # The cache is populated only after a successful append, so a transient
+        # failure on the first batch doesn't poison the cache and leave the
+        # stream without its SessionStarted marker on retry. Cross-process
+        # concurrency is *not* coordinated here (per the repo's StreamState.ANY
+        # convention for non-ADK integrations): two processes writing the same
+        # new session can each emit a SessionStarted and produce duplicates.
+        # That's acceptable today — the SDK makes session_id unique per project,
+        # so shared sessions across processes are an exceptional case.
         self._started_streams: set[str] = set()
 
     # ----- required methods --------------------------------------------------
@@ -136,7 +150,10 @@ class KurrentDBSessionStore:
             # Per SCHEMA_v2 §3.5 subagent streams don't carry their own
             # ``SessionStarted``; that role belongs to ``SubagentStarted`` on
             # the parent stream (not emitted by this adapter today).
-            if stream not in self._started_streams and not subpath:
+            needs_session_started = (
+                stream not in self._started_streams and not subpath
+            )
+            if needs_session_started:
                 to_append.append(
                     _serialization.serialize(
                         SessionStarted(
@@ -152,7 +169,6 @@ class KurrentDBSessionStore:
                         )
                     )
                 )
-                self._started_streams.add(stream)
 
             for entry in entries:
                 to_append.append(
@@ -178,6 +194,12 @@ class KurrentDBSessionStore:
                 events=to_append,
                 current_version=StreamState.ANY,
             )
+            # Only mark the stream as "started" after the append succeeded; a
+            # transient failure on this batch must not poison the cache and
+            # leave the next retry writing entries without the required
+            # ``SessionStarted`` marker.
+            if needs_session_started:
+                self._started_streams.add(stream)
         except Exception:
             # Swallow + log per SDK contract: "Exceptions are logged; the
             # subprocess continues unaffected. At-most-once delivery".

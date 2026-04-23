@@ -132,7 +132,8 @@ class TestSubpathScoping:
     ) -> None:
         """Schema v2 §3.5: ``AgentSubsession-{session_id}-{agent_id}``
         replaces the v1 ``AgentSession-{id}__{subpath}`` name-mangling.
-        ``agent_id`` is the final path component of ``SessionKey.subpath``.
+        ``agent_id`` is derived by stripping the documented ``subagents/``
+        prefix and collapsing any remaining path segments with ``_``.
         """
         store = KurrentDBSessionStore(kurrentdb_client)
         project, sid = _ids()
@@ -190,6 +191,14 @@ class TestSubpathParsing:
         ``AgentSubsession-{sid}-`` stream."""
         with pytest.raises(ValueError, match="empty agent_id"):
             _subagent_id_from_subpath("subagents/")
+
+    def test_trailing_slash_after_content_does_not_alter_agent_id(self) -> None:
+        """``subagents/agent-abc123/`` and ``subagents/agent-abc123`` must
+        both route to the same agent_id — otherwise the trailing ``/``
+        would silently become ``_`` and the two inputs would end up on
+        distinct ``AgentSubsession-*`` streams (Copilot review)."""
+        assert _subagent_id_from_subpath("subagents/agent-abc123/") == "agent-abc123"
+        assert _subagent_id_from_subpath("subagents/agent-abc123") == "agent-abc123"
 
     def test_empty_subpath_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="empty agent_id"):
