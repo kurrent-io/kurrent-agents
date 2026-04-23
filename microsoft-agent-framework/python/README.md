@@ -61,7 +61,8 @@ response (both non-streaming and streaming) and keys them by `message_id`.
 `$usage` metadata (`input_tokens` / `output_tokens` / `total_tokens`, with any
 provider-specific counters bucketed under `additional_counts`) onto the
 matching `AssistantTextGenerated` / `AssistantToolCallsGenerated` event. This
-mirrors the .NET `UsageCapture` convention — see `SCHEMA.md §3.4`.
+mirrors the .NET `UsageCapture` convention — see `SCHEMA_v2.md §3.6` (and
+`SCHEMA.md §3.4.1` for the per-SDK translation table).
 
 ### Background fact extraction
 

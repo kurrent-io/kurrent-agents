@@ -9,7 +9,7 @@ returned :class:`ResponseStream` and iterating it to completion, which is what
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
 from agent_framework import (
@@ -207,5 +207,3 @@ async def test_pure_chat_middleware_callable_contract() -> None:
     capture = UsageCapture()
     assert isinstance(capture, ChatMiddleware)
     assert callable(getattr(capture, "process", None))
-    # Silence unused-import warning in environments without the marker.
-    _: Callable[[], Awaitable[None]]

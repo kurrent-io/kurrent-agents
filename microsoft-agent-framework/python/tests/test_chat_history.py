@@ -9,13 +9,30 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from agent_framework import Message, UsageDetails
+from agent_framework import ChatContext, ChatResponse, Content, Message, UsageDetails
 from kurrentdbclient import NewEvent, RecordedEvent
 from kurrentdbclient.exceptions import NotFoundError
 
 from kurrent_agent_framework import KurrentDBHistoryProvider, UsageCapture
+
+
+async def _prime_capture(capture: UsageCapture, response: ChatResponse) -> None:
+    """Feed ``response`` through the capture middleware the same way
+    ``ChatMiddlewarePipeline`` would on a non-streaming chat call. Avoids
+    poking ``capture._usages`` directly in tests."""
+    context = ChatContext(
+        client=cast(Any, object()),
+        messages=[],
+        options=None,
+        stream=False,
+    )
+
+    async def _call_next() -> None:
+        context.result = response
+
+    await capture.process(context, _call_next)
 
 
 class _FakeResponse:
@@ -102,9 +119,9 @@ async def test_save_messages_attaches_usage_metadata_when_capture_matches() -> N
     capture = UsageCapture()
     history = KurrentDBHistoryProvider(client, usage_capture=capture)  # type: ignore[arg-type]
 
-    # Pretend the middleware recorded usage produced by the OpenAI provider:
-    # the three standard keys plus `openai.cached_input_tokens` /
-    # `openai.reasoning_tokens` namespaced extras (see
+    # Shape of a ChatResponse the OpenAI provider would emit: the three
+    # standard UsageDetails keys plus ``openai.cached_input_tokens`` /
+    # ``openai.reasoning_tokens`` namespaced extras (see
     # ``agent_framework_openai._chat_client._parse_usage_from_openai``).
     # Anthropic's ``anthropic.cache_creation_input_tokens`` rides along as a
     # true provider-specific counter with no canonical home.
@@ -116,7 +133,13 @@ async def test_save_messages_attaches_usage_metadata_when_capture_matches() -> N
     usage["openai.cached_input_tokens"] = 4  # type: ignore[typeddict-unknown-key]
     usage["openai.reasoning_tokens"] = 7  # type: ignore[typeddict-unknown-key]
     usage["anthropic.cache_creation_input_tokens"] = 40  # type: ignore[typeddict-unknown-key]
-    capture._usages["msg-1"] = usage
+    await _prime_capture(
+        capture,
+        ChatResponse(
+            messages=[Message("assistant", ["hello"], message_id="msg-1")],
+            usage_details=usage,
+        ),
+    )
 
     await history.save_messages(
         "s1",
@@ -155,14 +178,19 @@ async def test_save_messages_does_not_stamp_usage_on_non_assistant_events() -> N
     """``$usage`` belongs on assistant events only (``SCHEMA_v2 §3.6``). A
     capture entry whose id happens to match a user/tool message must not
     leak metadata onto ``UserMessageReceived`` or ``ToolResultReceived``."""
-    from agent_framework import Content
-
     client = FakeClient()
     capture = UsageCapture()
     history = KurrentDBHistoryProvider(client, usage_capture=capture)  # type: ignore[arg-type]
 
-    # Both messages share the id the capture holds.
-    capture._usages["shared-id"] = UsageDetails(input_token_count=99)
+    # Capture an assistant response at id "shared-id" — then the save below
+    # re-uses that same id on a user and a tool message.
+    await _prime_capture(
+        capture,
+        ChatResponse(
+            messages=[Message("assistant", ["assist"], message_id="shared-id")],
+            usage_details=UsageDetails(input_token_count=99),
+        ),
+    )
 
     await history.save_messages(
         "s1",
