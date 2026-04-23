@@ -31,9 +31,10 @@ from claude_agent_sdk import (
     TextBlock,
     query,
 )
+from kurrent_agent_schema.streams import agent_session_stream
 
-from kurrent_claude_agent_sdk import KurrentDBSessionStore, client as kdb_client
-from kurrent_claude_agent_sdk._schema.stream_names import for_session
+from kurrent_claude_agent_sdk import KurrentDBSessionStore
+from kurrent_claude_agent_sdk import client as kdb_client
 
 APP_NAME = "basic_claude_sdk_demo"
 USER_ID = "alice"
@@ -97,8 +98,9 @@ async def main() -> None:
 
     # --- Persisted stream dump -----------------------------------------------
     print("=== Persisted events in KurrentDB ===")
-    records = await kdb.get_stream(for_session(session_id))
-    print(f"Total events on {for_session(session_id)}: {len(records)}")
+    stream = agent_session_stream(session_id)
+    records = await kdb.get_stream(stream)
+    print(f"Total events on {stream}: {len(records)}")
     type_counts: dict[str, int] = {}
     for r in records:
         type_counts[r.type] = type_counts.get(r.type, 0) + 1

@@ -6,7 +6,7 @@ package's ``SessionStore`` adapter mirrors into ``ClaudeSDKEntry`` events),
 yield ``(canonical_event, metadata)`` tuples that a caller can serialize to a
 parallel stream.
 
-Design decisions (DEV-1508):
+Design decisions (DEV-1508, DEV-1531):
 
 - **Read-side**. This module operates on already-persisted entries and never
   touches the ``SessionStore`` adapter. The adapter's
@@ -14,35 +14,27 @@ Design decisions (DEV-1508):
   need cross-framework reads can ignore this module entirely.
 - **Block-by-block, in original order**. One CLI entry can produce zero or
   more canonical events. An assistant entry with interleaved ``text`` /
-  ``tool_use`` blocks yields one ``AssistantTextGenerated`` per text block
-  and (if any ``tool_use`` blocks are present) a single combined
+  ``thinking`` / ``tool_use`` blocks yields one ``AssistantTextGenerated`` per
+  text block, one ``AssistantThinkingGenerated`` per thinking block, and (if
+  any ``tool_use`` blocks are present) a single combined
   ``AssistantToolCallsGenerated`` carrying all calls. The grouped
   tool-calls event is emitted **at the position of the first** ``tool_use``
-  block so text/tool relative ordering is preserved —
-  ``[text, tool_use_A, tool_use_B, text]`` decomposes to
-  ``AssistantTextGenerated, AssistantToolCallsGenerated, AssistantTextGenerated``,
-  not to text-blocks-first-then-tool-calls.
-- **Thinking blocks have no canonical home.** They ride in
-  ``extensions.claude_sdk.thinking`` on the first canonical event emitted for
-  the entry. If the entry only contains thinking blocks and no usage stanza,
-  nothing canonical is emitted — the raw entry is still persisted on
-  ``ClaudeSDKEntry``. A thinking-only entry that *does* carry ``$usage`` gets
-  a single carrier ``AssistantTextGenerated(content=None)`` so the metadata
-  and thinking extension survive the projection (SCHEMA.md §3.4 requires
-  token usage to ride on an assistant event).
+  block so text/thinking/tool relative ordering is preserved.
+- **Thinking becomes canonical (schema v2).** Claude Code emits plaintext
+  thinking, so each thinking block produces one
+  ``AssistantThinkingGenerated(content=..., encrypted=False)`` event. Any
+  extra keys on the block (future provider fields) ride under
+  ``extensions.claude_sdk.thinking_extras``. See SCHEMA_v2 §3.2 / §6.1.
 - **CLI-internal entry types produce nothing.** ``attachment``, ``system``,
   ``permission-mode``, ``last-prompt``, ``file-history-snapshot``,
   ``queue-operation`` have no canonical analogue.
-- **Usage is metadata, not payload.** Per ``SCHEMA.md §3.4``, token counts
-  attach as KurrentDB event metadata under ``$usage``. Canonical field names
-  mirror ``KurrentDBChatHistoryProvider`` (MAF .NET): ``input_tokens`` /
-  ``output_tokens`` / ``total_tokens`` / ``cached_input_tokens`` /
-  ``reasoning_tokens`` / optional ``model`` / optional ``additional_counts``.
-  Anthropic's ``cache_read_input_tokens`` is mapped to ``cached_input_tokens``;
-  **every other key on the usage stanza** (cache_creation breakdown,
-  server_tool_use, service_tier, iterations, future fields we haven't seen) is
-  passed through verbatim under ``additional_counts``. This is a catch-all,
-  not a whitelist — Anthropic additions survive without a decomposer change.
+- **Usage is metadata, not payload.** Per SCHEMA_v2 §3.6, token counts attach
+  as KurrentDB event metadata under :data:`USAGE_METADATA_KEY`. Canonical
+  field names mirror :class:`TokenUsage`. Anthropic's
+  ``cache_read_input_tokens`` maps to ``cached_input_tokens``; **every other
+  key** on the usage stanza rides verbatim under ``additional_counts`` — a
+  catch-all rather than a whitelist, so Anthropic additions survive without a
+  decomposer change.
 """
 
 from __future__ import annotations
@@ -52,8 +44,18 @@ from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-from ._schema import events as _events
-from ._schema.events import CLAUDE_SDK_EXTENSION_KEY
+from kurrent_agent_schema import (
+    USAGE_METADATA_KEY,
+    AssistantTextGenerated,
+    AssistantThinkingGenerated,
+    AssistantToolCallsGenerated,
+    ToolCallInfo,
+    ToolResultReceived,
+    UserMessageReceived,
+)
+from pydantic import BaseModel
+
+from .events import CLAUDE_SDK_EXTENSION_KEY
 
 # Entries the CLI writes that carry no conversational payload. Preserved
 # verbatim on the ClaudeSDKEntry stream but not surfaced as canonical events.
@@ -69,7 +71,7 @@ _CLI_INTERNAL_TYPES: frozenset[str] = frozenset(
 )
 
 
-DecomposedEvent = tuple[_events._EventBase, dict[str, Any] | None]
+DecomposedEvent = tuple[BaseModel, dict[str, Any] | None]
 """One canonical event plus optional KurrentDB event metadata (``$usage`` shim)."""
 
 
@@ -135,7 +137,7 @@ def _decompose_user(
     if isinstance(content, str):
         return [
             (
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content=content,
                     message_id=entry_uuid,
                     message_index=message_index,
@@ -184,7 +186,7 @@ def _decompose_user(
     if any(text_parts):
         return [
             (
-                _events.UserMessageReceived(
+                UserMessageReceived(
                     content="".join(text_parts),
                     message_id=entry_uuid,
                     message_index=message_index,
@@ -222,7 +224,7 @@ def _tool_result_event(
         {CLAUDE_SDK_EXTENSION_KEY: claude_sdk_ext} if claude_sdk_ext else None
     )
 
-    event = _events.ToolResultReceived(
+    event = ToolResultReceived(
         call_id=call_id,
         result=_stringify_tool_result(block.get("content")),
         message_id=entry_uuid,
@@ -305,6 +307,11 @@ def _stringify_tool_result(content: Any) -> str | None:
 # --- assistant entries -------------------------------------------------------
 
 
+# Keys on a ``thinking`` block that map onto canonical
+# ``AssistantThinkingGenerated`` fields; anything else rides in extensions.
+_CANONICAL_THINKING_BLOCK_KEYS: frozenset[str] = frozenset({"type", "thinking", "signature"})
+
+
 def _decompose_assistant(
     entry: dict[str, Any], message_index: int, now: datetime
 ) -> list[DecomposedEvent]:
@@ -316,16 +323,6 @@ def _decompose_assistant(
     if not isinstance(content, list):
         return []
 
-    # Collect thinking + all tool_use blocks up front (both inform events we
-    # emit later), but walk ``content`` in-order when actually generating
-    # events so ``[text, tool_use, text]`` or ``[tool_use, text]`` keep their
-    # original relative shape. The grouped tool-calls event is emitted once,
-    # at the position of the **first** ``tool_use`` block encountered.
-    thinking_blocks = [
-        block
-        for block in content
-        if isinstance(block, dict) and block.get("type") == "thinking"
-    ]
     tool_use_blocks = [
         block
         for block in content
@@ -333,14 +330,16 @@ def _decompose_assistant(
     ]
 
     usage_meta = _usage_metadata(message.get("usage"), message.get("model"))
-    first_event_extensions = _assistant_extensions(message, thinking_blocks)
+    first_event_extensions = _assistant_extensions(message)
 
     results: list[DecomposedEvent] = []
     idx = message_index
     tool_event_emitted = False
 
-    def _next_extensions() -> dict[str, Any] | None:
-        return first_event_extensions if not results else None
+    def _next_extensions(extra: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        if results:
+            return _with_extension(None, extra)
+        return _with_extension(first_event_extensions, extra)
 
     def _next_metadata() -> dict[str, Any] | None:
         return usage_meta if not results else None
@@ -352,7 +351,7 @@ def _decompose_assistant(
         if block_type == "text":
             results.append(
                 (
-                    _events.AssistantTextGenerated(
+                    AssistantTextGenerated(
                         content=str(block.get("text") or ""),
                         message_id=entry_uuid,
                         message_index=idx,
@@ -364,9 +363,32 @@ def _decompose_assistant(
                 )
             )
             idx += 1
+        elif block_type == "thinking":
+            extras = _thinking_block_extras(block)
+            thinking_ext = (
+                {CLAUDE_SDK_EXTENSION_KEY: {"thinking_extras": extras}}
+                if extras
+                else None
+            )
+            results.append(
+                (
+                    AssistantThinkingGenerated(
+                        content=str(block.get("thinking") or "") or None,
+                        encrypted=False,  # Claude Code thinking is plaintext.
+                        signature=_optional_str(block.get("signature")),
+                        message_id=entry_uuid,
+                        message_index=idx,
+                        created_at=created_at,
+                        timestamp=now,
+                        extensions=_next_extensions(thinking_ext),
+                    ),
+                    _next_metadata(),
+                )
+            )
+            idx += 1
         elif block_type == "tool_use" and not tool_event_emitted:
             tool_calls = [
-                _events.ToolCallInfo(
+                ToolCallInfo(
                     call_id=_tool_call_id(b, entry_uuid, block_index),
                     tool_name=str(b.get("name") or ""),
                     arguments=_tool_call_arguments(b.get("input")),
@@ -375,7 +397,7 @@ def _decompose_assistant(
             ]
             results.append(
                 (
-                    _events.AssistantToolCallsGenerated(
+                    AssistantToolCallsGenerated(
                         tool_calls=tool_calls,
                         message_id=entry_uuid,
                         message_index=idx,
@@ -388,23 +410,19 @@ def _decompose_assistant(
             )
             idx += 1
             tool_event_emitted = True
-        # thinking blocks ride in extensions on the first emitted event;
-        # later tool_use blocks are absorbed into the grouped tool-calls
-        # event emitted at the first occurrence, so no event is produced
-        # here for either.
+        # Later tool_use blocks are absorbed into the grouped tool-calls event
+        # emitted at the first occurrence — no further event is produced here.
 
-    # Preserve ``$usage`` even when no text or tool_use blocks were emitted —
-    # e.g. a pure-thinking assistant turn that still consumed tokens. Dropping
-    # it would violate SCHEMA.md §3.4 which requires token usage to ride on
-    # assistant events as ``$usage`` metadata. Content is None so the carrier
-    # event doesn't misrepresent a non-existent text reply to cross-framework
-    # readers; thinking / stop_reason extensions also come along. Thinking-only
-    # turns without any usage keep producing nothing — the raw ClaudeSDKEntry
-    # is authoritative there, with no schema rule at stake.
+    # Preserve ``$usage`` even when no content blocks were emitted — e.g. an
+    # assistant turn whose content we couldn't project but that still consumed
+    # tokens. SCHEMA_v2 §3.6 requires token usage to ride on assistant events,
+    # so drop a content-less ``AssistantTextGenerated`` carrier rather than
+    # losing the metadata. This path is rare post-v2 (thinking is now its own
+    # event type) but stays as a safety net for unexpected content shapes.
     if not results and usage_meta is not None:
         results.append(
             (
-                _events.AssistantTextGenerated(
+                AssistantTextGenerated(
                     content=None,
                     message_id=entry_uuid,
                     message_index=idx,
@@ -419,15 +437,8 @@ def _decompose_assistant(
     return results
 
 
-def _assistant_extensions(
-    message: dict[str, Any], thinking_blocks: list[dict[str, Any]]
-) -> dict[str, Any] | None:
+def _assistant_extensions(message: dict[str, Any]) -> dict[str, Any] | None:
     ext: dict[str, Any] = {}
-    if thinking_blocks:
-        ext["thinking"] = [
-            {k: v for k, v in block.items() if k != "type"}
-            for block in thinking_blocks
-        ]
     stop_reason = message.get("stop_reason")
     if stop_reason:
         ext["stop_reason"] = stop_reason
@@ -437,6 +448,33 @@ def _assistant_extensions(
     if not ext:
         return None
     return {CLAUDE_SDK_EXTENSION_KEY: ext}
+
+
+def _thinking_block_extras(block: dict[str, Any]) -> dict[str, Any]:
+    """Return non-canonical keys on a thinking block, for forward-compat."""
+    return {k: v for k, v in block.items() if k not in _CANONICAL_THINKING_BLOCK_KEYS}
+
+
+def _optional_str(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _with_extension(
+    base: dict[str, Any] | None, extra: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Merge an extra extensions slice into ``base`` (which may itself be ``None``)."""
+    if not extra:
+        return base
+    merged: dict[str, Any] = {k: dict(v) for k, v in base.items()} if base else {}
+    for slug, payload in extra.items():
+        existing = merged.get(slug)
+        if isinstance(existing, dict) and isinstance(payload, dict):
+            merged[slug] = {**existing, **payload}
+        else:
+            merged[slug] = payload
+    return merged
 
 
 # --- usage metadata ---------------------------------------------------------
@@ -457,16 +495,14 @@ _MAPPED_USAGE_KEYS: frozenset[str] = frozenset(
 )
 
 
-def _usage_metadata(
-    usage: Any, model: Any
-) -> dict[str, Any] | None:
+def _usage_metadata(usage: Any, model: Any) -> dict[str, Any] | None:
     """Translate an Anthropic assistant ``usage`` stanza into the ``$usage`` shim.
 
-    Canonical field names mirror ``KurrentDBChatHistoryProvider`` (MAF .NET).
+    Canonical field names mirror :class:`kurrent_agent_schema.TokenUsage`.
     Everything outside the canonical slots is passed through verbatim under
-    ``additional_counts`` (formalised in ``SCHEMA.md §3.4``) — a catch-all
-    rather than a fixed whitelist, so a future Anthropic addition is
-    automatically preserved instead of silently dropped.
+    ``additional_counts`` (formalised in SCHEMA_v2 §3.6) — a catch-all rather
+    than a fixed whitelist, so a future Anthropic addition is automatically
+    preserved instead of silently dropped.
     """
     if not isinstance(usage, dict):
         return None
@@ -501,7 +537,7 @@ def _usage_metadata(
     if additional:
         shim["additional_counts"] = additional
 
-    return {"$usage": shim} if shim else None
+    return {USAGE_METADATA_KEY: shim} if shim else None
 
 
 # --- helpers -----------------------------------------------------------------

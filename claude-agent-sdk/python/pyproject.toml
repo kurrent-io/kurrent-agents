@@ -18,6 +18,10 @@ dependencies = [
   # shape is documented internal-and-unstable (DESIGN.md §4), so we don't want
   # downstream installs silently resolving to a breaking bump.
   "claude-agent-sdk >= 0.1.65, < 0.2",
+  # 0.1.1 is the first release with ``TokenUsage.additional_counts`` documented
+  # and the schema-v2 canonical event surface (``AssistantThinkingGenerated``,
+  # ``SubagentStarted``/``SubagentCompleted``, ``SessionContinuedAs``, etc.).
+  "kurrent-agent-schema >= 0.1.1",
   "kurrentdbclient >= 1.2.0",
   "pydantic >= 2.5",
 ]
@@ -45,4 +49,5 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
 
 [tool.uv.sources]
+kurrent-agent-schema = { path = "../../schema/python", editable = true }
 kurrent-agents-testing = { path = "../../testing", editable = true }

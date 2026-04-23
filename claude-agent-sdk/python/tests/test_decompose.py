@@ -12,9 +12,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from kurrent_agent_schema import (
+    AssistantTextGenerated,
+    AssistantThinkingGenerated,
+    AssistantToolCallsGenerated,
+    ToolResultReceived,
+    UserMessageReceived,
+)
 
 from kurrent_claude_agent_sdk import decompose_entry, decompose_stream
-from kurrent_claude_agent_sdk._schema import events as _events
 
 NOW = datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC)
 
@@ -71,7 +77,7 @@ class TestUserEntries:
         results = decompose_entry(entry, message_index=0, now=NOW)
         assert len(results) == 1
         event, metadata = results[0]
-        assert isinstance(event, _events.UserMessageReceived)
+        assert isinstance(event, UserMessageReceived)
         assert event.content == "Hi, what's 2+2?"
         assert event.message_id == "u1"
         assert event.message_index == 0
@@ -99,13 +105,13 @@ class TestUserEntries:
 
         e0, _ = results[0]
         e1, _ = results[1]
-        assert isinstance(e0, _events.ToolResultReceived)
+        assert isinstance(e0, ToolResultReceived)
         assert e0.call_id == "toolu_1"
         assert e0.result == "result 1"
         assert e0.message_index == 5
         assert e0.extensions is None
 
-        assert isinstance(e1, _events.ToolResultReceived)
+        assert isinstance(e1, ToolResultReceived)
         assert e1.call_id == "toolu_2"
         assert e1.message_index == 6
         assert e1.extensions is not None
@@ -127,7 +133,7 @@ class TestUserEntries:
             ]
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.ToolResultReceived)
+        assert isinstance(event, ToolResultReceived)
         assert event.result == "line 1\nline 2"
 
     def test_tool_result_content_with_non_text_blocks_is_json_encoded(
@@ -146,7 +152,7 @@ class TestUserEntries:
             ]
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.ToolResultReceived)
+        assert isinstance(event, ToolResultReceived)
         # Non-textual block forces JSON encoding so the reader doesn't silently
         # drop the image reference.
         assert event.result is not None
@@ -166,7 +172,7 @@ class TestUserEntries:
             },
         }
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.UserMessageReceived)
+        assert isinstance(event, UserMessageReceived)
         assert event.content == "Part one. Part two."
 
 
@@ -178,7 +184,7 @@ class TestAssistantEntries:
         results = decompose_entry(entry, message_index=1, now=NOW)
         assert len(results) == 1
         event, metadata = results[0]
-        assert isinstance(event, _events.AssistantTextGenerated)
+        assert isinstance(event, AssistantTextGenerated)
         assert event.content == "Hi Alexey! 2+2 = 4."
         assert event.message_id == "a1"
         assert event.message_index == 1
@@ -226,7 +232,7 @@ class TestAssistantEntries:
         results = decompose_entry(entry, message_index=0, now=NOW)
         assert len(results) == 1
         event, _ = results[0]
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         assert [tc.call_id for tc in event.tool_calls] == ["toolu_1", "toolu_2"]
         assert [tc.tool_name for tc in event.tool_calls] == ["search", "fetch"]
         assert event.tool_calls[0].arguments == {"query": "foo"}
@@ -303,7 +309,7 @@ class TestAssistantEntries:
             "AssistantTextGenerated",
         ]
         tool_event = results[1][0]
-        assert isinstance(tool_event, _events.AssistantToolCallsGenerated)
+        assert isinstance(tool_event, AssistantToolCallsGenerated)
         # Both tool_use blocks still grouped into one event.
         assert [tc.call_id for tc in tool_event.tool_calls] == ["tu_a", "tu_b"]
         # Trailing text block shows after the tool-calls event.
@@ -329,14 +335,18 @@ class TestAssistantEntries:
         results = decompose_entry(entry, message_index=0, now=NOW)
         first_event, first_meta = results[0]
         second_event, second_meta = results[1]
-        assert isinstance(first_event, _events.AssistantToolCallsGenerated)
+        assert isinstance(first_event, AssistantToolCallsGenerated)
         assert first_meta is not None
         assert first_meta["$usage"]["total_tokens"] == 13
         assert first_event.extensions is not None  # stop_reason + id
         assert second_meta is None
         assert second_event.extensions is None
 
-    def test_thinking_block_rides_in_extensions_on_first_event(self) -> None:
+    def test_thinking_block_becomes_assistant_thinking_generated(self) -> None:
+        """Schema v2 §3.2 / §6.1: thinking blocks are their own canonical event,
+        not an extension on the accompanying text event. Claude Code emits
+        plaintext thinking, so ``encrypted=False``.
+        """
         entry = _assistant_entry(
             [
                 {"type": "thinking", "thinking": "let me compute 2+2"},
@@ -345,42 +355,92 @@ class TestAssistantEntries:
             uuid="a-think",
         )
         results = decompose_entry(entry, message_index=0, now=NOW)
-        assert len(results) == 1
-        event, _ = results[0]
-        assert isinstance(event, _events.AssistantTextGenerated)
-        thinking = event.extensions["claude_sdk"]["thinking"]
-        assert thinking == [{"thinking": "let me compute 2+2"}]
+        assert [type(e).__name__ for e, _ in results] == [
+            "AssistantThinkingGenerated",
+            "AssistantTextGenerated",
+        ]
+        thinking_event, _ = results[0]
+        assert isinstance(thinking_event, AssistantThinkingGenerated)
+        assert thinking_event.content == "let me compute 2+2"
+        assert thinking_event.encrypted is False
+        assert thinking_event.signature is None
+        # Thinking is first, so stop_reason / anthropic_message_id ride here.
+        assert thinking_event.extensions is not None
+        assert thinking_event.extensions["claude_sdk"]["stop_reason"] == "end_turn"
+        # Text event is second — no first-event extensions.
+        text_event, _ = results[1]
+        assert isinstance(text_event, AssistantTextGenerated)
+        assert text_event.extensions is None
 
-    def test_pure_thinking_entry_without_usage_emits_nothing(self) -> None:
+    def test_thinking_signature_maps_to_canonical_field(self) -> None:
+        entry = _assistant_entry(
+            [
+                {
+                    "type": "thinking",
+                    "thinking": "reasoning...",
+                    "signature": "sig_abc123",
+                },
+            ],
+            uuid="a-sig",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, AssistantThinkingGenerated)
+        assert event.signature == "sig_abc123"
+
+    def test_unknown_thinking_keys_ride_in_extensions(self) -> None:
+        """Forward-compat: any non-canonical key on a thinking block is
+        preserved in ``extensions.claude_sdk.thinking_extras`` instead of
+        silently dropped."""
+        entry = _assistant_entry(
+            [
+                {
+                    "type": "thinking",
+                    "thinking": "r",
+                    "future_field": {"k": "v"},
+                },
+            ],
+            uuid="a-extras",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, AssistantThinkingGenerated)
+        assert event.extensions is not None
+        extras = event.extensions["claude_sdk"]["thinking_extras"]
+        assert extras == {"future_field": {"k": "v"}}
+
+    def test_pure_thinking_entry_without_usage_emits_thinking_event(self) -> None:
+        """v2: thinking is now canonical, so a thinking-only entry emits an
+        ``AssistantThinkingGenerated`` — no longer invisible."""
         entry = _assistant_entry(
             [{"type": "thinking", "thinking": "silent reasoning"}],
             uuid="a-thonly",
             usage=None,
         )
-        assert decompose_entry(entry, message_index=0, now=NOW) == []
+        results = decompose_entry(entry, message_index=0, now=NOW)
+        assert len(results) == 1
+        event, metadata = results[0]
+        assert isinstance(event, AssistantThinkingGenerated)
+        assert event.content == "silent reasoning"
+        assert metadata is None
 
-    def test_pure_thinking_entry_with_usage_emits_carrier_event(self) -> None:
-        """A thinking-only assistant turn that still consumed tokens must
-        surface ``$usage`` on a placeholder event (content=None), not drop it.
-        See SCHEMA.md §3.4 — token usage must ride on assistant events.
+    def test_pure_thinking_entry_with_usage_rides_on_thinking_event(self) -> None:
+        """A thinking-only turn that consumed reasoning tokens surfaces
+        ``$usage`` on the ``AssistantThinkingGenerated`` event itself — no
+        placeholder carrier needed under v2.
         """
         entry = _assistant_entry(
             [{"type": "thinking", "thinking": "hidden reasoning"}],
             uuid="a-thonly-usage",
-            usage={"input_tokens": 4, "output_tokens": 0},
+            usage={"input_tokens": 4, "output_tokens": 0, "reasoning_tokens": 12},
         )
         results = decompose_entry(entry, message_index=7, now=NOW)
         assert len(results) == 1
         event, metadata = results[0]
-        assert isinstance(event, _events.AssistantTextGenerated)
-        # Content is None — no text reply actually happened.
-        assert event.content is None
+        assert isinstance(event, AssistantThinkingGenerated)
+        assert event.content == "hidden reasoning"
         assert event.message_index == 7
-        # Usage + thinking both ride on the carrier.
         assert metadata is not None
         assert metadata["$usage"]["input_tokens"] == 4
-        thinking = event.extensions["claude_sdk"]["thinking"]
-        assert thinking == [{"thinking": "hidden reasoning"}]
+        assert metadata["$usage"]["reasoning_tokens"] == 12
 
 
 class TestUsageMetadata:
@@ -411,7 +471,7 @@ class TestUsageMetadata:
         assert extras["service_tier"] == "standard"
         assert extras["server_tool_use"] == {"web_search_requests": 0}
         # Sanity: first event also carries the extensions envelope.
-        assert isinstance(event, _events.AssistantTextGenerated)
+        assert isinstance(event, AssistantTextGenerated)
 
     def test_missing_usage_returns_no_metadata(self) -> None:
         entry = _assistant_entry([{"type": "text", "text": "hi"}], usage=None)
@@ -489,7 +549,7 @@ class TestToolCallArguments:
             uuid="a-args",
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         assert event.tool_calls[0].arguments == {"q": "x"}
 
     def test_missing_input_yields_none(self) -> None:
@@ -498,7 +558,7 @@ class TestToolCallArguments:
             uuid="a-args-none",
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         assert event.tool_calls[0].arguments is None
 
     def test_non_dict_input_wraps_in_raw(self) -> None:
@@ -513,7 +573,7 @@ class TestToolCallArguments:
             uuid="a-args-odd",
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         assert event.tool_calls[0].arguments == {"_raw": "raw-string"}
         assert event.tool_calls[1].arguments == {"_raw": [1, 2, 3]}
 
@@ -532,7 +592,7 @@ class TestCallIdFallback:
             uuid="a-nosid",
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         ids = [tc.call_id for tc in event.tool_calls]
         assert ids == ["a-nosid:tc0", "a-nosid:tc1"]
         assert "" not in ids
@@ -551,8 +611,8 @@ class TestCallIdFallback:
         results = decompose_entry(entry, message_index=0, now=NOW)
         assert len(results) == 2
         e0, e1 = results[0][0], results[1][0]
-        assert isinstance(e0, _events.ToolResultReceived)
-        assert isinstance(e1, _events.ToolResultReceived)
+        assert isinstance(e0, ToolResultReceived)
+        assert isinstance(e1, ToolResultReceived)
         assert e0.call_id == "u-noid:tr0"
         assert e1.call_id == "u-noid:tr1"
         assert e0.extensions["claude_sdk"]["missing_tool_id"] is True
@@ -566,7 +626,7 @@ class TestCallIdFallback:
             uuid="a-with-id",
         )
         [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert isinstance(event, AssistantToolCallsGenerated)
         assert event.tool_calls[0].call_id == "toolu_real"
 
 
@@ -674,7 +734,7 @@ class TestLiveTranscriptShape:
             "sessionId": "acb5a530-870b-4741-9eee-1d8036b7b96b",
         }
         [(event, metadata)] = decompose_entry(entry, message_index=0, now=NOW)
-        assert isinstance(event, _events.AssistantTextGenerated)
+        assert isinstance(event, AssistantTextGenerated)
         assert event.content == "Hi Alexey! 2+2 = 4."
         assert event.message_id == "8d1bec38-e5d5-44ef-83c9-27637970986d"
         assert metadata is not None

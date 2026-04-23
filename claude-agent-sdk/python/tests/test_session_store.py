@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 from kurrentdbclient import AsyncKurrentDBClient
 
 from kurrent_claude_agent_sdk import KurrentDBSessionStore
@@ -125,6 +124,46 @@ class TestSubpathScoping:
         assert [e["uuid"] for e in main_entries] == ["main-1"]
         assert sub_entries is not None
         assert [e["uuid"] for e in sub_entries] == ["sub-1", "sub-2"]
+
+    async def test_subagent_stream_uses_v2_naming(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """Schema v2 §3.5: ``AgentSubsession-{session_id}-{agent_id}``
+        replaces the v1 ``AgentSession-{id}__{subpath}`` name-mangling.
+        ``agent_id`` is the final path component of ``SessionKey.subpath``.
+        """
+        store = KurrentDBSessionStore(kurrentdb_client)
+        project, sid = _ids()
+        sub_key = {
+            "project_key": project,
+            "session_id": sid,
+            "subpath": "subagents/agent-xyz789",
+        }
+        await store.append(sub_key, [_entry(uuid="sub-1")])
+
+        expected_stream = f"AgentSubsession-{sid}-agent-xyz789"
+        recorded = await kurrentdb_client.get_stream(expected_stream)
+        types = [r.type for r in recorded]
+        # v2 §3.5: subagent streams do not carry their own ``SessionStarted``.
+        assert "SessionStarted" not in types
+        assert types.count("ClaudeSDKEntry") == 1
+
+    async def test_main_stream_writes_session_started_once(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """Main transcript keeps its ``SessionStarted`` marker; idempotent
+        across successive appends within the same process."""
+        store = KurrentDBSessionStore(kurrentdb_client)
+        project, sid = _ids()
+        key = {"project_key": project, "session_id": sid}
+
+        await store.append(key, [_entry(uuid="e1")])
+        await store.append(key, [_entry(uuid="e2")])
+
+        recorded = await kurrentdb_client.get_stream(f"AgentSession-{sid}")
+        types = [r.type for r in recorded]
+        assert types.count("SessionStarted") == 1
+        assert types.count("ClaudeSDKEntry") == 2
 
 
 class TestOptionalMethods:
