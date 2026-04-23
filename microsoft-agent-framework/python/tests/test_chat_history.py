@@ -96,19 +96,27 @@ async def test_get_messages_skips_malformed_events_and_continues() -> None:
 
 async def test_save_messages_attaches_usage_metadata_when_capture_matches() -> None:
     """When a ``UsageCapture`` holds usage for an assistant message's id, the
-    provider stamps ``$usage`` metadata on the emitted assistant event."""
+    provider stamps ``$usage`` metadata on the emitted assistant event — with
+    upstream provider-namespaced extras folded into canonical slots."""
     client = FakeClient()
     capture = UsageCapture()
     history = KurrentDBHistoryProvider(client, usage_capture=capture)  # type: ignore[arg-type]
 
-    # Pretend the middleware already recorded usage for this assistant message.
-    capture._usages["msg-1"] = UsageDetails(
+    # Pretend the middleware recorded usage produced by the OpenAI provider:
+    # the three standard keys plus `openai.cached_input_tokens` /
+    # `openai.reasoning_tokens` namespaced extras (see
+    # ``agent_framework_openai._chat_client._parse_usage_from_openai``).
+    # Anthropic's ``anthropic.cache_creation_input_tokens`` rides along as a
+    # true provider-specific counter with no canonical home.
+    usage = UsageDetails(
         input_token_count=10,
         output_token_count=20,
         total_token_count=30,
-        # Provider-specific extras — TypedDict allows integer extras.
-        cached_input_token_count=4,
     )
+    usage["openai.cached_input_tokens"] = 4  # type: ignore[typeddict-unknown-key]
+    usage["openai.reasoning_tokens"] = 7  # type: ignore[typeddict-unknown-key]
+    usage["anthropic.cache_creation_input_tokens"] = 40  # type: ignore[typeddict-unknown-key]
+    capture._usages["msg-1"] = usage
 
     await history.save_messages(
         "s1",
@@ -124,12 +132,16 @@ async def test_save_messages_attaches_usage_metadata_when_capture_matches() -> N
     assert assistant_event.type == "AssistantTextGenerated"
 
     metadata = json.loads(assistant_event.metadata)
-    usage = metadata["$usage"]
-    assert usage["input_tokens"] == 10
-    assert usage["output_tokens"] == 20
-    assert usage["total_tokens"] == 30
-    # Extra keys outside the canonical trio land in additional_counts.
-    assert usage["additional_counts"] == {"cached_input_token_count": 4}
+    usage_meta = metadata["$usage"]
+    assert usage_meta["input_tokens"] == 10
+    assert usage_meta["output_tokens"] == 20
+    assert usage_meta["total_tokens"] == 30
+    # Namespaced extras with a canonical home land at top-level, not under
+    # additional_counts.
+    assert usage_meta["cached_input_tokens"] == 4
+    assert usage_meta["reasoning_tokens"] == 7
+    # Truly provider-specific counters (no canonical slot) fall through.
+    assert usage_meta["additional_counts"] == {"anthropic.cache_creation_input_tokens": 40}
 
     # User message has no captured usage — only $schema_version metadata.
     user_metadata = json.loads(events[1].metadata)
@@ -137,6 +149,38 @@ async def test_save_messages_attaches_usage_metadata_when_capture_matches() -> N
 
     # Capture is cleared after save so the next turn starts fresh.
     assert capture.try_get("msg-1") is None
+
+
+async def test_save_messages_does_not_stamp_usage_on_non_assistant_events() -> None:
+    """``$usage`` belongs on assistant events only (``SCHEMA_v2 §3.6``). A
+    capture entry whose id happens to match a user/tool message must not
+    leak metadata onto ``UserMessageReceived`` or ``ToolResultReceived``."""
+    from agent_framework import Content
+
+    client = FakeClient()
+    capture = UsageCapture()
+    history = KurrentDBHistoryProvider(client, usage_capture=capture)  # type: ignore[arg-type]
+
+    # Both messages share the id the capture holds.
+    capture._usages["shared-id"] = UsageDetails(input_token_count=99)
+
+    await history.save_messages(
+        "s1",
+        [
+            Message("user", ["hi"], message_id="shared-id"),
+            Message(
+                "tool",
+                [Content(type="function_result", call_id="call-1", result="ok")],
+                message_id="shared-id",
+            ),
+        ],
+    )
+
+    events = client.streams["AgentSession-s1"]
+    # [0] SessionStarted, [1] UserMessageReceived, [2] ToolResultReceived
+    for event in events[1:]:
+        metadata = json.loads(event.metadata)
+        assert "$usage" not in metadata, f"$usage leaked onto {event.type}"
 
 
 async def test_save_messages_without_capture_omits_usage_metadata() -> None:
