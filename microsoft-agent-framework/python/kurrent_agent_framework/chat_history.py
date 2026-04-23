@@ -15,7 +15,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_framework import Content, HistoryProvider, Message
+from agent_framework import Content, HistoryProvider, Message, UsageDetails
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     AssistantToolCallsGenerated,
@@ -31,6 +31,7 @@ from kurrentdbclient.exceptions import NotFoundError
 from pydantic import BaseModel, ValidationError
 
 from . import serialization
+from .capture import UsageCapture
 
 logger = logging.getLogger("kurrent_agent_framework.chat_history")
 
@@ -53,6 +54,10 @@ class KurrentDBHistoryProvider(HistoryProvider):
         agent_name: Recorded in the ``SessionStarted`` event. Optional.
         model_name: Recorded in the ``SessionStarted`` event. Optional.
         app_name: Recorded in the ``SessionStarted`` event. Optional. New in v2.
+        usage_capture: Optional :class:`UsageCapture` middleware. When supplied,
+            its recorded ``UsageDetails`` are attached as ``$usage`` metadata on
+            assistant events whose ``message_id`` matches. The capture is
+            cleared after each successful save.
     """
 
     def __init__(
@@ -63,12 +68,14 @@ class KurrentDBHistoryProvider(HistoryProvider):
         agent_name: str | None = None,
         model_name: str | None = None,
         app_name: str | None = None,
+        usage_capture: UsageCapture | None = None,
     ) -> None:
         super().__init__(source_id)
         self._client = client
         self._agent_name = agent_name
         self._model_name = model_name
         self._app_name = app_name
+        self._usage_capture = usage_capture
         self._started_sessions: set[str] = set()
 
     async def get_messages(
@@ -145,8 +152,9 @@ class KurrentDBHistoryProvider(HistoryProvider):
             self._started_sessions.add(session_id)
 
         for index, message in enumerate(messages):
+            metadata = self._metadata_for(message)
             for event in _message_to_events(message, message_index=index, timestamp=now):
-                to_append.append(serialization.serialize(event))
+                to_append.append(serialization.serialize(event, metadata=metadata))
 
         if to_append:
             await self._client.append_to_stream(
@@ -154,6 +162,17 @@ class KurrentDBHistoryProvider(HistoryProvider):
                 current_version=StreamState.ANY,
                 events=to_append,
             )
+
+        if self._usage_capture is not None:
+            self._usage_capture.clear()
+
+    def _metadata_for(self, message: Message) -> dict[str, Any] | None:
+        if self._usage_capture is None or not message.message_id:
+            return None
+        usage = self._usage_capture.try_get(message.message_id)
+        if usage is None:
+            return None
+        return {"$usage": _usage_to_metadata(usage)}
 
     async def end_session(self, session_id: str, reason: str | None = None) -> None:
         """Append a ``SessionEnded`` event to close the session stream."""
@@ -297,6 +316,33 @@ def _coerce_arguments(arguments: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _usage_to_metadata(usage: UsageDetails) -> dict[str, Any]:
+    """Map MAF ``UsageDetails`` to the canonical ``$usage`` metadata shape.
+
+    Python's :class:`UsageDetails` is an open ``TypedDict`` — standard
+    ``input_token_count`` / ``output_token_count`` / ``total_token_count``
+    keys plus arbitrary provider-specific integer counters. Canonical
+    ``$usage`` uses ``input_tokens`` / ``output_tokens`` / ``total_tokens``
+    and buckets anything else under ``additional_counts``. See
+    ``schema/SCHEMA.md §3.4``.
+    """
+    remaining = dict(usage)
+    result: dict[str, Any] = {}
+
+    for src, dst in (
+        ("input_token_count", "input_tokens"),
+        ("output_token_count", "output_tokens"),
+        ("total_token_count", "total_tokens"),
+    ):
+        if (val := remaining.pop(src, None)) is not None:
+            result[dst] = val
+
+    if remaining:
+        result["additional_counts"] = remaining
+
+    return result
 
 
 def _coerce_result(result: Any) -> str | None:
