@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Kurrent.Agent.Schema;
 
@@ -13,16 +13,31 @@ namespace Kurrent.Agent.Schema;
 /// <c>service_tier</c>, OpenAI's reasoning breakdown, …). MAF .NET already
 /// emits this field via <c>UsageDetails.AdditionalCounts</c>.
 /// </para>
+/// <para>
+/// <c>AdditionalCounts</c> is modelled as a <see cref="JsonObject"/> rather
+/// than an <c>IDictionary</c> on purpose: the shared <see cref="SchemaJsonOptions"/>
+/// apply <c>DictionaryKeyPolicy = SnakeCaseLower</c>, which would rewrite
+/// provider-specific keys on write. Using <see cref="JsonObject"/> bypasses
+/// that policy and preserves keys byte-for-byte, matching Python's
+/// <c>dict[str, Any]</c> behaviour for cross-language round-trip parity.
+/// </para>
+/// <para>
+/// Added as an init-only property (not a primary-constructor parameter) so
+/// the positional record's compiler-generated <c>Deconstruct</c> keeps its
+/// original 6-value shape — downstream <c>var (i, o, t, c, r, m) = usage;</c>
+/// destructuring continues to compile.
+/// </para>
 /// </summary>
 public sealed record TokenUsage(
-    long?                                      InputTokens,
-    long?                                      OutputTokens,
-    long?                                      TotalTokens,
-    long?                                      CachedInputTokens,
-    long?                                      ReasoningTokens,
-    string?                                    Model,
-    IReadOnlyDictionary<string, JsonElement>?  AdditionalCounts = null
-);
+    long?   InputTokens,
+    long?   OutputTokens,
+    long?   TotalTokens,
+    long?   CachedInputTokens,
+    long?   ReasoningTokens,
+    string? Model
+) {
+    public JsonObject? AdditionalCounts { get; init; }
+}
 
 /// <summary>
 /// Shared metadata key under which <see cref="TokenUsage"/> is stored.

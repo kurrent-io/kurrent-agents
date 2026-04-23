@@ -51,6 +51,40 @@ public class FixtureRoundTripTests {
         AssertStructurallyEqual(originalNode, roundTripNode, "usage");
     }
 
+    /// <summary>
+    /// Regression: <c>$usage.additional_counts</c> is modelled as
+    /// <see cref="JsonObject"/> rather than <c>IDictionary</c> specifically
+    /// so keys are <b>not</b> rewritten by
+    /// <c>SchemaJsonOptions.Default.DictionaryKeyPolicy</c> (SnakeCaseLower).
+    /// This asserts a camelCase key survives a round-trip verbatim —
+    /// matches Python's <c>dict[str, Any]</c> behaviour and keeps
+    /// cross-language parity.
+    /// </summary>
+    [Fact]
+    public void Additional_counts_preserves_non_snake_case_keys() {
+        const string originalJson = """
+        {
+          "input_tokens": 10,
+          "output_tokens": 5,
+          "additional_counts": {
+            "cacheCreationInputTokens": 40136,
+            "ServerToolUse": { "webSearchRequests": 0 }
+          }
+        }
+        """;
+        var originalNode = JsonNode.Parse(originalJson)!;
+
+        var parsed = JsonSerializer.Deserialize<TokenUsage>(originalJson, SchemaJsonOptions.Default);
+        Assert.NotNull(parsed);
+        Assert.NotNull(parsed.AdditionalCounts);
+        Assert.True(parsed.AdditionalCounts.ContainsKey("cacheCreationInputTokens"));
+
+        var roundTripJson = JsonSerializer.Serialize(parsed, SchemaJsonOptions.Default);
+        var roundTripNode = JsonNode.Parse(roundTripJson)!;
+
+        AssertStructurallyEqual(originalNode, roundTripNode, "usage-nonsnake");
+    }
+
     static void AssertStructurallyEqual(JsonNode expected, JsonNode actual, string context) {
         var expectedCanonical = CanonicaliseJson(expected);
         var actualCanonical   = CanonicaliseJson(actual);
