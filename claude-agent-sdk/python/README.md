@@ -32,6 +32,23 @@ async for msg in query(
     ...  # entries mirrored to KurrentDB as they arrive
 ```
 
+## Canonical decomposition (cross-framework reads)
+
+`ClaudeSDKEntry` events preserve the CLI's JSONL shape verbatim. Cross-framework readers want canonical conversation events instead — `kurrent_claude_agent_sdk.decompose` turns a raw entry dict into the schema's `UserMessageReceived` / `AssistantTextGenerated` / `AssistantToolCallsGenerated` / `ToolResultReceived` events, plus a `$usage` metadata shim for assistant turns.
+
+```python
+from kurrent_claude_agent_sdk import decompose_stream
+
+# ``entries`` is any iterable of raw JSONL dicts — e.g. ClaudeSDKEntry.raw_entry
+# values fetched from a session stream.
+for event, metadata in decompose_stream(entries):
+    # event: a Pydantic canonical event (SCHEMA.md §3)
+    # metadata: optional {"$usage": {...}} dict for KurrentDB event metadata
+    ...
+```
+
+Pure functions — no I/O, no subscriber wiring. Caller owns the sink: typical consumers run this against an already-persisted `ClaudeSDKEntry` stream and append the decomposed events to a parallel canonical stream. Full mapping table: [`DESIGN.md §4.1`](./DESIGN.md#41-mapping).
+
 ## Run tests
 
 ```bash

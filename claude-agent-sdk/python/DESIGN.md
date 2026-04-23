@@ -35,9 +35,28 @@ The SDK documents that `SessionStoreEntry` is a discriminated union whose concre
 
 Cross-framework readers need canonical events, not opaque CLI entries. Inspecting a live transcript (DEV-1508) confirmed the JSONL shape is fully decomposable — the content-block vocabulary (`text` / `thinking` / `tool_use` / `tool_result`) and field names are exactly the Anthropic Messages API, which is structurally identical to MAF .NET's shape. The mapping onto `SCHEMA.md §3` events (and the `$usage` metadata shim) is recorded on DEV-1508.
 
-**The decomposer is implemented read-side**, not write-side: a separate subscriber reads `ClaudeSDKEntry` streams and emits canonical events to a parallel stream. This preserves the adapter's `load(append) == entries` invariant unconditionally; write-side decomposition would require the canonical encoding itself to be lossless, which is an extra constraint with no benefit. See §10 Q3.
+**The decomposer is implemented read-side**, not write-side: the pure module [`kurrent_claude_agent_sdk.decompose`](./kurrent_claude_agent_sdk/decompose.py) turns a raw entry dict into canonical events, and a (separate, future) subscriber is expected to drive it against already-persisted `ClaudeSDKEntry` streams and write the output to a parallel canonical stream. This preserves the adapter's `load(append) == entries` invariant unconditionally; write-side decomposition would require the canonical encoding itself to be lossless, which is an extra constraint with no benefit. See §10 Q3.
 
-Known partiality: CLI built-in tools (`Read`/`Write`/`Bash`/…) are resolved inside the CLI and never surface as `tool_use`/`tool_result` blocks — only MCP-backed tools do. Canonical decomposition of a CLI-tool-heavy session will show assistant text but not the tool turns. This is §8, not the decomposer's fault.
+The decomposer lives inside this package for now (cheap reuse of the schema; no extra install for users who want both writes and canonical reads). If a deployed subscriber runtime emerges later and the read-only consumer footprint starts to matter, extract into `kurrent-claude-agent-decomposer` — the mapping itself has no dependency on `claude-agent-sdk`.
+
+### 4.1 Mapping
+
+| CLI entry → block | Canonical event(s) | Notes |
+|---|---|---|
+| `user.message.content` (string) | 1× `UserMessageReceived` | `content`=string; `message_id`=entry `uuid` |
+| `user.message.content[]` `tool_result` | N× `ToolResultReceived` | one per block; `is_error` → `extensions.claude_sdk.is_error`; list-of-text content flattened, anything non-textual JSON-encoded. Missing `tool_use_id` → deterministic fallback `{entry_uuid}:tr{index}` with `extensions.claude_sdk.missing_tool_id=true` so consumers know correlation is best-effort. |
+| `user.message.content[]` `text` (multi-block prompt) | 1× `UserMessageReceived` | text blocks concatenated |
+| `assistant.message.content[]` `text` | 1× `AssistantTextGenerated` per block | preserves ordering within a turn |
+| `assistant.message.content[]` `tool_use` | 1× `AssistantToolCallsGenerated` | all tool_use blocks grouped into one event, emitted **at the position of the first `tool_use` block** so text/tool relative order is preserved (`[text, tool_use, text]` → `AssistantTextGenerated, AssistantToolCallsGenerated, AssistantTextGenerated`). Missing `id` → deterministic fallback `{entry_uuid}:tc{index}` (empty `call_id` would collide on the schema join key). Non-dict `input` preserved under `{"_raw": value}` rather than coerced to `{}`. |
+| `assistant.message.content[]` `thinking` | *no canonical slot* | ride in `extensions.claude_sdk.thinking` on the first emitted event for the entry |
+| `assistant.message.usage` on a text-less / tool_use-less turn | 1× `AssistantTextGenerated(content=None)` carrier | preserves `$usage` + extensions on pure-thinking turns; SCHEMA.md §3.4 requires usage to ride on an assistant event |
+| `assistant.message.usage` | `$usage` KurrentDB event metadata | Canonical slots: `input_tokens` / `output_tokens` / `total_tokens` (preferred from provider, fallback to computed) / `cached_input_tokens` (from `cache_read_input_tokens`) / `reasoning_tokens` (passed through). **Everything else is a catch-all** — any key the provider emits that isn't one of the canonical slots rides verbatim under `additional_counts` (formalised in `SCHEMA.md §3.4`). Forward-compatible: a future Anthropic field is preserved automatically. |
+| `assistant.message.stop_reason` / `.id` | `extensions.claude_sdk.stop_reason` / `.anthropic_message_id` on first emitted event | — |
+| `attachment` / `system` / `permission-mode` / `last-prompt` / `file-history-snapshot` / `queue-operation` | nothing | CLI-internal; preserved verbatim on `ClaudeSDKEntry` only |
+
+**Known partiality.** CLI built-in tools (`Read`/`Write`/`Bash`/…) are resolved inside the CLI and never surface as `tool_use`/`tool_result` blocks — only MCP-backed tools do. Canonical decomposition of a CLI-tool-heavy session will show assistant text but not the tool turns. This is §8, not the decomposer's fault.
+
+**Pure-thinking entries emit nothing canonical *unless* they carry `$usage`.** A thinking-only turn without tokens stays invisible to canonical readers — the raw `ClaudeSDKEntry` is authoritative and no schema rule is at stake. A thinking-only turn that *did* consume tokens emits one carrier `AssistantTextGenerated(content=None)` so the `$usage` metadata (and thinking extension) survive the projection — SCHEMA.md §3.4 requires usage to ride on an assistant event.
 
 ## 5. Stream layout
 
