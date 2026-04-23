@@ -147,6 +147,40 @@ class TestRoundTrip:
         )
         assert deserialize(recorded) is None
 
+    def test_malformed_json_deserialises_to_none(self) -> None:
+        """Corrupt JSON for a *known* event type must not crash callers —
+        one bad record in a long stream can't break ``--resume``.
+        """
+        recorded = RecordedEvent(
+            type="SessionStarted",
+            data=b"{not valid json",
+            metadata=b"",
+            content_type="application/json",
+            id=uuid.uuid4(),
+            stream_name="AgentSession-test",
+            stream_position=3,
+            commit_position=0,
+            prepare_position=0,
+        )
+        assert deserialize(recorded) is None
+
+    def test_schema_mismatch_deserialises_to_none(self) -> None:
+        """A payload that parses as JSON but fails Pydantic validation (e.g.
+        a field type change between versions) must also skip rather than
+        raise — matches MAF-Python hardening from PR #15."""
+        recorded = RecordedEvent(
+            type="ClaudeSDKEntry",
+            data=b'{"entry_type": 42}',  # entry_type must be str, and required fields missing.
+            metadata=b"",
+            content_type="application/json",
+            id=uuid.uuid4(),
+            stream_name="AgentSession-test",
+            stream_position=5,
+            commit_position=0,
+            prepare_position=0,
+        )
+        assert deserialize(recorded) is None
+
     def test_read_metadata_decodes_and_handles_empty(self) -> None:
         event = AssistantTextGenerated(
             content="hi", message_index=0, timestamp=datetime.now(UTC)

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kurrent_agent_schema import SessionStarted
 from kurrent_agent_schema.streams import agent_session_stream, agent_subsession_stream
@@ -51,15 +51,37 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger("kurrent_claude_agent_sdk.session_store")
 
 
+_SUBAGENT_PATH_PREFIX = "subagents/"
+
+
 def _subagent_id_from_subpath(subpath: str) -> str:
     """Extract an ``agent_id`` from the SDK's ``SessionKey.subpath``.
 
     The SDK documents ``subpath`` as an opaque ``/``-separated string; the
-    observed shape is ``subagents/agent-{id}``. We take the final path segment
-    so the resulting stream name stays a clean ``AgentSubsession-{session}-{id}``
-    (no embedded slashes). Paths without slashes are used as-is.
+    observed shape is ``subagents/agent-{id}``. We strip whitespace and outer
+    slashes, drop the documented ``subagents/`` prefix when present, and
+    collapse any remaining path separators into ``_`` so the resulting stream
+    name (``AgentSubsession-{session}-{agent_id}``) stays a single segment
+    *and* a multi-segment subpath like ``subagents/team/worker-1`` maps to a
+    distinct ``agent_id`` (``team_worker-1``) rather than colliding with a
+    differently-prefixed subpath on its final segment alone. Empty input
+    (after normalisation) is rejected so trailing-slash / malformed subpaths
+    don't silently route into an ``AgentSubsession-{session}-`` collision.
     """
-    return subpath.rsplit("/", 1)[-1]
+    # Strip only leading whitespace + leading slashes here so trailing-slash
+    # shapes like "subagents/" fall through the prefix strip into an empty
+    # agent_id and trip the final check (rather than silently collapsing to
+    # the bare prefix string).
+    normalized = subpath.strip().lstrip("/")
+    if normalized.startswith(_SUBAGENT_PATH_PREFIX):
+        normalized = normalized[len(_SUBAGENT_PATH_PREFIX):]
+    agent_id = normalized.replace("/", "_")
+    if not agent_id:
+        raise ValueError(
+            f"SessionKey.subpath={subpath!r} yielded an empty agent_id; "
+            "expected e.g. 'subagents/agent-{id}'."
+        )
+    return agent_id
 
 
 class KurrentDBSessionStore:
@@ -104,29 +126,56 @@ class KurrentDBSessionStore:
         try:
             stream = self._stream_for(key)
             subpath = key.get("subpath")
-            await self._ensure_session_started(stream, key)
+            now = datetime.now(UTC)
 
-            new_events = [
-                _serialization.serialize(
-                    ClaudeSDKEntry(
-                        entry_type=str(entry.get("type") or ""),
-                        entry_uuid=str(entry.get("uuid") or ""),
-                        entry_timestamp=str(entry.get("timestamp") or ""),
-                        raw_entry=dict(entry),
-                        subpath=subpath,
-                        timestamp=datetime.now(UTC),
-                        extensions={
-                            CLAUDE_SDK_EXTENSION_KEY: {
-                                "project_key": key.get("project_key"),
-                            }
-                        },
+            to_append: list[Any] = []
+            # For the main transcript, prepend one ``SessionStarted`` on first
+            # touch (in this process). Bundled with the entries batch so the
+            # whole thing goes in a single ``StreamState.ANY`` append — matches
+            # the MAF Python pattern (``KurrentDBHistoryProvider.save_messages``).
+            # Per SCHEMA_v2 §3.5 subagent streams don't carry their own
+            # ``SessionStarted``; that role belongs to ``SubagentStarted`` on
+            # the parent stream (not emitted by this adapter today).
+            if stream not in self._started_streams and not subpath:
+                to_append.append(
+                    _serialization.serialize(
+                        SessionStarted(
+                            app_name=self._app_name,
+                            user_id=self._user_id,
+                            timestamp=now,
+                            extensions={
+                                CLAUDE_SDK_EXTENSION_KEY: {
+                                    "project_key": key.get("project_key"),
+                                    "session_id": key.get("session_id"),
+                                }
+                            },
+                        )
                     )
                 )
-                for entry in entries
-            ]
+                self._started_streams.add(stream)
+
+            for entry in entries:
+                to_append.append(
+                    _serialization.serialize(
+                        ClaudeSDKEntry(
+                            entry_type=str(entry.get("type") or ""),
+                            entry_uuid=str(entry.get("uuid") or ""),
+                            entry_timestamp=str(entry.get("timestamp") or ""),
+                            raw_entry=dict(entry),
+                            subpath=subpath,
+                            timestamp=now,
+                            extensions={
+                                CLAUDE_SDK_EXTENSION_KEY: {
+                                    "project_key": key.get("project_key"),
+                                }
+                            },
+                        )
+                    )
+                )
+
             await self._client.append_to_stream(
                 stream,
-                events=new_events,
+                events=to_append,
                 current_version=StreamState.ANY,
             )
         except Exception:
@@ -144,9 +193,23 @@ class KurrentDBSessionStore:
         """Load every transcript entry for a session, newest-last.
 
         Returns ``None`` for a key we've never seen — the SDK treats ``None``
-        as "no such session", prompting a fresh subprocess spawn.
+        as "no such session", prompting a fresh subprocess spawn. Any
+        unparseable individual events in the stream are skipped (with a
+        warning from :func:`_serialization.deserialize`) so one corrupt
+        record can't crash ``--resume``.
         """
-        stream = self._stream_for(key)
+        try:
+            stream = self._stream_for(key)
+        except ValueError:
+            # Malformed subpath: there is nothing to load. Log + return None so
+            # the SDK spawns a fresh subprocess rather than propagating.
+            logger.warning(
+                "KurrentDBSessionStore.load: cannot derive stream name from "
+                "SessionKey=%r — treating as no-such-session.",
+                key,
+            )
+            return None
+
         try:
             recorded = await self._client.get_stream(stream)
         except NotFoundError:
@@ -185,42 +248,3 @@ class KurrentDBSessionStore:
             return agent_session_stream(session_id)
         return agent_subsession_stream(session_id, _subagent_id_from_subpath(subpath))
 
-    async def _ensure_session_started(
-        self, stream: str, key: SessionKey
-    ) -> None:
-        """Write ``SessionStarted`` on first touch of the main stream only.
-
-        Per SCHEMA_v2 §3.5, subagent streams don't carry their own
-        ``SessionStarted`` — that role belongs to ``SubagentStarted`` on the
-        parent stream. This adapter doesn't emit ``SubagentStarted`` (the SDK
-        doesn't expose the lifecycle signals), so subagent streams start
-        straight into ``ClaudeSDKEntry``.
-        """
-        if stream in self._started_streams:
-            return
-        self._started_streams.add(stream)
-
-        if key.get("subpath"):
-            # Subagent stream — no SessionStarted per v2.
-            return
-
-        started = SessionStarted(
-            app_name=self._app_name,
-            user_id=self._user_id,
-            timestamp=datetime.now(UTC),
-            extensions={
-                CLAUDE_SDK_EXTENSION_KEY: {
-                    "project_key": key.get("project_key"),
-                    "session_id": key.get("session_id"),
-                }
-            },
-        )
-        try:
-            await self._client.append_to_stream(
-                stream,
-                events=[_serialization.serialize(started)],
-                current_version=StreamState.NO_STREAM,
-            )
-        except Exception:
-            # Stream already exists — another append got there first. Benign.
-            pass

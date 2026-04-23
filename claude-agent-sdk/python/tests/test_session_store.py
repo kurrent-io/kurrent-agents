@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from kurrentdbclient import AsyncKurrentDBClient
 
 from kurrent_claude_agent_sdk import KurrentDBSessionStore
+from kurrent_claude_agent_sdk.session_store import _subagent_id_from_subpath
 
 
 def _ids() -> tuple[str, str]:
@@ -152,7 +154,9 @@ class TestSubpathScoping:
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
         """Main transcript keeps its ``SessionStarted`` marker; idempotent
-        across successive appends within the same process."""
+        across successive appends within the same process. The first append
+        bundles ``SessionStarted`` + entries into a single ``StreamState.ANY``
+        write (SCHEMA_v2 §3.1 + repo convention for non-ADK integrations)."""
         store = KurrentDBSessionStore(kurrentdb_client)
         project, sid = _ids()
         key = {"project_key": project, "session_id": sid}
@@ -164,6 +168,43 @@ class TestSubpathScoping:
         types = [r.type for r in recorded]
         assert types.count("SessionStarted") == 1
         assert types.count("ClaudeSDKEntry") == 2
+        # SessionStarted is the first event (§3.1 requires this).
+        assert types[0] == "SessionStarted"
+
+
+class TestSubpathParsing:
+    """Unit tests for :func:`_subagent_id_from_subpath` — the edge cases
+    Qodo flagged in the PR review: empty subpath, trailing slash, multi-
+    segment path shouldn't collapse to an ambiguous or colliding agent_id.
+    """
+
+    def test_documented_shape_uses_final_segment(self) -> None:
+        assert _subagent_id_from_subpath("subagents/agent-abc123") == "agent-abc123"
+
+    def test_bare_agent_id_passes_through(self) -> None:
+        assert _subagent_id_from_subpath("agent-abc123") == "agent-abc123"
+
+    def test_trailing_slash_is_rejected(self) -> None:
+        """A trailing slash after a known prefix would collapse agent_id to
+        empty string and cause different subpaths to route to the same
+        ``AgentSubsession-{sid}-`` stream."""
+        with pytest.raises(ValueError, match="empty agent_id"):
+            _subagent_id_from_subpath("subagents/")
+
+    def test_empty_subpath_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="empty agent_id"):
+            _subagent_id_from_subpath("")
+        with pytest.raises(ValueError, match="empty agent_id"):
+            _subagent_id_from_subpath("   ")
+
+    def test_multi_segment_preserves_uniqueness(self) -> None:
+        """``subagents/team/worker-1`` and ``subagents/other/worker-1`` must
+        map to distinct ``agent_id``s so the transcripts don't collide."""
+        a = _subagent_id_from_subpath("subagents/team/worker-1")
+        b = _subagent_id_from_subpath("subagents/other/worker-1")
+        assert a == "team_worker-1"
+        assert b == "other_worker-1"
+        assert a != b
 
 
 class TestOptionalMethods:
