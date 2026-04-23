@@ -149,6 +149,26 @@ All fields are optional. `additional_counts` is an open object for provider-spec
 
 The standalone `TokenUsageRecorded` event type is deprecated for session streams in favour of the `$usage` metadata approach. It remains valid for dedicated usage streams outside the scope of this document.
 
+#### 3.4.1 Populating `$usage` from SDK-specific usage types
+
+The upstream SDKs disagree on *how* cached and reasoning counts are carried, so integrations have to translate — don't just blindly copy the source dict. Two traps to avoid:
+
+- **Integrations must fold known source keys into canonical slots** before falling back to `additional_counts`. The canonical shape above is the contract typed readers rely on; an integration that drops `cached_input_tokens` into `additional_counts` because "it was an extra on the source object" produces usage that silently skips the aggregation most consumers do on the top-level slot.
+- **Keep unmapped provider-specific counters verbatim in `additional_counts`**, including any namespace prefix the source SDK applies. Never silently drop unknown keys — they are the forward-compatibility path for new provider fields.
+
+Mapping reference for the SDKs in this repo plus the common raw-provider shapes (use this as a starting point when adding a new integration):
+
+| Canonical slot        | MAF .NET property       | MAF Python extras                                    | Anthropic raw `usage`         | Google ADK                   | OpenAI Responses                          |
+|-----------------------|-------------------------|------------------------------------------------------|-------------------------------|------------------------------|-------------------------------------------|
+| `input_tokens`        | `InputTokenCount`       | `input_token_count`                                  | `input_tokens`                | `prompt_token_count`         | `input_tokens`                            |
+| `output_tokens`       | `OutputTokenCount`      | `output_token_count`                                 | `output_tokens`               | `candidates_token_count`     | `output_tokens`                           |
+| `total_tokens`        | `TotalTokenCount`       | `total_token_count`                                  | — (compute input+output)      | `total_token_count`          | `total_tokens`                            |
+| `cached_input_tokens` | `CachedInputTokenCount` | `*.cached_input_tokens`, `*.cache_read_input_tokens` | `cache_read_input_tokens`     | `cached_content_token_count` | `input_tokens_details.cached_tokens`      |
+| `reasoning_tokens`    | `ReasoningTokenCount`   | `*.reasoning_tokens`                                 | —                             | `thoughts_token_count`       | `output_tokens_details.reasoning_tokens`  |
+| `additional_counts`   | `AdditionalCounts`      | remaining extras (e.g. `anthropic.cache_creation_input_tokens`) | unmapped keys        | unmapped keys                | unmapped keys                             |
+
+The MAF Python column uses wildcard `*.` because upstream providers namespace their extras by provider slug — `openai.cached_input_tokens`, `anthropic.cache_read_input_tokens`. MAF .NET gets this mapping for free because `Microsoft.Extensions.AI.UsageDetails` has first-class properties that providers populate directly; Python integrations have to detect the namespaced suffix explicitly (see `microsoft-agent-framework/python/kurrent_agent_framework/chat_history.py::_usage_to_metadata`).
+
 ### 3.5 Evaluation
 
 Written to `EvalRun-{run_id}`. Three events:

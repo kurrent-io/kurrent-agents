@@ -91,12 +91,12 @@ class FactExtractionService:
         client: AsyncKurrentDBClient,
         memory: AgentMemory,
         extractor: FactExtractor,
-        options: FactExtractionOptions = FactExtractionOptions(),
+        options: FactExtractionOptions | None = None,
     ) -> None:
         self._client = client
         self._memory = memory
         self._extractor = extractor
-        self._options = options
+        self._options = options if options is not None else FactExtractionOptions()
         self._stop_event = asyncio.Event()
 
     def stop(self) -> None:
@@ -215,7 +215,7 @@ async def run_fact_extraction(
     client: AsyncKurrentDBClient,
     memory: AgentMemory,
     extractor: FactExtractor,
-    options: FactExtractionOptions = FactExtractionOptions(),
+    options: FactExtractionOptions | None = None,
 ) -> AsyncIterator[FactExtractionService]:
     """Spawn a :class:`FactExtractionService` as a background task for the
     lifetime of the ``async with`` block.

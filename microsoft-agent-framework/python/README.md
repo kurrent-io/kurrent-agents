@@ -35,22 +35,34 @@ uv sync --extra dev        # honours [tool.uv.sources], pulls schema/python/ in 
 ```python
 from agent_framework import Agent
 from kurrentdbclient import AsyncKurrentDBClient
-from kurrent_agent_framework import KurrentDBHistoryProvider
+from kurrent_agent_framework import KurrentDBHistoryProvider, UsageCapture
 
 client = AsyncKurrentDBClient("kurrentdb://localhost:2113?Tls=false")
+usage = UsageCapture()
 history = KurrentDBHistoryProvider(
     client,
     source_id="kurrentdb_history",
     app_name="my-app",     # recorded on SessionStarted (schema v2)
     agent_name="root",
     model_name="gpt-4o",
+    usage_capture=usage,   # attaches $usage metadata to assistant events
 )
 
 agent = Agent(
     chat_client=...,
     context_providers=[history],
+    middleware=[usage],    # ChatMiddleware — intercepts ChatResponse
 )
 ```
+
+`UsageCapture` is a `ChatMiddleware` that observes `UsageDetails` on the chat
+response (both non-streaming and streaming) and keys them by `message_id`.
+`KurrentDBHistoryProvider` reads the capture at save time and writes canonical
+`$usage` metadata (`input_tokens` / `output_tokens` / `total_tokens`, with any
+provider-specific counters bucketed under `additional_counts`) onto the
+matching `AssistantTextGenerated` / `AssistantToolCallsGenerated` event. This
+mirrors the .NET `UsageCapture` convention — see `SCHEMA_v2.md §3.6` (and
+`SCHEMA.md §3.4.1` for the per-SDK translation table).
 
 ### Background fact extraction
 

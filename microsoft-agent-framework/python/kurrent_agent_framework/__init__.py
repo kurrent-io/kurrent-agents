@@ -8,6 +8,7 @@ MAF .NET mirror.
 """
 
 from . import serialization
+from .capture import UsageCapture
 from .chat_history import KurrentDBHistoryProvider
 from .fact_extraction import (
     FactExtractionOptions,
@@ -25,6 +26,7 @@ __all__ = [
     "FactExtractor",
     "KurrentDBAgentMemory",
     "KurrentDBHistoryProvider",
+    "UsageCapture",
     "run_fact_extraction",
     "serialization",
 ]
