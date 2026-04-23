@@ -12,16 +12,24 @@ Design decisions (DEV-1508):
   touches the ``SessionStore`` adapter. The adapter's
   ``load(append) == entries`` invariant is unaffected — consumers who don't
   need cross-framework reads can ignore this module entirely.
-- **Block-by-block**. One CLI entry can produce zero or more canonical events.
-  An assistant entry with interleaved ``text`` / ``tool_use`` blocks yields one
-  ``AssistantTextGenerated`` per text block and (if any ``tool_use`` blocks
-  are present) one combined ``AssistantToolCallsGenerated`` with all calls —
-  that matches how readers think about "a turn made these tool calls".
+- **Block-by-block, in original order**. One CLI entry can produce zero or
+  more canonical events. An assistant entry with interleaved ``text`` /
+  ``tool_use`` blocks yields one ``AssistantTextGenerated`` per text block
+  and (if any ``tool_use`` blocks are present) a single combined
+  ``AssistantToolCallsGenerated`` carrying all calls. The grouped
+  tool-calls event is emitted **at the position of the first** ``tool_use``
+  block so text/tool relative ordering is preserved —
+  ``[text, tool_use_A, tool_use_B, text]`` decomposes to
+  ``AssistantTextGenerated, AssistantToolCallsGenerated, AssistantTextGenerated``,
+  not to text-blocks-first-then-tool-calls.
 - **Thinking blocks have no canonical home.** They ride in
   ``extensions.claude_sdk.thinking`` on the first canonical event emitted for
-  the entry. If the entry only contains thinking blocks, nothing canonical is
-  emitted — the raw entry is still persisted on ``ClaudeSDKEntry`` so no data
-  is lost, just not surfaced cross-framework.
+  the entry. If the entry only contains thinking blocks and no usage stanza,
+  nothing canonical is emitted — the raw entry is still persisted on
+  ``ClaudeSDKEntry``. A thinking-only entry that *does* carry ``$usage`` gets
+  a single carrier ``AssistantTextGenerated(content=None)`` so the metadata
+  and thinking extension survive the projection (SCHEMA.md §3.4 requires
+  token usage to ride on an assistant event).
 - **CLI-internal entry types produce nothing.** ``attachment``, ``system``,
   ``permission-mode``, ``last-prompt``, ``file-history-snapshot``,
   ``queue-operation`` have no canonical analogue.
@@ -250,79 +258,108 @@ def _decompose_assistant(
     if not isinstance(content, list):
         return []
 
-    text_blocks: list[dict[str, Any]] = []
-    tool_use_blocks: list[dict[str, Any]] = []
-    thinking_blocks: list[dict[str, Any]] = []
-    for block in content:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get("type")
-        if block_type == "text":
-            text_blocks.append(block)
-        elif block_type == "tool_use":
-            tool_use_blocks.append(block)
-        elif block_type == "thinking":
-            thinking_blocks.append(block)
+    # Collect thinking + all tool_use blocks up front (both inform events we
+    # emit later), but walk ``content`` in-order when actually generating
+    # events so ``[text, tool_use, text]`` or ``[tool_use, text]`` keep their
+    # original relative shape. The grouped tool-calls event is emitted once,
+    # at the position of the **first** ``tool_use`` block encountered.
+    thinking_blocks = [
+        block
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "thinking"
+    ]
+    tool_use_blocks = [
+        block
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "tool_use"
+    ]
 
     usage_meta = _usage_metadata(message.get("usage"), message.get("model"))
     first_event_extensions = _assistant_extensions(message, thinking_blocks)
 
     results: list[DecomposedEvent] = []
     idx = message_index
+    tool_event_emitted = False
 
-    # Emit one AssistantTextGenerated per text block. Usage metadata and the
-    # extensions envelope (thinking, stop_reason, anthropic_message_id) ride
-    # on whatever canonical event is emitted first — losing neither.
-    for block in text_blocks:
-        extensions = first_event_extensions if not results else None
-        metadata = usage_meta if not results else None
+    def _next_extensions() -> dict[str, Any] | None:
+        return first_event_extensions if not results else None
+
+    def _next_metadata() -> dict[str, Any] | None:
+        return usage_meta if not results else None
+
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            results.append(
+                (
+                    _events.AssistantTextGenerated(
+                        content=str(block.get("text") or ""),
+                        message_id=entry_uuid,
+                        message_index=idx,
+                        created_at=created_at,
+                        timestamp=now,
+                        extensions=_next_extensions(),
+                    ),
+                    _next_metadata(),
+                )
+            )
+            idx += 1
+        elif block_type == "tool_use" and not tool_event_emitted:
+            tool_calls = [
+                _events.ToolCallInfo(
+                    call_id=str(b.get("id") or ""),
+                    tool_name=str(b.get("name") or ""),
+                    arguments=b.get("input")
+                    if isinstance(b.get("input"), dict)
+                    else {},
+                )
+                for b in tool_use_blocks
+            ]
+            results.append(
+                (
+                    _events.AssistantToolCallsGenerated(
+                        tool_calls=tool_calls,
+                        message_id=entry_uuid,
+                        message_index=idx,
+                        created_at=created_at,
+                        timestamp=now,
+                        extensions=_next_extensions(),
+                    ),
+                    _next_metadata(),
+                )
+            )
+            idx += 1
+            tool_event_emitted = True
+        # thinking blocks ride in extensions on the first emitted event;
+        # later tool_use blocks are absorbed into the grouped tool-calls
+        # event emitted at the first occurrence, so no event is produced
+        # here for either.
+
+    # Preserve ``$usage`` even when no text or tool_use blocks were emitted —
+    # e.g. a pure-thinking assistant turn that still consumed tokens. Dropping
+    # it would violate SCHEMA.md §3.4 which requires token usage to ride on
+    # assistant events as ``$usage`` metadata. Content is None so the carrier
+    # event doesn't misrepresent a non-existent text reply to cross-framework
+    # readers; thinking / stop_reason extensions also come along. Thinking-only
+    # turns without any usage keep producing nothing — the raw ClaudeSDKEntry
+    # is authoritative there, with no schema rule at stake.
+    if not results and usage_meta is not None:
         results.append(
             (
                 _events.AssistantTextGenerated(
-                    content=str(block.get("text") or ""),
+                    content=None,
                     message_id=entry_uuid,
                     message_index=idx,
                     created_at=created_at,
                     timestamp=now,
-                    extensions=extensions,
+                    extensions=first_event_extensions,
                 ),
-                metadata,
+                usage_meta,
             )
         )
-        idx += 1
 
-    if tool_use_blocks:
-        extensions = first_event_extensions if not results else None
-        metadata = usage_meta if not results else None
-        tool_calls = [
-            _events.ToolCallInfo(
-                call_id=str(block.get("id") or ""),
-                tool_name=str(block.get("name") or ""),
-                arguments=block.get("input")
-                if isinstance(block.get("input"), dict)
-                else {},
-            )
-            for block in tool_use_blocks
-        ]
-        results.append(
-            (
-                _events.AssistantToolCallsGenerated(
-                    tool_calls=tool_calls,
-                    message_id=entry_uuid,
-                    message_index=idx,
-                    created_at=created_at,
-                    timestamp=now,
-                    extensions=extensions,
-                ),
-                metadata,
-            )
-        )
-        idx += 1
-
-    # Pure-thinking assistant entries produce no canonical events. Usage
-    # metadata (if any) is lost from the canonical projection — the raw entry
-    # on ClaudeSDKEntry is still authoritative. Emitting an empty placeholder
-    # would misrepresent the conversation to cross-framework readers.
     return results
 
 

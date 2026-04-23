@@ -47,15 +47,16 @@ The decomposer lives inside this package for now (cheap reuse of the schema; no 
 | `user.message.content[]` `tool_result` | N× `ToolResultReceived` | one per block; `is_error` → `extensions.claude_sdk.is_error`; list-of-text content flattened, anything non-textual JSON-encoded |
 | `user.message.content[]` `text` (multi-block prompt) | 1× `UserMessageReceived` | text blocks concatenated |
 | `assistant.message.content[]` `text` | 1× `AssistantTextGenerated` per block | preserves ordering within a turn |
-| `assistant.message.content[]` `tool_use` | 1× `AssistantToolCallsGenerated` | all tool_use blocks grouped into one event |
+| `assistant.message.content[]` `tool_use` | 1× `AssistantToolCallsGenerated` | all tool_use blocks grouped into one event, emitted **at the position of the first `tool_use` block** so text/tool relative order is preserved (`[text, tool_use, text]` → `AssistantTextGenerated, AssistantToolCallsGenerated, AssistantTextGenerated`) |
 | `assistant.message.content[]` `thinking` | *no canonical slot* | ride in `extensions.claude_sdk.thinking` on the first emitted event for the entry |
-| `assistant.message.usage` | `$usage` KurrentDB event metadata | `input_tokens` / `output_tokens` / `total_tokens` (computed) / `cached_input_tokens` (from `cache_read_input_tokens`); everything else (cache_creation breakdown, server_tool_use, iterations, …) lands in `additional_counts` — nothing silently dropped |
+| `assistant.message.usage` on a text-less / tool_use-less turn | 1× `AssistantTextGenerated(content=None)` carrier | preserves `$usage` + extensions on pure-thinking turns; SCHEMA.md §3.4 requires usage to ride on an assistant event |
+| `assistant.message.usage` | `$usage` KurrentDB event metadata | `input_tokens` / `output_tokens` / `total_tokens` (computed) / `cached_input_tokens` (from `cache_read_input_tokens`); everything else (cache_creation breakdown, server_tool_use, iterations, …) lands in `additional_counts` (formalised in `SCHEMA.md §3.4`) — nothing silently dropped |
 | `assistant.message.stop_reason` / `.id` | `extensions.claude_sdk.stop_reason` / `.anthropic_message_id` on first emitted event | — |
 | `attachment` / `system` / `permission-mode` / `last-prompt` / `file-history-snapshot` / `queue-operation` | nothing | CLI-internal; preserved verbatim on `ClaudeSDKEntry` only |
 
 **Known partiality.** CLI built-in tools (`Read`/`Write`/`Bash`/…) are resolved inside the CLI and never surface as `tool_use`/`tool_result` blocks — only MCP-backed tools do. Canonical decomposition of a CLI-tool-heavy session will show assistant text but not the tool turns. This is §8, not the decomposer's fault.
 
-**Pure-thinking entries emit nothing canonical.** If an assistant entry carries only `thinking` blocks (no text, no tool_use), no canonical event is produced and any `$usage` on that entry is dropped from the canonical projection. The raw entry is still on `ClaudeSDKEntry` so nothing is lost at rest; emitting a placeholder canonical event would misrepresent the conversation to cross-framework readers.
+**Pure-thinking entries emit nothing canonical *unless* they carry `$usage`.** A thinking-only turn without tokens stays invisible to canonical readers — the raw `ClaudeSDKEntry` is authoritative and no schema rule is at stake. A thinking-only turn that *did* consume tokens emits one carrier `AssistantTextGenerated(content=None)` so the `$usage` metadata (and thinking extension) survive the projection — SCHEMA.md §3.4 requires usage to ride on an assistant event.
 
 ## 5. Stream layout
 

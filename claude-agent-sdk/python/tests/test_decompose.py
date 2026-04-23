@@ -252,6 +252,90 @@ class TestAssistantEntries:
         ]
         assert [e.message_index for e, _ in results] == [0, 1]
 
+    def test_tool_use_before_text_preserves_original_order(self) -> None:
+        """``[tool_use, text]`` must not become ``[text, tool_use]``."""
+        entry = _assistant_entry(
+            [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "search",
+                    "input": {"query": "x"},
+                },
+                {"type": "text", "text": "Done."},
+            ],
+            uuid="a-tc-first",
+        )
+        results = decompose_entry(entry, message_index=0, now=NOW)
+        assert [type(e).__name__ for e, _ in results] == [
+            "AssistantToolCallsGenerated",
+            "AssistantTextGenerated",
+        ]
+
+    def test_tool_use_between_text_blocks_places_single_grouped_event(self) -> None:
+        """``[text, tool_use_A, tool_use_B, text]`` → one grouped tool-calls event
+        at the position of the first tool_use, preserving text block order.
+        """
+        entry = _assistant_entry(
+            [
+                {"type": "text", "text": "Before."},
+                {
+                    "type": "tool_use",
+                    "id": "tu_a",
+                    "name": "search",
+                    "input": {"q": "a"},
+                },
+                {
+                    "type": "tool_use",
+                    "id": "tu_b",
+                    "name": "fetch",
+                    "input": {"q": "b"},
+                },
+                {"type": "text", "text": "After."},
+            ],
+            uuid="a-mix2",
+        )
+        results = decompose_entry(entry, message_index=0, now=NOW)
+        kinds = [type(e).__name__ for e, _ in results]
+        assert kinds == [
+            "AssistantTextGenerated",
+            "AssistantToolCallsGenerated",
+            "AssistantTextGenerated",
+        ]
+        tool_event = results[1][0]
+        assert isinstance(tool_event, _events.AssistantToolCallsGenerated)
+        # Both tool_use blocks still grouped into one event.
+        assert [tc.call_id for tc in tool_event.tool_calls] == ["tu_a", "tu_b"]
+        # Trailing text block shows after the tool-calls event.
+        assert results[2][0].content == "After."
+
+    def test_tool_use_first_receives_usage_and_extensions(self) -> None:
+        """When tool_use comes before text, ``$usage`` + extensions ride on
+        the tool-calls event (the first-emitted), not on the text block.
+        """
+        entry = _assistant_entry(
+            [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "search",
+                    "input": {"q": "x"},
+                },
+                {"type": "text", "text": "Done."},
+            ],
+            uuid="a-tc-first-meta",
+            usage={"input_tokens": 10, "output_tokens": 3},
+        )
+        results = decompose_entry(entry, message_index=0, now=NOW)
+        first_event, first_meta = results[0]
+        second_event, second_meta = results[1]
+        assert isinstance(first_event, _events.AssistantToolCallsGenerated)
+        assert first_meta is not None
+        assert first_meta["$usage"]["total_tokens"] == 13
+        assert first_event.extensions is not None  # stop_reason + id
+        assert second_meta is None
+        assert second_event.extensions is None
+
     def test_thinking_block_rides_in_extensions_on_first_event(self) -> None:
         entry = _assistant_entry(
             [
@@ -267,12 +351,36 @@ class TestAssistantEntries:
         thinking = event.extensions["claude_sdk"]["thinking"]
         assert thinking == [{"thinking": "let me compute 2+2"}]
 
-    def test_pure_thinking_entry_emits_nothing(self) -> None:
+    def test_pure_thinking_entry_without_usage_emits_nothing(self) -> None:
         entry = _assistant_entry(
             [{"type": "thinking", "thinking": "silent reasoning"}],
             uuid="a-thonly",
+            usage=None,
         )
         assert decompose_entry(entry, message_index=0, now=NOW) == []
+
+    def test_pure_thinking_entry_with_usage_emits_carrier_event(self) -> None:
+        """A thinking-only assistant turn that still consumed tokens must
+        surface ``$usage`` on a placeholder event (content=None), not drop it.
+        See SCHEMA.md §3.4 — token usage must ride on assistant events.
+        """
+        entry = _assistant_entry(
+            [{"type": "thinking", "thinking": "hidden reasoning"}],
+            uuid="a-thonly-usage",
+            usage={"input_tokens": 4, "output_tokens": 0},
+        )
+        results = decompose_entry(entry, message_index=7, now=NOW)
+        assert len(results) == 1
+        event, metadata = results[0]
+        assert isinstance(event, _events.AssistantTextGenerated)
+        # Content is None — no text reply actually happened.
+        assert event.content is None
+        assert event.message_index == 7
+        # Usage + thinking both ride on the carrier.
+        assert metadata is not None
+        assert metadata["$usage"]["input_tokens"] == 4
+        thinking = event.extensions["claude_sdk"]["thinking"]
+        assert thinking == [{"thinking": "hidden reasoning"}]
 
 
 class TestUsageMetadata:

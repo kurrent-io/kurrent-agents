@@ -164,6 +164,13 @@ class TokenUsage(BaseModel):
     cached_input_tokens: int | None = None
     reasoning_tokens: int | None = None
     model: str | None = None
+    additional_counts: dict[str, Any] | None = None
+    """Provider-specific counters that have no canonical slot (e.g. Anthropic's
+    ``cache_creation_input_tokens``, ``server_tool_use``, ``service_tier``, …).
+    MAF .NET already emits this field via ``UsageDetails.AdditionalCounts``
+    (``KurrentDBChatHistoryProvider.cs``); documenting it here formalises the
+    existing practice so typed readers don't silently drop it.
+    """
 
 
 # --- Memory (SCHEMA.md §3.6) -------------------------------------------------
