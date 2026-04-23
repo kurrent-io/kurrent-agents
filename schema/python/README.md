@@ -50,5 +50,5 @@ pytest
 
 ## Version
 
-- Package: `0.1.0` (initial pre-1.0 release carrying schema v2).
+- Package: `0.1.1` (adds `TokenUsage.additional_counts` — provider-specific counters bucket).
 - Schema: `SCHEMA_VERSION = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.

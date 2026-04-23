@@ -4,5 +4,9 @@
   "total_tokens": 1710,
   "cached_input_tokens": 0,
   "reasoning_tokens": 0,
-  "model": "claude-sonnet-4-6"
+  "model": "claude-sonnet-4-6",
+  "additional_counts": {
+    "cache_creation_input_tokens": 40136,
+    "service_tier": "standard"
+  }
 }

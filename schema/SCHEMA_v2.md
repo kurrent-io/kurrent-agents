@@ -187,7 +187,7 @@ Token usage is preserved as KurrentDB event metadata under `$usage` on **every**
 
 Capacitor's standalone `TokenUsageEvent` is **deprecated** in v2 in favour of `$usage` metadata on the event that consumed the tokens. Same rationale as v1: usage is observability about the event, not conversational payload.
 
-Schema unchanged from v1 §3.4:
+Schema unchanged from v1 §3.4, including the open `additional_counts` bucket for provider-specific counters:
 
 ```json
 {
@@ -196,7 +196,8 @@ Schema unchanged from v1 §3.4:
   "total_tokens": 1710,
   "cached_input_tokens": 0,
   "reasoning_tokens": 0,
-  "model": "gemini-2.5-flash"
+  "model": "gemini-2.5-flash",
+  "additional_counts": { "cache_creation_input_tokens": 40136 }
 }
 ```
 

@@ -140,9 +140,12 @@ Token usage is preserved as **KurrentDB event metadata** under the key `$usage` 
   "total_tokens": 1710,
   "cached_input_tokens": 0,
   "reasoning_tokens": 0,
-  "model": "gemini-2.5-flash"
+  "model": "gemini-2.5-flash",
+  "additional_counts": { "cache_creation_input_tokens": 40136 }
 }
 ```
+
+All fields are optional. `additional_counts` is an open object for provider-specific counters that don't map onto the canonical slots above — Anthropic's `cache_creation_input_tokens` / `server_tool_use` / `service_tier`, OpenAI's reasoning breakdown, etc. MAF .NET has emitted this field since `KurrentDBChatHistoryProvider` shipped (`UsageDetails.AdditionalCounts`); documenting it here formalises the existing practice so typed readers don't silently drop it. Readers that don't care simply ignore the key.
 
 The standalone `TokenUsageRecorded` event type is deprecated for session streams in favour of the `$usage` metadata approach. It remains valid for dedicated usage streams outside the scope of this document.
 
