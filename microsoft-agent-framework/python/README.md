@@ -54,18 +54,17 @@ agent = Agent(
 
 ### Background fact extraction
 
-`FactExtractionService` subscribes to **every** `AgentSession-*` stream and feeds each `UserMessageReceived` to the extractor you pass in. Decide the memory scope explicitly — the default `KurrentDBAgentMemory()` stream (`AgentMemory`) is shared across everything in the process, so in a multi-tenant deployment you almost certainly want a per-tenant/user stream:
+`FactExtractionService` subscribes to **every** `AgentSession-*` stream and feeds each `UserMessageReceived` to the extractor you pass in. `KurrentDBAgentMemory` scopes facts per app + user by default (`AgentMemory-{app_name}-{user_id}`, per `SCHEMA_v2.md §3.7`):
 
 ```python
-from kurrent_agent_schema import agent_memory_stream
 from kurrent_agent_framework import (
     KurrentDBAgentMemory, run_fact_extraction,
 )
 
-# Scope memory per app + user — NOT the default global "AgentMemory" stream.
 memory = KurrentDBAgentMemory(
     client,
-    stream_name=agent_memory_stream("my-app", user_id),
+    app_name="my-app",
+    user_id=user_id,
 )
 
 def my_extractor(message: str):
@@ -78,7 +77,7 @@ async with run_fact_extraction(client, memory, my_extractor):
     ...
 ```
 
-If you need per-session scope, or finer-grained per-session-extracting-into-per-tenant-memory routing, provide your own implementation of the `AgentMemory` protocol instead of using `KurrentDBAgentMemory` directly — the subscription itself is a single server-side group per process, so all session traffic flows through the one extractor you register.
+If you need per-session scope, cross-tenant shared memory (pass `stream_name=...` to bypass the canonical builder), or finer-grained per-session-extracting-into-per-tenant-memory routing, provide your own implementation of the `AgentMemory` protocol instead of using `KurrentDBAgentMemory` directly — the subscription itself is a single server-side group per process, so all session traffic flows through the one extractor you register.
 
 See `samples/fact_extraction.py` for a runnable personal-assistant demo.
 
