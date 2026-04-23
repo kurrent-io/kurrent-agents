@@ -432,6 +432,143 @@ class TestUsageMetadata:
         assert metas[0]["$usage"]["total_tokens"] == 15
         assert metas[1] is None
 
+    def test_reasoning_tokens_surface_on_canonical_slot(self) -> None:
+        """SCHEMA.md §3.4 has a dedicated ``reasoning_tokens`` slot — must
+        populate it, not bury under additional_counts."""
+        entry = _assistant_entry(
+            [{"type": "text", "text": "ok"}],
+            usage={
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "reasoning_tokens": 128,
+            },
+        )
+        [(_, metadata)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert metadata is not None
+        shim = metadata["$usage"]
+        assert shim["reasoning_tokens"] == 128
+        # Must not also appear in additional_counts.
+        assert "reasoning_tokens" not in shim.get("additional_counts", {})
+
+    def test_unknown_usage_keys_land_in_additional_counts(self) -> None:
+        """Forward-compat: keys Anthropic adds in the future must survive
+        verbatim under additional_counts (not be silently dropped by a
+        fixed whitelist)."""
+        entry = _assistant_entry(
+            [{"type": "text", "text": "ok"}],
+            usage={
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "future_counter": 42,
+                "nested": {"k": "v"},
+            },
+        )
+        [(_, metadata)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert metadata is not None
+        extras = metadata["$usage"]["additional_counts"]
+        assert extras["future_counter"] == 42
+        assert extras["nested"] == {"k": "v"}
+
+    def test_provider_emitted_total_tokens_is_preferred(self) -> None:
+        """If a provider starts emitting total_tokens directly, use that
+        rather than recomputing input+output (which might be an
+        approximation)."""
+        entry = _assistant_entry(
+            [{"type": "text", "text": "ok"}],
+            usage={"input_tokens": 10, "output_tokens": 5, "total_tokens": 99},
+        )
+        [(_, metadata)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert metadata is not None
+        assert metadata["$usage"]["total_tokens"] == 99
+
+
+class TestToolCallArguments:
+    def test_dict_input_passes_through(self) -> None:
+        entry = _assistant_entry(
+            [{"type": "tool_use", "id": "tu1", "name": "s", "input": {"q": "x"}}],
+            uuid="a-args",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert event.tool_calls[0].arguments == {"q": "x"}
+
+    def test_missing_input_yields_none(self) -> None:
+        entry = _assistant_entry(
+            [{"type": "tool_use", "id": "tu1", "name": "s"}],
+            uuid="a-args-none",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert event.tool_calls[0].arguments is None
+
+    def test_non_dict_input_wraps_in_raw(self) -> None:
+        """Anthropic's Messages API uses dict inputs, but be defensive —
+        preserving a string/list under ``_raw`` is better than throwing the
+        value away silently."""
+        entry = _assistant_entry(
+            [
+                {"type": "tool_use", "id": "tu-str", "name": "s", "input": "raw-string"},
+                {"type": "tool_use", "id": "tu-lst", "name": "l", "input": [1, 2, 3]},
+            ],
+            uuid="a-args-odd",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert event.tool_calls[0].arguments == {"_raw": "raw-string"}
+        assert event.tool_calls[1].arguments == {"_raw": [1, 2, 3]}
+
+
+class TestCallIdFallback:
+    def test_missing_tool_use_id_gets_deterministic_fallback(self) -> None:
+        """``AssistantToolCallsGenerated.tool_calls[*].call_id`` is the
+        schema join key. An empty string would collapse parallel calls onto
+        one id — instead, synthesise ``{entry_uuid}:tc{index}`` so calls
+        stay distinguishable."""
+        entry = _assistant_entry(
+            [
+                {"type": "tool_use", "name": "s", "input": {"q": "a"}},
+                {"type": "tool_use", "name": "f", "input": {"q": "b"}},
+            ],
+            uuid="a-nosid",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        ids = [tc.call_id for tc in event.tool_calls]
+        assert ids == ["a-nosid:tc0", "a-nosid:tc1"]
+        assert "" not in ids
+
+    def test_missing_tool_result_id_gets_fallback_and_flag(self) -> None:
+        """Mirror of the tool_use case for tool_result: fallback id +
+        ``extensions.claude_sdk.missing_tool_id`` so consumers know
+        correlation is best-effort."""
+        entry = _user_tool_results_entry(
+            [
+                {"type": "tool_result", "content": "r1"},
+                {"type": "tool_result", "content": "r2", "is_error": True},
+            ],
+            uuid="u-noid",
+        )
+        results = decompose_entry(entry, message_index=0, now=NOW)
+        assert len(results) == 2
+        e0, e1 = results[0][0], results[1][0]
+        assert isinstance(e0, _events.ToolResultReceived)
+        assert isinstance(e1, _events.ToolResultReceived)
+        assert e0.call_id == "u-noid:tr0"
+        assert e1.call_id == "u-noid:tr1"
+        assert e0.extensions["claude_sdk"]["missing_tool_id"] is True
+        assert e1.extensions["claude_sdk"]["missing_tool_id"] is True
+        # is_error on the second entry still surfaces alongside the flag.
+        assert e1.extensions["claude_sdk"]["is_error"] is True
+
+    def test_present_tool_use_id_is_preserved_verbatim(self) -> None:
+        entry = _assistant_entry(
+            [{"type": "tool_use", "id": "toolu_real", "name": "s", "input": {}}],
+            uuid="a-with-id",
+        )
+        [(event, _)] = decompose_entry(entry, message_index=0, now=NOW)
+        assert isinstance(event, _events.AssistantToolCallsGenerated)
+        assert event.tool_calls[0].call_id == "toolu_real"
+
 
 class TestCLIInternalEntries:
     @pytest.mark.parametrize(

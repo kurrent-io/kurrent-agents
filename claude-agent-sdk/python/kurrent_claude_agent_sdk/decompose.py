@@ -38,11 +38,11 @@ Design decisions (DEV-1508):
   mirror ``KurrentDBChatHistoryProvider`` (MAF .NET): ``input_tokens`` /
   ``output_tokens`` / ``total_tokens`` / ``cached_input_tokens`` /
   ``reasoning_tokens`` / optional ``model`` / optional ``additional_counts``.
-  Anthropic's split of ``cache_read_input_tokens`` vs
-  ``cache_creation_input_tokens`` collapses into ``cached_input_tokens`` for
-  the read bucket; the rest of the Anthropic-specific usage stanza (cache
-  breakdown, server_tool_use, iterations, etc.) lands in
-  ``additional_counts`` so nothing is silently dropped.
+  Anthropic's ``cache_read_input_tokens`` is mapped to ``cached_input_tokens``;
+  **every other key on the usage stanza** (cache_creation breakdown,
+  server_tool_use, service_tier, iterations, future fields we haven't seen) is
+  passed through verbatim under ``additional_counts``. This is a catch-all,
+  not a whitelist — Anthropic additions survive without a decomposer change.
 """
 
 from __future__ import annotations
@@ -164,7 +164,12 @@ def _decompose_user(
     if tool_results:
         return [
             _tool_result_event(
-                block, entry_uuid, message_index + offset, created_at, now
+                block,
+                entry_uuid,
+                block_index=offset,
+                message_index=message_index + offset,
+                created_at=created_at,
+                now=now,
             )
             for offset, block in enumerate(tool_results)
         ]
@@ -196,18 +201,29 @@ def _decompose_user(
 def _tool_result_event(
     block: dict[str, Any],
     entry_uuid: str,
+    *,
+    block_index: int,
     message_index: int,
     created_at: datetime,
     now: datetime,
 ) -> DecomposedEvent:
-    is_error = block.get("is_error")
-    extensions = (
-        {CLAUDE_SDK_EXTENSION_KEY: {"is_error": bool(is_error)}}
-        if is_error is not None
-        else None
+    tool_use_id = block.get("tool_use_id")
+    call_id, missing_id = _resolve_call_id(
+        raw=tool_use_id, entry_uuid=entry_uuid, prefix="tr", block_index=block_index
     )
+
+    claude_sdk_ext: dict[str, Any] = {}
+    is_error = block.get("is_error")
+    if is_error is not None:
+        claude_sdk_ext["is_error"] = bool(is_error)
+    if missing_id:
+        claude_sdk_ext["missing_tool_id"] = True
+    extensions = (
+        {CLAUDE_SDK_EXTENSION_KEY: claude_sdk_ext} if claude_sdk_ext else None
+    )
+
     event = _events.ToolResultReceived(
-        call_id=str(block.get("tool_use_id") or ""),
+        call_id=call_id,
         result=_stringify_tool_result(block.get("content")),
         message_id=entry_uuid,
         message_index=message_index,
@@ -216,6 +232,48 @@ def _tool_result_event(
         extensions=extensions,
     )
     return event, None
+
+
+def _tool_call_id(block: dict[str, Any], entry_uuid: str, block_index: int) -> str:
+    """Return the tool-call id for a ``tool_use`` block, with deterministic
+    fallback if the Anthropic API ever omits it.
+    """
+    call_id, _ = _resolve_call_id(
+        raw=block.get("id"), entry_uuid=entry_uuid, prefix="tc", block_index=block_index
+    )
+    return call_id
+
+
+def _resolve_call_id(
+    *, raw: Any, entry_uuid: str, prefix: str, block_index: int
+) -> tuple[str, bool]:
+    """Return ``(call_id, missing_id)``.
+
+    When the source block carries a non-empty id/tool_use_id, use it
+    verbatim. When it's missing or empty, synthesise a deterministic
+    fallback of the form ``{entry_uuid}:{prefix}{block_index}`` so two
+    parallel calls in the same entry stay distinguishable and tool results
+    can still be correlated positionally. Empty call_ids would collide on
+    the schema's required join key.
+    """
+    if isinstance(raw, str) and raw:
+        return raw, False
+    return f"{entry_uuid}:{prefix}{block_index}", True
+
+
+def _tool_call_arguments(raw_input: Any) -> dict[str, Any] | None:
+    """Map a ``tool_use.input`` onto ``ToolCallInfo.arguments``.
+
+    Anthropic's Messages API always emits dict inputs, but be defensive:
+    preserve non-dict values under a single ``_raw`` key rather than
+    silently coercing to ``{}`` and losing data. ``None`` means the block
+    had no ``input`` at all.
+    """
+    if raw_input is None:
+        return None
+    if isinstance(raw_input, dict):
+        return raw_input
+    return {"_raw": raw_input}
 
 
 def _stringify_tool_result(content: Any) -> str | None:
@@ -309,13 +367,11 @@ def _decompose_assistant(
         elif block_type == "tool_use" and not tool_event_emitted:
             tool_calls = [
                 _events.ToolCallInfo(
-                    call_id=str(b.get("id") or ""),
+                    call_id=_tool_call_id(b, entry_uuid, block_index),
                     tool_name=str(b.get("name") or ""),
-                    arguments=b.get("input")
-                    if isinstance(b.get("input"), dict)
-                    else {},
+                    arguments=_tool_call_arguments(b.get("input")),
                 )
-                for b in tool_use_blocks
+                for block_index, b in enumerate(tool_use_blocks)
             ]
             results.append(
                 (
@@ -386,14 +442,18 @@ def _assistant_extensions(
 # --- usage metadata ---------------------------------------------------------
 
 
-_ANTHROPIC_USAGE_EXTRA_KEYS: tuple[str, ...] = (
-    "cache_creation_input_tokens",
-    "cache_creation",
-    "server_tool_use",
-    "service_tier",
-    "inference_geo",
-    "iterations",
-    "speed",
+# Keys we map into canonical ``$usage`` slots. Any other key on the Anthropic
+# ``usage`` stanza is treated as forward-compatible overflow and lands verbatim
+# in ``additional_counts`` — that's how we keep "nothing silently dropped"
+# true even when Anthropic adds a field we've never seen before.
+_MAPPED_USAGE_KEYS: frozenset[str] = frozenset(
+    {
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cache_read_input_tokens",
+        "reasoning_tokens",
+    }
 )
 
 
@@ -403,8 +463,10 @@ def _usage_metadata(
     """Translate an Anthropic assistant ``usage`` stanza into the ``$usage`` shim.
 
     Canonical field names mirror ``KurrentDBChatHistoryProvider`` (MAF .NET).
-    Anthropic-specific fields that have no canonical slot land in
-    ``additional_counts`` so nothing is silently dropped.
+    Everything outside the canonical slots is passed through verbatim under
+    ``additional_counts`` (formalised in ``SCHEMA.md §3.4``) — a catch-all
+    rather than a fixed whitelist, so a future Anthropic addition is
+    automatically preserved instead of silently dropped.
     """
     if not isinstance(usage, dict):
         return None
@@ -412,14 +474,16 @@ def _usage_metadata(
     input_tokens = usage.get("input_tokens")
     output_tokens = usage.get("output_tokens")
     cache_read = usage.get("cache_read_input_tokens")
+    reasoning_tokens = usage.get("reasoning_tokens")
 
-    total_tokens: int | None = None
-    if isinstance(input_tokens, int) and isinstance(output_tokens, int):
+    # Prefer a provider-emitted ``total_tokens`` when present; fall back to
+    # computing input+output. Anthropic doesn't emit it today, but be
+    # forward-compatible — a future API revision might.
+    total_tokens = usage.get("total_tokens")
+    if not isinstance(total_tokens, int) and isinstance(input_tokens, int) and isinstance(output_tokens, int):
         total_tokens = input_tokens + output_tokens
 
-    additional = {
-        key: usage[key] for key in _ANTHROPIC_USAGE_EXTRA_KEYS if key in usage
-    }
+    additional = {k: v for k, v in usage.items() if k not in _MAPPED_USAGE_KEYS}
 
     shim: dict[str, Any] = {}
     if input_tokens is not None:
@@ -430,6 +494,8 @@ def _usage_metadata(
         shim["total_tokens"] = total_tokens
     if cache_read is not None:
         shim["cached_input_tokens"] = cache_read
+    if isinstance(reasoning_tokens, int):
+        shim["reasoning_tokens"] = reasoning_tokens
     if model:
         shim["model"] = str(model)
     if additional:
