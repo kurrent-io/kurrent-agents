@@ -24,6 +24,18 @@ wheels = [
 ]
 
 [[package]]
+name = "agent-framework-orchestrations"
+version = "1.0.0b260421"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "agent-framework-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/28/08/b0c670f75f01b5543475dc17145c5eb1c314908452a66b7849d1da9adf20/agent_framework_orchestrations-1.0.0b260421.tar.gz", hash = "sha256:25ed502e1b2041ac3782a0aa28a2b6af60842e9292f4da794805424f0995b800", size = 54734, upload-time = "2026-04-21T06:29:04.691Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/04/af14b7d96e5d0b2baa9a21342a136cabda3a0b24ba03127b0740531ab4be/agent_framework_orchestrations-1.0.0b260421-py3-none-any.whl", hash = "sha256:a851d549d6967ddcd6fb1ac5690cb0e4c8fda75e95350a01ef271e00770ee514", size = 60860, upload-time = "2026-04-21T06:20:05.591Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -331,6 +343,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "agent-framework-orchestrations" },
     { name = "kurrent-agents-testing" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -340,6 +353,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-framework-core", specifier = ">=1.1.0" },
+    { name = "agent-framework-orchestrations", marker = "extra == 'dev'" },
     { name = "kurrent-agent-schema", editable = "../../schema/python" },
     { name = "kurrent-agents-testing", marker = "extra == 'dev'", editable = "../../testing" },
     { name = "kurrentdbclient", specifier = ">=1.2.0" },
