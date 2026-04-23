@@ -150,8 +150,10 @@ Agent memory is an `IAgentMemory` with `RecallAsync` and `RetainAsync`. The defa
 
 ```csharp
 builder.Services.AddKurrentAgentFramework(builder.Configuration);
-builder.Services.AddKurrentAgentMemory();
+builder.Services.AddKurrentAgentMemory(appName: "MyApp", userId: "alice");
 ```
+
+Facts land in `AgentMemory-{appName}-{userId}` by default (canonical per [SCHEMA_v2.md §2.1](../../schema/SCHEMA_v2.md)), matching the per-tenant scope used by every other integration in this monorepo. Pass `streamName:` to override for a deliberately shared cross-tenant stream.
 
 Attach the memory provider to your agent:
 
@@ -171,10 +173,14 @@ AIAgent agent = new ChatClientAgent(
 Before each agent run, `AgentMemoryContextProvider` recalls facts via `IAgentMemory` and injects them as context. Facts can be retained explicitly (via a `RetainFact` tool) or automatically — pass a `FactExtractor` delegate:
 
 ```csharp
-builder.Services.AddKurrentAgentMemory(message => {
-    // Your domain-specific extraction logic here.
-    // Return facts as plain strings.
-});
+builder.Services.AddKurrentAgentMemory(
+    appName: "MyApp",
+    userId:  "alice",
+    factExtractor: message => {
+        // Your domain-specific extraction logic here.
+        // Return facts as plain strings.
+    }
+);
 ```
 
 The default `KurrentDBAgentMemory` returns *every* retained fact on recall — simple, adequate for small fact sets. Bring your own `IAgentMemory` implementation for other backends (Redis, Postgres, a dedicated vector store, etc.).

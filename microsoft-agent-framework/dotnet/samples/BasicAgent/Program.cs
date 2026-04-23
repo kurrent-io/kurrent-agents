@@ -31,7 +31,9 @@ static string GetTime([Description("IANA timezone, e.g. Europe/London")] string 
 // --- Build host ---
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddKurrentAgentFramework(builder.Configuration);
-builder.Services.AddKurrentAgentMemory(PersonalFactExtractor);
+// Memory is keyed per (appName, userId) so facts from Session 1 can be
+// recalled in Session 2 for the same user — both sessions below share these ids.
+builder.Services.AddKurrentAgentMemory(appName: "BasicAgent", userId: "alexey", factExtractor: PersonalFactExtractor);
 var host = builder.Build();
 
 await host.StartAsync();
