@@ -42,10 +42,11 @@ from google.adk.events.event import Event as AdkEvent
 from google.adk.events.event_actions import EventActions, EventCompaction
 from google.genai import types
 
-from ._schema.events import (
+from .events import (
     ADK_EXTENSION_KEY,
     AgentTransferred,
     AssistantTextGenerated,
+    AssistantThinkingGenerated,  # noqa: F401  # used in Task 6 (thought-part split)
     AssistantToolCallsGenerated,
     Compaction,
     Rewind,
