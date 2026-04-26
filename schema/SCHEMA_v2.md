@@ -127,13 +127,30 @@ Mid-turn human-in-the-loop pauses. Generalises Claude Code permission prompts, S
 
 | Field | Type | Req | Notes |
 |---|---|---|---|
-| `request_id` | string | yes | Opaque correlation id; matched by `InterruptResolved.request_id`. |
+| `request_id` | string | yes | Opaque correlation id; matched by `InterruptResolved.request_id`. See post-hoc rule below. |
 | `kind` | string | yes | One of: `permission`, `approval`, `input`, `auth`. Lowercase, extensible via extensions. |
 | `tool_name` | string? | no | Populated when the interrupt blocks a specific tool invocation (kind=`permission`/`approval`/`auth`). |
 | `prompt` | string? | no | Human-readable prompt or message shown to the user. |
+| `message_id` | string? | no | Anchors the interrupt to its carrier message in frameworks that bundle approval requests inside chat messages (e.g. MAF emits `FunctionApprovalRequestContent` as a content block on an assistant message). Null/absent for standalone interrupts (e.g. Claude Code permission prompts, which are emitted by Capacitor's watcher and have no carrier message). |
 | `timestamp` | datetime | yes | |
 
 Tool input / the proposed action / auth challenge details go in `extensions.{framework}.interrupt` on the same event. Canonical stays thin; callers who want to replay a permission decision read the extension block.
+
+When the interrupt blocks a specific tool call (`kind=approval` / `permission`), integrations SHOULD additionally place the proposed call under their extension slug using a uniform shape:
+
+```json
+{
+  "extensions": {
+    "<slug>": {
+      "interrupt": {
+        "proposed_call": { "id": "...", "name": "...", "arguments": {} }
+      }
+    }
+  }
+}
+```
+
+Soft convention, not a hard requirement. The slug stays per-framework (`afw`, `claude_code`, `strands`, …) so different frameworks may carry different surrounding metadata in their slug; the field names *underneath* `interrupt.proposed_call` are the convention. Lets cross-framework readers (notably Capacitor's approval-prompt UI) render uniformly without per-slug code.
 
 **`InterruptResolved`**
 
@@ -142,9 +159,23 @@ Tool input / the proposed action / auth challenge details go in `extensions.{fra
 | `request_id` | string | yes | Matches `InterruptIssued.request_id`. |
 | `outcome` | string | yes | One of: `allow`, `allow_once`, `allow_always`, `deny`, `cancel`, `answered`, `timeout`. |
 | `response` | string? | no | User-supplied free-form text (kind=`input`) or a rationale. |
+| `message_id` | string? | no | Anchors the resolution to its carrier message in frameworks that bundle approval responses inside chat messages (e.g. MAF emits `FunctionApprovalResponseContent` as a content block on a user message). Null/absent for standalone resolutions. |
 | `timestamp` | datetime | yes | |
 
 Framework-specific resolution details (e.g. `permission_decision` enum values, updated tool inputs after a `PreToolUse` hook rewrite) live in `extensions.{framework}.interrupt`.
+
+**`request_id` ↔ `tool_call_id` correlation (post-hoc gating only).** Approval gates split into two modes depending on whether the model has already committed to a tool call when the gate fires:
+
+| Framework | Mode | Notes |
+|---|---|---|
+| MS Agent Framework `FunctionApprovalRequestContent` | post-hoc | `request_id` = `FunctionCall.Id`; the gate decides whether to execute an already-committed call. |
+| Claude Code permission prompts (Capacitor) | pre-hoc | Gate fires before any tool call exists; Capacitor mints a synthetic GUID. |
+| Strands `Interrupt` (when adopted) | TBD | Classify per-framework as adoption lands. |
+| ADK `requested_tool_confirmations` (when adopted) | TBD | Classify per-framework as adoption lands. |
+
+**Post-hoc rule:** when an `InterruptIssued` is post-hoc and its `InterruptResolved` outcome is in the `allow*` family, the `request_id` MUST equal the `call_id` of the matching `ToolCallInfo` entry within the eventual `AssistantToolCallsGenerated.tool_calls` list. MAF satisfies this naturally because both events use the same `FunctionCall.Id`. Cross-event correlation is therefore trivial without per-framework decoding.
+
+**Pre-hoc:** no rule applies. `request_id` is opaque (a synthetic id is fine). Cross-event linkage, when needed, is reconstructed downstream from sequence + `tool_name` or from per-framework extension fields.
 
 ### 3.4 Conversation events (unchanged)
 

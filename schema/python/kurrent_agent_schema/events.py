@@ -183,13 +183,22 @@ class InterruptIssued(_EventBase):
     ``kind`` is an open string; the documented set is
     ``permission | approval | input | auth``, readers must tolerate unknowns.
     Framework-specific details (tool_input, auth challenge) go in
-    ``extensions.{framework}.interrupt``. New in v2.
+    ``extensions.{framework}.interrupt``.
+
+    ``message_id`` anchors the interrupt to its carrier message in frameworks
+    that bundle approval requests inside chat messages (e.g. MAF emits
+    ``FunctionApprovalRequestContent`` as a content block on an assistant
+    message). Null/absent for standalone interrupts (e.g. Claude Code
+    permission prompts emitted by Capacitor's watcher). See SCHEMA_v2 §3.3
+    for the post-hoc / pre-hoc gating split that governs ``request_id``.
+    New in v2.
     """
 
     request_id: str
     kind: str
     tool_name: str | None = None
     prompt: str | None = None
+    message_id: str | None = None
     timestamp: datetime
 
 
@@ -198,12 +207,15 @@ class InterruptResolved(_EventBase):
 
     ``outcome`` documented set: ``allow | allow_once | allow_always | deny |
     cancel | answered | timeout``. Open string; readers tolerate unknowns.
+    ``message_id`` anchors the resolution to its carrier message when one
+    exists (e.g. MAF ``FunctionApprovalResponseContent`` on a user message).
     New in v2.
     """
 
     request_id: str
     outcome: str
     response: str | None = None
+    message_id: str | None = None
     timestamp: datetime
 
 
