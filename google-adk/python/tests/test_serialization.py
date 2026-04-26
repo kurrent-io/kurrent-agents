@@ -1,98 +1,230 @@
-"""Unit tests for canonical event (de)serialisation."""
+"""Serialization round-trip and metadata-stamping tests.
+
+Covers $schema_version stamping, override protection, hardened deserialize,
+and round-trip equivalence for canonical + ADK-specific event types.
+"""
 
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
+import pytest
+from kurrent_agent_schema import SCHEMA_VERSION
+from kurrent_agent_schema.usage import USAGE_METADATA_KEY, TokenUsage
 from kurrentdbclient import RecordedEvent
 
-from kurrent_google_adk._schema.events import (
-    ADK_EXTENSION_KEY,
+from kurrent_google_adk import _serialization
+from kurrent_google_adk.events import (
+    AgentTransferred,
+    AssistantThinkingGenerated,
+    Compaction,
+    Rewind,
     SessionStarted,
+    StateDelta,
     UserMessageReceived,
 )
-from kurrent_google_adk._serialization import (
-    deserialize,
-    name_for,
-    read_metadata,
-    serialize,
-)
+
+FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "schema" / "fixtures"
+EVENTS_FIXTURES = FIXTURES_ROOT / "events"
+USAGE_FIXTURE = FIXTURES_ROOT / "metadata" / "usage.json"
+
+# ADK does not emit these; their fixtures aren't expected to round-trip via this adapter.
+NON_ADK_FIXTURES = {
+    "InterruptIssued.json",
+    "InterruptResolved.json",
+    "SubagentStarted.json",
+    "SubagentCompleted.json",
+    "SessionContinuedAs.json",
+}
 
 
-def _make_recorded(type_: str, data: bytes, metadata: bytes = b"") -> RecordedEvent:
-    """Build a RecordedEvent with the minimum fields the codec cares about."""
-    import uuid
+def _ts() -> datetime:
+    return datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
 
+
+def _recorded(new_event) -> RecordedEvent:
     return RecordedEvent(
-        type=type_,
-        data=data,
-        metadata=metadata,
-        content_type="application/json",
-        id=uuid.uuid4(),
-        stream_name="test",
+        type=new_event.type,
+        data=new_event.data,
+        metadata=new_event.metadata,
+        id=new_event.id,
+        stream_name="AgentSession-test",
         stream_position=0,
         commit_position=0,
         prepare_position=0,
+        content_type="application/json",
     )
 
 
-def test_name_for_canonical_event() -> None:
-    event = SessionStarted(timestamp=datetime(2026, 4, 19, tzinfo=UTC))
-    assert name_for(event) == "SessionStarted"
+# --- $schema_version stamping ------------------------------------------------
 
 
-def test_serialize_produces_snake_case_json() -> None:
-    event = UserMessageReceived(
-        content="hello",
-        message_id="m1",
-        author_name="alice",
-        message_index=0,
-        timestamp=datetime(2026, 4, 19, 12, 0, tzinfo=UTC),
-    )
-    new_event = serialize(event)
-    assert new_event.type == "UserMessageReceived"
-    data = json.loads(new_event.data)
-    assert data == {
-        "content": "hello",
-        "message_id": "m1",
-        "author_name": "alice",
-        "message_index": 0,
-        "timestamp": "2026-04-19T12:00:00Z",
-    }
+def test_serialize_stamps_schema_version_2() -> None:
+    event = SessionStarted(timestamp=_ts())
+    new_event = _serialization.serialize(event)
+    metadata = json.loads(new_event.metadata)
+    assert metadata["$schema_version"] == SCHEMA_VERSION == 2
 
 
-def test_serialize_attaches_metadata() -> None:
-    event = SessionStarted(timestamp=datetime(2026, 4, 19, tzinfo=UTC))
-    new_event = serialize(event, metadata={"$usage": {"input_tokens": 10}})
-    assert json.loads(new_event.metadata) == {"$usage": {"input_tokens": 10}}
+def test_serialize_caller_metadata_cannot_override_schema_version() -> None:
+    event = SessionStarted(timestamp=_ts())
+    new_event = _serialization.serialize(event, metadata={"$schema_version": "v1", "$correlation_id": "abc"})
+    metadata = json.loads(new_event.metadata)
+    assert metadata["$schema_version"] == 2
+    assert metadata["$correlation_id"] == "abc"
 
 
-def test_roundtrip_via_recorded_event() -> None:
+# --- Canonical round-trip ----------------------------------------------------
+
+
+def test_user_message_round_trip() -> None:
     original = UserMessageReceived(
         content="hello",
-        message_id="m1",
+        message_id="msg-1",
+        author_name="alice",
         message_index=0,
-        timestamp=datetime(2026, 4, 19, 12, 0, tzinfo=UTC),
-        extensions={ADK_EXTENSION_KEY: {"invocation_id": "inv_1"}},
+        timestamp=_ts(),
     )
-    new_event = serialize(original)
-    recorded = _make_recorded(new_event.type, new_event.data, new_event.metadata)
-    reloaded = deserialize(recorded)
-    assert isinstance(reloaded, UserMessageReceived)
-    assert reloaded.content == "hello"
-    assert reloaded.extensions == {ADK_EXTENSION_KEY: {"invocation_id": "inv_1"}}
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+def test_assistant_thinking_round_trip() -> None:
+    original = AssistantThinkingGenerated(
+        content="planning",
+        encrypted=False,
+        message_id="msg-2",
+        author_name="root",
+        message_index=1,
+        timestamp=_ts(),
+    )
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+# --- ADK-specific round-trip -------------------------------------------------
+
+
+def test_agent_transferred_round_trip() -> None:
+    original = AgentTransferred(from_agent="alice", to_agent="bob", timestamp=_ts())
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+def test_rewind_round_trip() -> None:
+    original = Rewind(
+        rewind_before_invocation_id="inv-7",
+        state_delta={"key": "value"},
+        timestamp=_ts(),
+    )
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+def test_compaction_round_trip() -> None:
+    original = Compaction(
+        start_timestamp=_ts(),
+        end_timestamp=_ts(),
+        compacted_content={"summary": "ok"},
+        timestamp=_ts(),
+    )
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+def test_state_delta_round_trip() -> None:
+    original = StateDelta(delta={"k": 1}, invocation_id="inv-3", timestamp=_ts())
+    new_event = _serialization.serialize(original)
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert decoded == original
+
+
+# --- Hardened deserialize ----------------------------------------------------
 
 
 def test_deserialize_unknown_type_returns_none() -> None:
-    recorded = _make_recorded("UnknownFutureType", b"{}")
-    assert deserialize(recorded) is None
+    bad = RecordedEvent(
+        type="UnknownEventType",
+        data=b"{}",
+        metadata=b"",
+        id=uuid.uuid4(),
+        stream_name="AgentSession-test",
+        stream_position=0,
+        commit_position=0,
+        prepare_position=0,
+        content_type="application/json",
+    )
+    assert _serialization.deserialize(bad) is None
 
 
-def test_read_metadata_handles_empty_and_invalid() -> None:
-    empty = _make_recorded("SessionStarted", b"{}", b"")
-    assert read_metadata(empty) is None
-    invalid = _make_recorded("SessionStarted", b"{}", b"not-json")
-    assert read_metadata(invalid) is None
-    valid = _make_recorded("SessionStarted", b"{}", b'{"$usage": {"input_tokens": 5}}')
-    assert read_metadata(valid) == {"$usage": {"input_tokens": 5}}
+def test_deserialize_malformed_json_logs_and_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    bad = RecordedEvent(
+        type="UserMessageReceived",
+        data=b"{not-json",
+        metadata=b"",
+        id=uuid.uuid4(),
+        stream_name="AgentSession-test",
+        stream_position=42,
+        commit_position=0,
+        prepare_position=0,
+        content_type="application/json",
+    )
+    with caplog.at_level("WARNING", logger="kurrent_google_adk._serialization"):
+        assert _serialization.deserialize(bad) is None
+    assert any("Skipping unparseable event" in rec.message for rec in caplog.records)
+
+
+def test_deserialize_schema_mismatch_logs_and_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+    # UserMessageReceived requires `message_index: int` and `timestamp: datetime`.
+    bad = RecordedEvent(
+        type="UserMessageReceived",
+        data=b'{"content": "hi"}',
+        metadata=b"",
+        id=uuid.uuid4(),
+        stream_name="AgentSession-test",
+        stream_position=43,
+        commit_position=0,
+        prepare_position=0,
+        content_type="application/json",
+    )
+    with caplog.at_level("WARNING", logger="kurrent_google_adk._serialization"):
+        assert _serialization.deserialize(bad) is None
+    assert any("Skipping unparseable event" in rec.message for rec in caplog.records)
+
+
+# --- Fixture round-trip ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    sorted(p for p in EVENTS_FIXTURES.glob("*.json") if p.name not in NON_ADK_FIXTURES),
+    ids=lambda p: p.name,
+)
+def test_event_fixture_round_trip(fixture: Path) -> None:
+    """Each canonical fixture deserialises into the matching canonical type
+    and serialises back to byte-equivalent JSON (modulo key ordering)."""
+    expected = json.loads(fixture.read_text(encoding="utf-8"))
+    event_type_name = fixture.stem
+    cls = _serialization._NAME_TO_TYPE[event_type_name]
+    event = cls.model_validate(expected)
+    actual = json.loads(event.model_dump_json(exclude_none=True, by_alias=True))
+    assert actual == expected, f"{fixture.name} drifted on round-trip"
+
+
+def test_usage_fixture_round_trip() -> None:
+    expected = json.loads(USAGE_FIXTURE.read_text(encoding="utf-8"))
+    usage = TokenUsage.model_validate(expected)
+    actual = json.loads(usage.model_dump_json(exclude_none=True, by_alias=True))
+    assert actual == expected
+
+
+def test_usage_metadata_key_constant() -> None:
+    assert USAGE_METADATA_KEY == "$usage"
