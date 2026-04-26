@@ -8,7 +8,7 @@ the codec.
 
 **v1 scope.** Single session stream per ``session_id``; state deltas ride in
 ``extensions.adk.actions.state_delta`` within each canonical event. App-scoped
-and user-scoped state routing (to separate ``AgentAppState`` / ``AgentUserState``
+and user-scoped state routing (to separate ``AppState`` / ``UserState``
 streams) is a follow-up.
 """
 
@@ -302,7 +302,7 @@ def _collect_usage(
     """Read ``$usage`` from a RecordedEvent and index it by source ADK event id.
 
     Only applies to assistant canonical events (which are the only ones the
-    session service writes ``$usage`` onto, per SCHEMA.md §3.4).
+    session service writes ``$usage`` onto, per SCHEMA_v2.md §3.6).
     """
     if not isinstance(canonical, _ASSISTANT_EVENT_CLASSES):
         return

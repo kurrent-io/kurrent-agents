@@ -1,6 +1,6 @@
 """ADK ``Event`` ↔ canonical event decomposition and reconstruction.
 
-See ``DESIGN.md`` §5 and ``SCHEMA.md`` §5.2 for the full mapping rules.
+See ``DESIGN.md`` §5 and ``SCHEMA_v2.md`` §5.2 for the full mapping rules.
 
 **v1 scope.** This codec covers:
 
@@ -29,7 +29,7 @@ See ``DESIGN.md`` §5 and ``SCHEMA.md`` §5.2 for the full mapping rules.
   ``extensions.adk.actions.state_delta`` so round-trip is lossless; the
   service is responsible for writing unprefixed keys as ``StateDelta``
   events on the session stream and routing prefixed keys to
-  ``AgentAppState`` / ``AgentUserState`` streams.
+  ``AppState`` / ``UserState`` streams.
 """
 
 from __future__ import annotations
@@ -203,7 +203,7 @@ def extract_usage_metadata(event: AdkEvent) -> dict[str, Any] | None:
     """Build the ``$usage`` KurrentDB event-metadata payload from an ADK event.
 
     Returns ``None`` when the event has no ``usage_metadata``. Canonical shape
-    is ``SCHEMA.md §3.4``.
+    is ``SCHEMA_v2.md §3.6``.
     """
     usage = event.usage_metadata
     if usage is None:

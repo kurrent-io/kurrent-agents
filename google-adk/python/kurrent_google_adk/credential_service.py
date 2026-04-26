@@ -1,7 +1,7 @@
 """``KurrentDBCredentialService`` — see ``DESIGN.md`` §7.4.
 
 Implements ``google.adk.auth.credential_service.BaseCredentialService`` on a
-KurrentDB ``AgentCredentials-{app}-{user}`` stream. ADK-specific; no AFW or
+KurrentDB ``Credentials-{app}-{user}`` stream. ADK-specific; no AFW or
 Strands analogue, so the event type ``CredentialSaved`` lives outside the
 canonical vocabulary and is never emitted by other integrations.
 

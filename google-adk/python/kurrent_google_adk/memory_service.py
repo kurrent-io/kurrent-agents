@@ -1,7 +1,7 @@
 """``KurrentDBMemoryService`` — see ``DESIGN.md`` §7.2.
 
 Implements ``google.adk.memory.BaseMemoryService`` backed by the canonical
-``AgentMemory-{app}-{user}`` stream (``SCHEMA.md`` §3.6). Each retained entry
+``AgentMemory-{app}-{user}`` stream (``SCHEMA_v2.md`` §3.7). Each retained entry
 becomes a canonical ``FactRetained`` event; ADK's richer ``MemoryEntry``
 metadata (``author``, ``id``, ``timestamp``, ``custom_metadata``) rides in
 ``extensions.adk`` so same-framework reads round-trip losslessly while a

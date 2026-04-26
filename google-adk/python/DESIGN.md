@@ -127,7 +127,7 @@ All remaining `EventActions` fields and every `LlmResponse` field go under `exte
 
 ### 5.3 Reconstruction on read
 
-`KurrentDBSessionService._canonical_to_event` reverses the decomposition. Canonical events that share an `extensions.adk.invocation_id` and author are merged back into one ADK `Event` when they originated from a single decomposition (e.g. assistant text + tool calls, or assistant text + thinking). All fields in `extensions.adk` are restored verbatim. Round-trip structural equality is a hard test invariant (§12).
+`KurrentDBSessionService._canonical_to_event` reverses the decomposition. Canonical events that share an `extensions.adk.id` (the source ADK event's id) are merged back into one ADK `Event` when they originated from a single decomposition (e.g. assistant text + tool calls, or assistant text + thinking). All fields in `extensions.adk` are restored verbatim. Round-trip structural equality is a hard test invariant (§12).
 
 ### 5.4 Why not opaque verbatim?
 

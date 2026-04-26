@@ -4,7 +4,7 @@ Event-sourced session persistence, memory, artifacts, credentials, and
 evaluation for Google's Agent Development Kit, backed by KurrentDB.
 
 See ``DESIGN.md`` in this directory for the full design spec, and
-``schema/SCHEMA.md`` at the repo root for the canonical event vocabulary
+``schema/SCHEMA_v2.md`` at the repo root for the canonical event vocabulary
 shared with the Microsoft Agent Framework integrations.
 """
 
