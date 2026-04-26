@@ -6,7 +6,8 @@ One write path to KurrentDB; everything else — chat history, memory, workflow 
 
 > **Revision note.** This document evolved across three passes.
 > - **v2 (after independent review):** Verbatim `AdkEvent` default, `KurrentDBCredentialService` added, state split across three stream families, explicit concurrency contract, dedicated resume/rewind sections.
-> - **v3 (after canonical schema design):** Storage is now **canonical events + `extensions.adk`**, not opaque verbatim. Stream names align with the canonical scheme (`AgentSession-...`, `AgentMemory-...`, etc.) shared with the MS Agent Framework integrations. See `SCHEMA.md` for the canonical event vocabulary and round-trip rules.
+> - **v3 (after canonical schema design):** Storage is now **canonical events + `extensions.adk`**, not opaque verbatim. Stream names align with the canonical scheme (`AgentSession-...`, `AgentMemory-...`, etc.) shared with the MS Agent Framework integrations. See `SCHEMA_v2.md` for the canonical event vocabulary and round-trip rules.
+> - **v4 (schema v2 migration):** ADK-specific stream prefixes renamed (`AppState-`, `UserState-`, `Credentials-`). Thinking emission promoted to canonical `AssistantThinkingGenerated`. `_schema/` subpackage replaced by shared `kurrent-agent-schema` package. ADK-specific event types live in `events.py`.
 
 ## 1. Goal
 
@@ -50,38 +51,41 @@ Key implication: **ADK does not need a separate checkpoint store, group-chat man
 
 ```
 kurrent_google_adk/
-  __init__.py
-  client.py                     # KurrentDBClient factory, connection string helpers
-  _schema/                      # Canonical event models — initially vendored inline
-    __init__.py                 # (will be replaced by an import from
-    events.py                   #  `kurrent-agent-schema` once that package exists;
-    stream_names.py             #  see SCHEMA.md)
-  _revisions.py                 # Last-seen-revision tracking (§8)
-  _codec.py                     # Event ↔ canonical decomposition/reconstruction (§5)
-  session_service.py            # KurrentDBSessionService
-  memory_service.py             # KurrentDBMemoryService
-  artifact_service.py           # KurrentDBArtifactService
-  credential_service.py         # KurrentDBCredentialService
-  plugins/
-    __init__.py
-    usage_capture.py            # UsageCapturePlugin
-  evaluation/
-    __init__.py
-    set_results_manager.py      # KurrentDBEvalSetResultsManager
-    sets_manager.py             # KurrentDBEvalSetsManager
-  projections/                  # Opt-in derived views
-    __init__.py
-    usage.py                    # Token-usage rollups from $usage metadata
-  subscriptions/
-    __init__.py
-    fact_extractor.py           # Background subscriber for cross-session fact extraction
+├── __init__.py
+├── _codec.py                  # ADK Event ↔ canonical decomposition
+├── _revisions.py              # RevisionTracker + SessionKey
+├── _serialization.py          # canonical-event ↔ KurrentDB wire shape
+├── _streams.py                # stream-name builders
+├── events.py                  # ADK-specific event types + canonical re-exports
+├── client.py                  # KurrentDBClient factory, connection string helpers
+├── artifact_service.py        # KurrentDBArtifactService
+├── credential_service.py      # KurrentDBCredentialService
+├── memory_service.py          # KurrentDBMemoryService
+├── session_service.py         # KurrentDBSessionService
+├── plugins/
+│   ├── __init__.py
+│   └── usage_capture.py       # UsageCapturePlugin
+├── evaluation/
+│   ├── __init__.py
+│   ├── set_results_manager.py # KurrentDBEvalSetResultsManager
+│   └── sets_manager.py        # KurrentDBEvalSetsManager
+├── projections/               # Opt-in derived views
+│   ├── __init__.py
+│   └── usage.py               # Token-usage rollups from $usage metadata
+└── subscriptions/
+    ├── __init__.py
+    └── fact_extractor.py      # Background subscriber for cross-session fact extraction
 ```
 
-The `_schema/` subpackage is initially vendored — the same Pydantic models the AFW-Python integration defines. Once a shared `kurrent-agent-schema` package exists (see repo-structure discussion below), `_schema` becomes a thin re-export of that package.
+Canonical event types come from the shared `kurrent-agent-schema` Python
+package. ADK-specific event types (`AgentTransferred`, `Rewind`,
+`Compaction`, `StateDelta`) live in `events.py` and are registered in
+`_serialization.py` alongside the shared canonical set. The
+`extensions.adk` slug owns ADK-specific fields per `SCHEMA_v2.md §5.3`.
 
 ## 5. Event storage — canonical events + `extensions.adk`
 
-The primary write format is the canonical event vocabulary defined in [`SCHEMA.md`](./SCHEMA.md). That same schema is used by the .NET and Python Microsoft Agent Framework integrations, so a session written by ADK is directly readable by AFW agents and vice versa (see `SCHEMA.md §4.1` for the cross-framework read semantics).
+The primary write format is the canonical event vocabulary defined in [`SCHEMA_v2.md`](./SCHEMA_v2.md). That same schema is used by the .NET and Python Microsoft Agent Framework integrations, so a session written by ADK is directly readable by AFW agents and vice versa (see `SCHEMA_v2.md §4.1` for the cross-framework read semantics).
 
 ADK's `Event` is richer than any single canonical event:
 
@@ -91,7 +95,7 @@ ADK's `Event` is richer than any single canonical event:
 
 ### 5.1 Decomposition on write
 
-`KurrentDBSessionService._event_to_canonical` decomposes each ADK `Event` into one or more canonical events following `SCHEMA.md §5.2`. Summary:
+`KurrentDBSessionService._event_to_canonical` decomposes each ADK `Event` into one or more canonical events following `SCHEMA_v2.md §5.2`. Summary:
 
 | ADK event shape | Canonical event(s) emitted |
 |---|---|
@@ -99,18 +103,19 @@ ADK's `Event` is richer than any single canonical event:
 | Non-user author, text content only | `AssistantTextGenerated` |
 | Non-user author, tool calls (± text) | `AssistantToolCallsGenerated` (+ `AssistantTextGenerated` if text also present) |
 | Tool responses | One `ToolResultReceived` per response |
-| `actions.transfer_to_agent` | `AgentTransferred` (ADK-specific, `SCHEMA.md §4`) |
-| `actions.state_delta` with `app:` keys | Routed to `AgentAppState-{app_name}` |
-| `actions.state_delta` with `user:` keys | Routed to `AgentUserState-{app_name}-{user_id}` |
+| `actions.transfer_to_agent` | `AgentTransferred` (ADK-specific, `SCHEMA_v2.md §4`) |
+| `actions.state_delta` with `app:` keys | Routed to `AppState-{app_name}` |
+| `actions.state_delta` with `user:` keys | Routed to `UserState-{app_name}-{user_id}` |
 | `actions.state_delta` with unprefixed keys | `StateDelta` (ADK-specific, same session stream) |
 | `actions.rewind_before_invocation_id` | `Rewind` (ADK-specific) |
 | `actions.compaction` | `Compaction` (ADK-specific) |
+| `Part(thought=True)` text | `AssistantThinkingGenerated` (canonical, `SCHEMA_v2.md §3.2`) |
 
-Token usage (`Event.usage_metadata`) attaches as `$usage` **KurrentDB event metadata** on the emitted assistant event, matching the .NET `UsageCapture` convention (`SCHEMA.md §3.4`).
+Token usage (`Event.usage_metadata`) attaches as `$usage` **KurrentDB event metadata** on the emitted assistant event, matching the .NET `UsageCapture` convention (`SCHEMA_v2.md §3.4`).
 
 ### 5.2 `extensions.adk` — lossless carrier for non-canonical fields
 
-Everything that doesn't land on a canonical field rides under `extensions.adk` on each emitted event. Shape spelled out in `SCHEMA.md §5.2`; load-bearing fields that must never be dropped on round-trip:
+Everything that doesn't land on a canonical field rides under `extensions.adk` on each emitted event. Shape spelled out in `SCHEMA_v2.md §5.2`; load-bearing fields that must never be dropped on round-trip:
 
 - `extensions.adk.invocation_id`
 - `extensions.adk.branch`
@@ -122,29 +127,51 @@ All remaining `EventActions` fields and every `LlmResponse` field go under `exte
 
 ### 5.3 Reconstruction on read
 
-`KurrentDBSessionService._canonical_to_event` reverses the decomposition. Canonical events that share an `extensions.adk.invocation_id` and author are merged back into one ADK `Event` when they originated from a single decomposition (e.g. assistant text + tool calls). All fields in `extensions.adk` are restored verbatim. Round-trip structural equality is a hard test invariant (§12).
+`KurrentDBSessionService._canonical_to_event` reverses the decomposition. Canonical events that share an `extensions.adk.invocation_id` and author are merged back into one ADK `Event` when they originated from a single decomposition (e.g. assistant text + tool calls, or assistant text + thinking). All fields in `extensions.adk` are restored verbatim. Round-trip structural equality is a hard test invariant (§12).
 
 ### 5.4 Why not opaque verbatim?
 
 v2 of this design stored each `Event` as an opaque `AdkEvent` payload. That's been dropped: the canonical form gives cross-framework interop at the **same** fidelity (lossless via `extensions.adk`). An opaque `AdkEvent` would not be readable by AFW agents; the canonical form is strictly more capable.
 
+### 5.5 Thought parts
+
+**Thought parts.** ADK's `types.Part` carries a `thought: bool` flag.
+When `thought=True`, the part's text is emitted as
+`AssistantThinkingGenerated` with `encrypted=False` and `signature=None`
+(ADK exposes plaintext thinking and has no signing concept). The thinking
+event shares `extensions.adk.id` with any sibling assistant text/tool
+events from the same source ADK `Event`, so `_reconstruct_one`'s grouping
+re-merges them on read; the round-trip restores `Part(text=..., thought=True)`.
+This was a v1 bug — thought text silently bled into
+`AssistantTextGenerated.content` — fixed by SCHEMA_v2's promotion of
+thinking to canonical (§3.2).
+
+### Extension slug ownership
+
+ADK owns the `extensions.adk` slug per `SCHEMA_v2.md §5.3`. ADK-specific
+fields (source `Event.id`, `invocation_id`, `branch`, `partial`,
+`long_running_tool_ids`, the full `EventActions` payload) are preserved
+under this slug so same-framework round-trip is lossless and cross-
+framework readers can ignore the slug entirely.
+
 ## 6. Stream naming
 
-Stream naming follows the canonical scheme in `SCHEMA.md §2`. Shared prefixes are important — `$ce-AgentSession` gives cross-framework session discovery across ADK and AFW.
+Stream naming follows the canonical scheme in `SCHEMA_v2.md §2`. Shared prefixes are important — `$ce-AgentSession` gives cross-framework session discovery across ADK and AFW.
 
-```
-AgentSession-{session_id}                        session events (shared with AFW)
-AgentAppState-{app_name}                         app-scoped state — ADK-specific
-AgentUserState-{app_name}-{user_id}              user-scoped state — ADK-specific
-AgentArtifact-{app_name}-{user_id}-{session_id}-{filename}
-AgentArtifact-{app_name}-{user_id}-{filename}    user-scoped (no session_id)
-AgentCredentials-{app_name}-{user_id}            tool OAuth — ADK-specific
-AgentMemory-{app_name}-{user_id}                 memory (SCHEMA.md §3.6 default scope)
-EvalRun-{run_id}                                 eval scores
-$ce-AgentSession                                  system category stream (shared)
-```
+| Stream | Owner | Purpose |
+|---|---|---|
+| `AgentSession-{session_id}` | shared | Primary conversation. |
+| `AgentMemory-{app_name}-{user_id}` | shared | Per-app, per-user retained facts. |
+| `AgentArtifact-{app}-{user}-[{session}-]{file}` | shared | Artifact versions. |
+| `AppState-{app_name}` | ADK | App-scoped state (`app:` prefix keys). **Renamed from v1 `AgentAppState-`.** |
+| `UserState-{app_name}-{user_id}` | ADK | User-scoped state. **Renamed from v1 `AgentUserState-`.** |
+| `Credentials-{app_name}-{user_id}` | ADK | Tool OAuth credentials. **Renamed from v1 `AgentCredentials-`.** |
+| `EvalRun-{run_id}` | ADK | Eval scores. |
+| `$ce-AgentSession` | shared | System category stream for cross-framework discovery. |
 
-Note that the canonical `AgentSession-{session_id}` doesn't encode `app_name`/`user_id` — ADK puts those on the `SessionStarted` event (`app_name` + `tenant_id` + `user_id`; `SCHEMA.md §3.1`) and reads them back from there for scoping downstream streams. ADK callers choose `session_id` freely; no encoding is required beyond the normalisation rules below.
+> **Note on v1→v2 rename.** `AgentAppState-`, `AgentUserState-`, and `AgentCredentials-` were renamed to drop the `Agent` prefix for clarity. The library was unshipped at the time of the rename, so no migration concern.
+
+Note that the canonical `AgentSession-{session_id}` doesn't encode `app_name`/`user_id` — ADK puts those on the `SessionStarted` event (`app_name` + `tenant_id` + `user_id`; `SCHEMA_v2.md §3.1`) and reads them back from there for scoping downstream streams. ADK callers choose `session_id` freely; no encoding is required beyond the normalisation rules below.
 
 ### 6.1 Id validation and normalisation
 
@@ -157,10 +184,10 @@ Note that the canonical `AgentSession-{session_id}` doesn't encode `app_name`/`u
 
 | Prefix | Target stream |
 |---|---|
-| `app:` | `AgentAppState-{app_name}` |
-| `user:` | `AgentUserState-{app_name}-{user_id}` |
+| `app:` | `AppState-{app_name}` |
+| `user:` | `UserState-{app_name}-{user_id}` |
 | `temp:` | Never persisted (base class already strips; see `base_session_service.py:140`). |
-| (none) | Session stream, as an ADK-specific `StateDelta` event (`SCHEMA.md §4`) |
+| (none) | Session stream, as an ADK-specific `StateDelta` event (`SCHEMA_v2.md §4`) |
 
 Non-state parts of the event — content, remaining `EventActions` fields, `LlmResponse` fields — always ride in the session stream on canonical events and their `extensions.adk` blocks. App/user state never duplicates into per-session streams.
 
@@ -183,26 +210,26 @@ class KurrentDBSessionService(BaseSessionService):
 Behaviour:
 
 - **`create_session`.** Generates `session_id` if absent; appends canonical `SessionStarted` (with `app_name`, `user_id`, agent name, model, etc.) to `AgentSession-{session_id}` with `expected_revision=NO_STREAM`. Returns an empty `Session` with any provided `state` applied (not persisted yet — callers typically follow up with `append_event` carrying a `state_delta`).
-- **`get_session`.** Reads `AgentSession-{session_id}` end-to-end. For each canonical event (or ADK-specific event in the same stream), reconstructs ADK `Event` objects via `_canonical_to_event` (§5.3). Reads relevant revisions of `AgentAppState-{app}` and `AgentUserState-{app}-{user}` via `state_cache`. Folds state deltas from all three sources with rewind handling (§10). Applies `GetSessionConfig` filters (`num_recent_events`, `after_timestamp`) to the event list only; state is always fully reconstructed.
+- **`get_session`.** Reads `AgentSession-{session_id}` end-to-end. For each canonical event (or ADK-specific event in the same stream), reconstructs ADK `Event` objects via `_canonical_to_event` (§5.3). Reads relevant revisions of `AppState-{app}` and `UserState-{app}-{user}` via `state_cache`. Folds state deltas from all three sources with rewind handling (§10). Applies `GetSessionConfig` filters (`num_recent_events`, `after_timestamp`) to the event list only; state is always fully reconstructed.
 - **`append_event`.** Delegates to `super().append_event(session, event)` first so the base class handles `Event.partial` short-circuit (`base_session_service.py:116`), temp-state application, and temp-delta trimming. Then decomposes the `Event` into canonical + `extensions.adk` form (§5.1) and appends. See §8 for the concurrency contract and §10 for rewind/compaction handling.
 - **`list_sessions`.** Reads `$ce-AgentSession`, filters by `app_name`/`user_id` (both are on the `SessionStarted` event, not in the stream name), returns session metadata without events or state (matches `ListSessionsResponse` contract, `base_session_service.py:45`).
 - **`delete_session`.** Soft delete: appends `SessionEnded`. Stream remains for audit. A `hard_delete=True` kwarg can tombstone via `TombstoneStream`; deferred until a user asks for it.
 
 ### 7.2 `KurrentDBMemoryService`
 
-Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. For richer retrieval, subclass `KurrentDBMemoryService` and override `search_memory` over the same event stream.
+Implements `BaseMemoryService` against `AgentMemory-{app_name}-{user_id}` (`SCHEMA_v2.md §3.6`). Each retained memory entry becomes a canonical `FactRetained` event. Default `search_memory` returns all entries — parity with the .NET `KurrentDBAgentMemory` baseline. For richer retrieval, subclass `KurrentDBMemoryService` and override `search_memory` over the same event stream.
 
 Wider scopes (`AgentMemory-{app}` app-shared, `AgentMemory` global) are reserved by the schema but not implemented in v1 — `DESIGN.md §13` open question.
 
 ### 7.3 `KurrentDBArtifactService`
 
-One stream per artifact: `AgentArtifact-{app}-{user}-{session}-{filename}` (or `AgentArtifact-{app}-{user}-{filename}` when `session_id=None`). Each `save_artifact` call emits a canonical `ArtifactVersionCreated` event (`SCHEMA.md §3.7`); version equals stream revision (first save returns `0`, per `BaseArtifactService` contract in `artifacts/base_artifact_service.py:88`).
+One stream per artifact: `AgentArtifact-{app}-{user}-{session}-{filename}` (or `AgentArtifact-{app}-{user}-{filename}` when `session_id=None`). Each `save_artifact` call emits a canonical `ArtifactVersionCreated` event (`SCHEMA_v2.md §3.7`); version equals stream revision (first save returns `0`, per `BaseArtifactService` contract in `artifacts/base_artifact_service.py:88`).
 
 Binary payloads above a configurable threshold (default `1 MiB`) are offloaded; the event carries `canonical_uri` pointing to external storage (S3, GCS, filesystem — pluggable via a small `BlobSink` interface). Smaller payloads stay inline as base64.
 
 ### 7.4 `KurrentDBCredentialService`
 
-Implements `BaseCredentialService.load_credential` / `save_credential`. Keys off `auth_config.get_credential_key()` (stable string ADK generates from the auth scheme + scopes). Credentials are written to `AgentCredentials-{app_name}-{user_id}` as `CredentialSaved` events keyed by the credential key; read is a backward scan for the most-recent matching key.
+Implements `BaseCredentialService.load_credential` / `save_credential`. Keys off `auth_config.get_credential_key()` (stable string ADK generates from the auth scheme + scopes). Credentials are written to `Credentials-{app_name}-{user_id}` as `CredentialSaved` events keyed by the credential key; read is a backward scan for the most-recent matching key.
 
 Credential events are ADK-specific — no AFW counterpart today, so they sit outside the canonical schema. Encryption-at-rest is out of scope for v1; a pluggable `CredentialCipher` interface can be added later without a breaking change.
 
@@ -215,7 +242,7 @@ class UsageCapturePlugin(BasePlugin):
     async def after_model_callback(self, *, callback_context, llm_response):
         # llm_response.usage_metadata is already on the response.
         # KurrentDBSessionService writes it as KurrentDB event metadata under
-        # "$usage" when the resulting Event is persisted (SCHEMA.md §3.4).
+        # "$usage" when the resulting Event is persisted (SCHEMA_v2.md §3.4).
         # This plugin exists for observability hooks (logging, metrics).
         # Return None to avoid replacing the response.
 ```
@@ -224,7 +251,7 @@ The plugin is optional — `$usage` metadata is emitted by `KurrentDBSessionServ
 
 ### 7.6 Evaluation managers
 
-`KurrentDBEvalSetsManager` stores eval case definitions; `KurrentDBEvalSetResultsManager` writes eval results to `EvalRun-{run_id}` as canonical `EvalRunStarted`, `TurnScored`, `EvalRunCompleted` events (`SCHEMA.md §3.5`). Direct port of the .NET `EvalRunner` event model — same schema.
+`KurrentDBEvalSetsManager` stores eval case definitions; `KurrentDBEvalSetResultsManager` writes eval results to `EvalRun-{run_id}` as canonical `EvalRunStarted`, `TurnScored`, `EvalRunCompleted` events (`SCHEMA_v2.md §3.5`). Direct port of the .NET `EvalRunner` event model — same schema.
 
 ### 7.7 Background fact extractor
 
@@ -279,13 +306,13 @@ Two ADK features insert *meta-events* that change the meaning of earlier events.
 **Read-time handling.**
 - When folding `state_delta`s into `Session.state`, the fold walks events in append order. On hitting a rewind event, the fold discards every prior delta whose originating event has `invocation_id == rewind_before_invocation_id` or later, then applies the rewind event's own `state_delta` (the compensating delta).
 - `Session.events` returned to the caller includes the rewind event but excludes the rewound invocations, matching what ADK expects from `get_session` after a rewind.
-- Rewind events are emitted under KurrentDB event type `Rewind` (ADK-specific, `SCHEMA.md §4`), carrying `rewind_before_invocation_id`, `state_delta`, and `timestamp`. AFW readers skip them entirely — they have no rewind concept.
+- Rewind events are emitted under KurrentDB event type `Rewind` (ADK-specific, `SCHEMA_v2.md §4`), carrying `rewind_before_invocation_id`, `state_delta`, and `timestamp`. AFW readers skip them entirely — they have no rewind concept.
 
 ### Compaction
 
 `EventsCompactionConfig` (`apps/app.py:63-108`) emits an event with `actions.compaction: EventCompaction` summarising a time range. `apps/compaction.py` relies on being able to find these events and inspect `start_timestamp`, `end_timestamp`, `compacted_content` on them.
 
-Compaction events are emitted as KurrentDB event type `Compaction` (ADK-specific, `SCHEMA.md §4`), carrying the three fields above as a canonical payload. `get_session` returns them inline in `Session.events` exactly as appended. We do not decompose, summarise, or project them — ADK's own compaction machinery handles everything else. AFW readers skip them (no AFW counterpart).
+Compaction events are emitted as KurrentDB event type `Compaction` (ADK-specific, `SCHEMA_v2.md §4`), carrying the three fields above as a canonical payload. `get_session` returns them inline in `Session.events` exactly as appended. We do not decompose, summarise, or project them — ADK's own compaction machinery handles everything else. AFW readers skip them (no AFW counterpart).
 
 ## 11. Wiring (user-facing API sketch)
 
