@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 from google.adk.events.event import Event as AdkEvent
 from google.adk.events.event_actions import EventActions
 from google.adk.sessions.base_session_service import GetSessionConfig
@@ -295,15 +294,9 @@ class TestConcurrency:
         assert len(reloaded.events) == 4
 
 
-@pytest.mark.asyncio
 async def test_get_session_rehydrates_usage_metadata(kurrentdb_client) -> None:
     """Regression for commit de2c3eb (DEV-1479): $usage metadata stamped on
     append must round-trip back into ``Event.usage_metadata`` on read."""
-    from google.adk.events.event import Event as AdkEvent
-    from google.genai import types
-
-    from kurrent_google_adk.session_service import KurrentDBSessionService
-
     service = KurrentDBSessionService(kurrentdb_client)
     session = await service.create_session(
         app_name="testapp",
