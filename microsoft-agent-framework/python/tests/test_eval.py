@@ -13,9 +13,11 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
 from agent_framework import ChatResponse, Message
 from kurrent_agent_schema import (
     AssistantTextGenerated,
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
     SessionStarted,
     ToolCallInfo,
@@ -466,3 +468,160 @@ async def test_llm_judge_passes_model_through_options() -> None:
     await judge(_empty_turn())
 
     assert received_options == [{"model": "gpt-judge"}]
+
+
+# --- Regression coverage for review-fix issues -----------------------------
+
+
+async def test_run_brackets_completed_event_when_scorer_raises() -> None:
+    """``EvalRunCompleted`` is the terminal marker downstream consumers rely
+    on. Even when the scorer raises mid-run, the bracketing must hold and
+    the original error must propagate to the caller."""
+    client = FakeClient()
+    await _seed_session(
+        client,
+        "s1",
+        UserMessageReceived(content="q1", message_index=0, timestamp=TS),
+        AssistantTextGenerated(content="a1", message_index=1, timestamp=TS),
+        UserMessageReceived(content="q2", message_index=2, timestamp=TS),
+        AssistantTextGenerated(content="a2", message_index=3, timestamp=TS),
+    )
+
+    class BoomError(RuntimeError):
+        pass
+
+    async def explode_on_second(turn: Turn) -> ScoredTurn:
+        if turn.index == 1:
+            raise BoomError("scorer broke")
+        return ScoredTurn(turn=turn, score=1.0, label="good", reason=None)
+
+    with pytest.raises(BoomError):
+        await EvalRunner(client).run(  # type: ignore[arg-type]
+            session_id="s1",
+            scorer_name="boom",
+            criteria="any",
+            scorer=explode_on_second,
+        )
+
+    _, events = _eval_stream(client)
+    types = [e.type for e in events]
+    # Started, one TurnScored (the first turn succeeded), then Completed.
+    assert types == ["EvalRunStarted", "TurnScored", "EvalRunCompleted"]
+    completed = json.loads(events[-1].data)
+    assert completed["turns_scored"] == 1
+    assert completed["average_score"] == 1.0
+
+
+async def test_read_session_turns_correlates_results_by_call_id_out_of_order() -> None:
+    """Tool-result events may arrive in a different order than the original
+    calls. Schema-level ``call_id`` is the correlation key — positional
+    back-walk would attribute results to the wrong tool call."""
+    client = FakeClient()
+    await _seed_session(
+        client,
+        "s1",
+        UserMessageReceived(content="weather + time?", message_index=0, timestamp=TS),
+        AssistantToolCallsGenerated(
+            tool_calls=[
+                ToolCallInfo(call_id="weather-1", tool_name="GetWeather"),
+                ToolCallInfo(call_id="time-1", tool_name="GetTime"),
+            ],
+            content=None,
+            message_index=1,
+            timestamp=TS,
+        ),
+        # Results arrive in reverse order.
+        ToolResultReceived(call_id="time-1", tool_name="GetTime", result="12:00", message_index=2, timestamp=TS),
+        ToolResultReceived(
+            call_id="weather-1", tool_name="GetWeather", result="Sunny", message_index=3, timestamp=TS
+        ),
+        AssistantTextGenerated(content="Done", message_index=4, timestamp=TS),
+    )
+
+    turns = await read_session_turns(client, "s1")  # type: ignore[arg-type]
+
+    assert len(turns) == 1
+    by_name = {tc.name: tc for tc in turns[0].tool_calls}
+    assert by_name["GetWeather"].result == "Sunny"
+    assert by_name["GetTime"].result == "12:00"
+
+
+async def test_read_session_turns_user_with_null_content_still_flushes() -> None:
+    """``UserMessageReceived.content`` is ``str | None`` per the schema. A
+    null user message must still open a turn so the assistant events that
+    follow it land in their own turn instead of being silently lost when
+    the next user message arrives."""
+    client = FakeClient()
+    await _seed_session(
+        client,
+        "s1",
+        UserMessageReceived(content=None, message_index=0, timestamp=TS),
+        AssistantTextGenerated(content="hi anyway", message_index=1, timestamp=TS),
+        UserMessageReceived(content="follow up", message_index=2, timestamp=TS),
+        AssistantTextGenerated(content="reply", message_index=3, timestamp=TS),
+    )
+
+    turns = await read_session_turns(client, "s1")  # type: ignore[arg-type]
+
+    assert len(turns) == 2
+    assert turns[0].user_input is None
+    assert turns[0].assistant_output == "hi anyway"
+    assert turns[1].user_input == "follow up"
+    assert turns[1].assistant_output == "reply"
+
+
+async def test_read_session_turns_aggregates_thinking_usage() -> None:
+    """``$usage`` rides on every assistant event including
+    ``AssistantThinkingGenerated`` (schema v2 §3.4); thinking tokens must
+    count toward the turn's token totals."""
+    client = FakeClient()
+    await _seed_session(
+        client,
+        "s1",
+        UserMessageReceived(content="hi", message_index=0, timestamp=TS),
+        AssistantThinkingGenerated(content="...", message_index=1, timestamp=TS),
+        AssistantTextGenerated(content="answer", message_index=2, timestamp=TS),
+        metadata=[None, _usage(100, 0), _usage(20, 7)],
+    )
+
+    turns = await read_session_turns(client, "s1")  # type: ignore[arg-type]
+
+    assert len(turns) == 1
+    assert turns[0].input_tokens == 120
+    assert turns[0].output_tokens == 7
+
+
+async def test_llm_judge_normalises_none_inputs_in_prompt() -> None:
+    """``Turn.user_input`` / ``Turn.assistant_output`` are optional. The
+    judge must not embed the literal string ``"None"`` into the prompt for
+    incomplete turns."""
+    seen_prompts: list[str] = []
+
+    class PromptCapturingClient(StubChatClient):
+        async def get_response(  # type: ignore[override]
+            self,
+            messages: Sequence[Message],
+            *,
+            stream: bool = False,
+            options: Any = None,
+            **kwargs: Any,
+        ) -> ChatResponse:
+            seen_prompts.append(messages[0].text or "")
+            return await super().get_response(messages, stream=stream, options=options)
+
+    client = PromptCapturingClient('{"score": 0.0}')
+    judge = llm_judge(client, "accuracy")
+
+    turn = Turn(
+        index=0,
+        user_input=None,
+        assistant_output=None,
+        tool_calls=(),
+        input_tokens=None,
+        output_tokens=None,
+    )
+    await judge(turn)
+
+    assert seen_prompts, "judge should have been invoked"
+    prompt = seen_prompts[0]
+    assert "None" not in prompt, prompt
