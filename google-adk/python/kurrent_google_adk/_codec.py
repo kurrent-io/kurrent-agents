@@ -46,7 +46,7 @@ from .events import (
     ADK_EXTENSION_KEY,
     AgentTransferred,
     AssistantTextGenerated,
-    AssistantThinkingGenerated,  # noqa: F401  # used in Task 6 (thought-part split)
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
     Compaction,
     Rewind,
@@ -112,7 +112,7 @@ def event_to_canonical(event: AdkEvent) -> list[CanonicalEvent]:
         )
 
     # Conversation content
-    text_content, function_calls, function_responses = _classify_parts(event.content)
+    text_content, thought_content, function_calls, function_responses = _classify_parts(event.content)
 
     # Tool responses ride on user-role events (FunctionResponse protocol) or
     # sometimes on non-user authors (rare). Emit each as its own event.
@@ -122,6 +122,20 @@ def event_to_canonical(event: AdkEvent) -> list[CanonicalEvent]:
                 call_id=fr.id or "",
                 tool_name=fr.name,
                 result=_serialize_response(fr.response),
+                message_id=event.id,
+                author_name=event.author,
+                message_index=0,
+                timestamp=timestamp,
+                extensions=extensions,
+            )
+        )
+
+    if event.author != "user" and thought_content is not None:
+        results.append(
+            AssistantThinkingGenerated(
+                content=thought_content,
+                encrypted=False,
+                signature=None,
                 message_id=event.id,
                 author_name=event.author,
                 message_index=0,
@@ -251,21 +265,31 @@ def _to_float(value: datetime) -> float:
 
 def _classify_parts(
     content: types.Content | None,
-) -> tuple[str | None, list[types.FunctionCall], list[types.FunctionResponse]]:
+) -> tuple[
+    str | None,  # text (thought=False parts only)
+    str | None,  # thought (thought=True parts only)
+    list[types.FunctionCall],
+    list[types.FunctionResponse],
+]:
     if content is None or not content.parts:
-        return None, [], []
+        return None, None, [], []
     text_chunks: list[str] = []
+    thought_chunks: list[str] = []
     calls: list[types.FunctionCall] = []
     responses: list[types.FunctionResponse] = []
     for part in content.parts:
         if part.text is not None:
-            text_chunks.append(part.text)
+            if getattr(part, "thought", False):
+                thought_chunks.append(part.text)
+            else:
+                text_chunks.append(part.text)
         if part.function_call is not None:
             calls.append(part.function_call)
         if part.function_response is not None:
             responses.append(part.function_response)
     text = "".join(text_chunks) if text_chunks else None
-    return text, calls, responses
+    thought = "".join(thought_chunks) if thought_chunks else None
+    return text, thought, calls, responses
 
 
 def _tool_call_info(fc: types.FunctionCall) -> ToolCallInfo:
@@ -407,6 +431,10 @@ def _reconstruct_one(group: list[CanonicalEvent]) -> AdkEvent:
             author = event.author_name or "user"
             if event.content is not None:
                 parts.append(types.Part(text=event.content))
+        elif isinstance(event, AssistantThinkingGenerated):
+            author = event.author_name or author
+            if event.content is not None:
+                parts.append(types.Part(text=event.content, thought=True))
         elif isinstance(event, AssistantTextGenerated):
             author = event.author_name or author
             if event.content is not None:
