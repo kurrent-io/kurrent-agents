@@ -139,10 +139,12 @@ Tool input / the proposed action / auth challenge details go in `extensions.{fra
 When the interrupt blocks a specific tool call (`kind=approval` / `permission`), integrations SHOULD additionally place the proposed call under their extension slug using a uniform shape:
 
 ```json
-"extensions": {
-  "<slug>": {
-    "interrupt": {
-      "proposed_call": { "id": "...", "name": "...", "arguments": {} }
+{
+  "extensions": {
+    "<slug>": {
+      "interrupt": {
+        "proposed_call": { "id": "...", "name": "...", "arguments": {} }
+      }
     }
   }
 }
@@ -171,7 +173,7 @@ Framework-specific resolution details (e.g. `permission_decision` enum values, u
 | Strands `Interrupt` (when adopted) | TBD | Classify per-framework as adoption lands. |
 | ADK `requested_tool_confirmations` (when adopted) | TBD | Classify per-framework as adoption lands. |
 
-**Post-hoc rule:** when an `InterruptIssued` is post-hoc and its `InterruptResolved` outcome is in the `allow*` family, the `request_id` MUST equal the `call_id` of the eventual `AssistantToolCallsGenerated.tool_call`. MAF satisfies this naturally because both events use the same `FunctionCall.Id`. Cross-event correlation is therefore trivial without per-framework decoding.
+**Post-hoc rule:** when an `InterruptIssued` is post-hoc and its `InterruptResolved` outcome is in the `allow*` family, the `request_id` MUST equal the `call_id` of the matching `ToolCallInfo` entry within the eventual `AssistantToolCallsGenerated.tool_calls` list. MAF satisfies this naturally because both events use the same `FunctionCall.Id`. Cross-event correlation is therefore trivial without per-framework decoding.
 
 **Pre-hoc:** no rule applies. `request_id` is opaque (a synthetic id is fine). Cross-event linkage, when needed, is reconstructed downstream from sequence + `tool_name` or from per-framework extension fields.
 
