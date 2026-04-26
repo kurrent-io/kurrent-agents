@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Any
 
 from kurrent_agent_schema.events import (
-    _EventBase,
     AgentConfig,
     ArtifactVersionCreated,
     AssistantTextGenerated,
@@ -34,6 +33,7 @@ from kurrent_agent_schema.events import (
     ToolResultReceived,
     TurnScored,
     UserMessageReceived,
+    _EventBase,
 )
 from pydantic import Field
 
@@ -78,7 +78,7 @@ class StateDelta(_EventBase):
     timestamp: datetime
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022
     "ADK_EXTENSION_KEY",
     # ADK-specific
     "AgentTransferred",
