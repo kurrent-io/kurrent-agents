@@ -293,3 +293,52 @@ class TestConcurrency:
         assert reloaded is not None
         # All four appends should be visible.
         assert len(reloaded.events) == 4
+
+
+@pytest.mark.asyncio
+async def test_get_session_rehydrates_usage_metadata(kurrentdb_client) -> None:
+    """Regression for commit de2c3eb (DEV-1479): $usage metadata stamped on
+    append must round-trip back into ``Event.usage_metadata`` on read."""
+    from google.adk.events.event import Event as AdkEvent
+    from google.genai import types
+
+    from kurrent_google_adk.session_service import KurrentDBSessionService
+
+    service = KurrentDBSessionService(kurrentdb_client)
+    session = await service.create_session(
+        app_name="testapp",
+        user_id="alice",
+        session_id="usage-regression",
+        state={},
+    )
+
+    assistant_event = AdkEvent(
+        author="root",
+        invocation_id="inv-usage-1",
+        content=types.Content(
+            parts=[types.Part(text="answer with thinking")],
+            role="model",
+        ),
+        usage_metadata=types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=42,
+            candidates_token_count=17,
+            total_token_count=59,
+            cached_content_token_count=8,
+            thoughts_token_count=5,
+        ),
+    )
+    await service.append_event(session, assistant_event)
+
+    fetched = await service.get_session(
+        app_name="testapp",
+        user_id="alice",
+        session_id="usage-regression",
+    )
+    assert fetched is not None
+    persisted = next(e for e in fetched.events if e.invocation_id == "inv-usage-1")
+    assert persisted.usage_metadata is not None
+    assert persisted.usage_metadata.prompt_token_count == 42
+    assert persisted.usage_metadata.candidates_token_count == 17
+    assert persisted.usage_metadata.total_token_count == 59
+    assert persisted.usage_metadata.cached_content_token_count == 8
+    assert persisted.usage_metadata.thoughts_token_count == 5
