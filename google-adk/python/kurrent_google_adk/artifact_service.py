@@ -35,11 +35,11 @@ from kurrentdbclient import StreamState
 from kurrentdbclient.exceptions import NotFoundError, StreamIsDeletedError
 
 from . import _serialization
-from ._schema import events as _events
-from ._schema.stream_names import for_artifact
+from . import events as _events
+from ._streams import for_artifact
 
 if TYPE_CHECKING:  # pragma: no cover
-    from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent
+    from kurrentdbclient import AsyncKurrentDBClient
 
 
 # 1 MiB — payloads over this bounce to BlobSink (follow-up) or raise in v1.
@@ -373,7 +373,7 @@ class KurrentDBArtifactService(BaseArtifactService):
 
 
 class _Payload:
-    __slots__ = ("inline_bytes", "canonical_uri", "mime_type", "kind")
+    __slots__ = ("canonical_uri", "inline_bytes", "kind", "mime_type")
 
     def __init__(
         self,

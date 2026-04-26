@@ -25,9 +25,9 @@ from kurrentdbclient import StreamState
 from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
-from ._schema import events as _events
-from ._schema.events import ADK_EXTENSION_KEY
-from ._schema.stream_names import for_memory
+from . import events as _events
+from ._streams import for_memory
+from .events import ADK_EXTENSION_KEY
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.events.event import Event

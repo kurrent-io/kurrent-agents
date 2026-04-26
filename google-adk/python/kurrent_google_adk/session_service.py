@@ -27,20 +27,18 @@ from google.adk.sessions.base_session_service import (
 )
 from google.adk.sessions.session import Session
 from google.genai import types
+from kurrent_agent_schema.usage import USAGE_METADATA_KEY
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError, WrongCurrentVersionError
 
 from . import _serialization
+from . import events as _events
 from ._codec import canonical_to_events, event_to_canonical, extract_usage_metadata
 from ._revisions import RevisionTracker, SessionKey, StaleSessionError
-from ._schema import events as _events
-from ._schema.events import ADK_EXTENSION_KEY
-from ._schema.stream_names import for_session
+from ._streams import for_session
+from .events import ADK_EXTENSION_KEY
 
 logger = logging.getLogger("kurrent_google_adk.session_service")
-
-# KurrentDB metadata key for per-event token usage (SCHEMA.md §3.4).
-USAGE_METADATA_KEY = "$usage"
 
 # Canonical event types eligible for $usage metadata.
 _ASSISTANT_EVENT_CLASSES: tuple[type, ...] = (
