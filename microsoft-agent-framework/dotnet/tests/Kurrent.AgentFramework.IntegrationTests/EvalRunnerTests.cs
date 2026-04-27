@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Eval;
@@ -11,7 +12,28 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class EvalRunnerTests(KurrentDbFixture db) {
-    static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset Ts  = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
+
+    static UserMessageReceived UserMsg(string content, string messageId, int idx) =>
+        new() {
+            Content      = content,
+            MessageId    = messageId,
+            AuthorName   = "user",
+            CreatedAt    = Pts,
+            MessageIndex = idx,
+            Timestamp    = Pts,
+        };
+
+    static AssistantTextGenerated AsstText(string content, string messageId, int idx) =>
+        new() {
+            Content      = content,
+            MessageId    = messageId,
+            AuthorName   = "agent",
+            CreatedAt    = Pts,
+            MessageIndex = idx,
+            Timestamp    = Pts,
+        };
 
     static async Task SeedSessionAsync(KurrentDBClient client, string sessionId, params EventData[] events) {
         await client.AppendToStreamAsync(StreamNames.AgentSession(sessionId), StreamState.Any, events);
@@ -38,6 +60,9 @@ public class EvalRunnerTests(KurrentDbFixture db) {
     /// matched by the <c>session_id</c> carried in each event's payload. Bounding by start
     /// position keeps the scan O(events-written-during-this-test) regardless of container age.
     /// </summary>
+    static int GetIntOrDefault(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+
     static async Task<List<(string Type, JsonDocument Payload)>> ReadEvalEventsForSession(
         KurrentDBClient client, string sessionId, Position fromPosition
     ) {
@@ -68,10 +93,10 @@ public class EvalRunnerTests(KurrentDbFixture db) {
         var sessionId    = Guid.NewGuid().ToString("N");
 
         await SeedSessionAsync(client, sessionId,
-            EventFor(new UserMessageReceived("q1", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantTextGenerated("a1", "m-2", "agent", Ts, 1, Ts)),
-            EventFor(new UserMessageReceived("q2", "m-3", "user", Ts, 2, Ts)),
-            EventFor(new AssistantTextGenerated("a2", "m-4", "agent", Ts, 3, Ts)));
+            EventFor(UserMsg("q1", "m-1", 0)),
+            EventFor(AsstText("a1", "m-2", 1)),
+            EventFor(UserMsg("q2", "m-3", 2)),
+            EventFor(AsstText("a2", "m-4", 3)));
 
         var runner = new EvalRunner(client);
 
@@ -107,10 +132,10 @@ public class EvalRunnerTests(KurrentDbFixture db) {
         };
 
         await SeedSessionAsync(client, sessionId,
-            EventFor(new UserMessageReceived("q1", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantTextGenerated("a1", "m-2", "agent", Ts, 1, Ts), metadata: Usage(10, 5)),
-            EventFor(new UserMessageReceived("q2", "m-3", "user", Ts, 2, Ts)),
-            EventFor(new AssistantTextGenerated("a2", "m-4", "agent", Ts, 3, Ts), metadata: Usage(20, 8)));
+            EventFor(UserMsg("q1", "m-1", 0)),
+            EventFor(AsstText("a1", "m-2", 1), metadata: Usage(10, 5)),
+            EventFor(UserMsg("q2", "m-3", 2)),
+            EventFor(AsstText("a2", "m-4", 3), metadata: Usage(20, 8)));
 
         var result = await new EvalRunner(client).RunAsync(
             sessionId, "fixed", "testing", (t, _) => Task.FromResult(new ScoredTurn(t, 1.0, null, null)));
@@ -125,8 +150,8 @@ public class EvalRunnerTests(KurrentDbFixture db) {
         var sessionId    = Guid.NewGuid().ToString("N");
 
         await SeedSessionAsync(client, sessionId,
-            EventFor(new UserMessageReceived("q", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantTextGenerated("a", "m-2", "agent", Ts, 1, Ts)));
+            EventFor(UserMsg("q", "m-1", 0)),
+            EventFor(AsstText("a", "m-2", 1)));
 
         var startPos = await SnapshotAllEndAsync(client);
 
@@ -143,13 +168,15 @@ public class EvalRunnerTests(KurrentDbFixture db) {
             await Assert.That(started.GetProperty("scorer").GetString()).IsEqualTo("my-scorer");
             await Assert.That(started.GetProperty("criteria").GetString()).IsEqualTo("helpfulness");
 
+            // Proto3 JSON canonical form omits default-valued fields (turn_index = 0,
+            // turns_scored = 0). Treat missing as default per the proto3 contract.
             var scored = evts[1].Payload.RootElement;
-            await Assert.That(scored.GetProperty("turn_index").GetInt32()).IsEqualTo(0);
+            await Assert.That(GetIntOrDefault(scored, "turn_index")).IsEqualTo(0);
             await Assert.That(scored.GetProperty("score").GetDouble()).IsEqualTo(0.9);
             await Assert.That(scored.GetProperty("score_label").GetString()).IsEqualTo("good");
 
             var completed = evts[2].Payload.RootElement;
-            await Assert.That(completed.GetProperty("turns_scored").GetInt32()).IsEqualTo(1);
+            await Assert.That(GetIntOrDefault(completed, "turns_scored")).IsEqualTo(1);
             await Assert.That(completed.GetProperty("average_score").GetDouble()).IsEqualTo(0.9);
         } finally {
             foreach (var (_, doc) in evts) doc.Dispose();
@@ -198,7 +225,7 @@ public class EvalRunnerTests(KurrentDbFixture db) {
         }
 #pragma warning restore CS1998
 
-        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public object? GetService(System.Type serviceType, object? serviceKey = null) => null;
         public void Dispose() { }
     }
 

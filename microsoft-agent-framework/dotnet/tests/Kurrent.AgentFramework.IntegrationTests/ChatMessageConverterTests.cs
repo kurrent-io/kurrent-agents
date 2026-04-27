@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using Microsoft.Extensions.AI;
@@ -6,7 +7,8 @@ using Microsoft.Extensions.AI;
 namespace Kurrent.AgentFramework.IntegrationTests;
 
 public class ChatMessageConverterTests {
-    static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset Ts  = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
 
     [Test]
     public async Task ToEvents_UserMessage_EmitsSingleUserMessageReceived() {
@@ -24,7 +26,7 @@ public class ChatMessageConverterTests {
         await Assert.That(user.MessageId).IsEqualTo("m1");
         await Assert.That(user.AuthorName).IsEqualTo("daisy");
         await Assert.That(user.MessageIndex).IsEqualTo(3);
-        await Assert.That(user.Timestamp).IsEqualTo(Ts);
+        await Assert.That(user.Timestamp).IsEqualTo(Pts);
     }
 
     [Test]
@@ -54,6 +56,7 @@ public class ChatMessageConverterTests {
         await Assert.That(toolCalls.ToolCalls[0].CallId).IsEqualTo("call-1");
         await Assert.That(toolCalls.ToolCalls[0].ToolName).IsEqualTo("get_weather");
         await Assert.That(toolCalls.ToolCalls[0].Arguments).IsNotNull();
+        await Assert.That(toolCalls.ToolCalls[0].Arguments!.Fields["city"].StringValue).IsEqualTo("Paris");
     }
 
     [Test]
@@ -85,7 +88,14 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToChatMessage_UserEvent_RoundTripsRoleAndContent() {
-        var e = new UserMessageReceived("hello", "m1", "daisy", Ts, 0, Ts);
+        var e = new UserMessageReceived {
+            Content      = "hello",
+            MessageId    = "m1",
+            AuthorName   = "daisy",
+            CreatedAt    = Pts,
+            MessageIndex = 0,
+            Timestamp    = Pts,
+        };
 
         var msg = ChatMessageConverter.ToChatMessage(e);
 
@@ -98,16 +108,14 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToChatMessage_AssistantToolCalls_ReconstructsFunctionCallContent() {
-        var args = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" });
-        var e    = new AssistantToolCallsGenerated(
-            ToolCalls: [new ToolCallInfo("call-1", "get_weather", args)],
-            Content: "looking",
-            MessageId: null,
-            AuthorName: null,
-            CreatedAt: null,
-            MessageIndex: 0,
-            Timestamp: Ts
-        );
+        var args = ChatMessageConverter.JsonElementToStruct(
+            JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" }));
+        var e    = new AssistantToolCallsGenerated {
+            Content      = "looking",
+            MessageIndex = 0,
+            Timestamp    = Pts,
+        };
+        e.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "get_weather", Arguments = args });
 
         var msg = ChatMessageConverter.ToChatMessage(e);
 
@@ -122,7 +130,13 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToChatMessage_ToolResult_ReconstructsFunctionResultContent() {
-        var e = new ToolResultReceived("call-1", "get_weather", "sunny", null, null, null, 0, Ts);
+        var e = new ToolResultReceived {
+            CallId       = "call-1",
+            ToolName     = "get_weather",
+            Result       = "sunny",
+            MessageIndex = 0,
+            Timestamp    = Pts,
+        };
 
         var msg = ChatMessageConverter.ToChatMessage(e);
 
@@ -135,15 +149,7 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToChatMessage_NonChatEvent_ReturnsNull() {
-        var e = new SessionStarted(
-            AppName:           null,
-            AgentName:         "a",
-            Model:             "m",
-            TenantId:          null,
-            UserId:            null,
-            AgentConfig:       null,
-            PreviousSessionId: null,
-            Timestamp:         Ts);
+        var e = new SessionStarted { AgentName = "a", Model = "m", Timestamp = Pts };
 
         await Assert.That(ChatMessageConverter.ToChatMessage(e)).IsNull();
     }

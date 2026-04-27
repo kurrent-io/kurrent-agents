@@ -5,6 +5,7 @@
 // No LLM required — uses the heuristic scorer. Swap in EvalRunner.LlmJudge() for LLM scoring.
 
 using System.Text;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework;
@@ -27,42 +28,47 @@ var kurrentDb = host.Services.GetRequiredService<KurrentDBClient>();
 var sessionId  = Guid.NewGuid().ToString();
 var streamName = StreamNames.AgentSession(sessionId);
 var now        = DateTimeOffset.UtcNow;
+var pNow       = Timestamp.FromDateTimeOffset(now);
+
+UserMessageReceived UserMsg(string content, int idx) =>
+    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
+
+AssistantTextGenerated AsstText(string content, int idx) =>
+    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
 
 Console.WriteLine("========================================");
 Console.WriteLine("Creating synthetic agent session");
 Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
+var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = pNow };
+toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "GetWeather" });
+
 var events = new List<EventData> {
-    EventSerializer.Serialize(new SessionStarted(
-        AppName:           null,
-        AgentName:         "EvalTestAgent",
-        Model:             "test-model",
-        TenantId:          null,
-        UserId:            null,
-        AgentConfig:       null,
-        PreviousSessionId: null,
-        Timestamp:         now)),
+    EventSerializer.Serialize(new SessionStarted { AgentName = "EvalTestAgent", Model = "test-model", Timestamp = pNow }),
 
     // Turn 1: good response
-    EventSerializer.Serialize(new UserMessageReceived("What's the weather in London?", null, null, null, 0, now)),
-    EventSerializer.Serialize(new AssistantToolCallsGenerated([new("call-1", "GetWeather", null)], null, null, null, null, 1, now)),
-    EventSerializer.Serialize(new ToolResultReceived("call-1", "GetWeather", "Sunny, 22°C", null, null, null, 2, now)),
-    EventSerializer.Serialize(new AssistantTextGenerated("The weather in London is sunny at 22°C.", null, null, null, 3, now)),
+    EventSerializer.Serialize(UserMsg("What's the weather in London?", 0)),
+    EventSerializer.Serialize(toolCalls),
+    EventSerializer.Serialize(new ToolResultReceived {
+        CallId = "call-1", ToolName = "GetWeather", Result = "Sunny, 22°C",
+        MessageIndex = 2, Timestamp = pNow,
+    }),
+    EventSerializer.Serialize(AsstText("The weather in London is sunny at 22°C.", 3)),
 
     // Turn 2: poor response (empty)
-    EventSerializer.Serialize(new UserMessageReceived("Tell me a joke", null, null, null, 4, now)),
-    EventSerializer.Serialize(new AssistantTextGenerated("", null, null, null, 5, now)),
+    EventSerializer.Serialize(UserMsg("Tell me a joke", 4)),
+    EventSerializer.Serialize(AsstText("", 5)),
 
     // Turn 3: acceptable but missed tool usage
-    EventSerializer.Serialize(new UserMessageReceived("What time is it in Tokyo?", null, null, null, 6, now)),
-    EventSerializer.Serialize(new AssistantTextGenerated("I'm not sure of the exact time right now.", null, null, null, 7, now)),
+    EventSerializer.Serialize(UserMsg("What time is it in Tokyo?", 6)),
+    EventSerializer.Serialize(AsstText("I'm not sure of the exact time right now.", 7)),
 
     // Turn 4: good response with facts
-    EventSerializer.Serialize(new UserMessageReceived("What is my name?", null, null, null, 8, now)),
-    EventSerializer.Serialize(new AssistantTextGenerated("Your name is Alexey and you work at Kurrent.", null, null, null, 9, now)),
+    EventSerializer.Serialize(UserMsg("What is my name?", 8)),
+    EventSerializer.Serialize(AsstText("Your name is Alexey and you work at Kurrent.", 9)),
 
-    EventSerializer.Serialize(new SessionEnded("completed", now)),
+    EventSerializer.Serialize(new SessionEnded { Reason = "completed", Timestamp = pNow }),
 };
 
 await kurrentDb.AppendToStreamAsync(streamName, StreamState.Any, events);
