@@ -233,3 +233,33 @@ def test_usage_fixture_round_trip() -> None:
 
 def test_usage_metadata_key_constant() -> None:
     assert USAGE_METADATA_KEY == "$usage"
+
+
+def test_credential_saved_round_trip() -> None:
+    from datetime import datetime, timezone
+
+    from kurrent_google_adk._serialization import deserialize, name_for, serialize
+    from kurrent_google_adk.events import CredentialSaved
+
+    event = CredentialSaved(
+        credential_key="oauth2:scope=read",
+        credential="AQABAGRlYWRiZWVm",  # dummy base64
+        timestamp=datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc),
+    )
+    assert name_for(event) == "CredentialSaved"
+
+    new_event = serialize(event)
+    assert new_event.type == "CredentialSaved"
+
+    class _Recorded:
+        type = new_event.type
+        data = new_event.data
+        metadata = new_event.metadata
+        stream_name = "Credentials-app-user"
+        stream_position = 0
+
+    decoded = deserialize(_Recorded())  # type: ignore[arg-type]
+    assert isinstance(decoded, CredentialSaved)
+    assert decoded.credential_key == event.credential_key
+    assert decoded.credential == event.credential
+    assert decoded.timestamp == event.timestamp

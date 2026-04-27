@@ -78,6 +78,19 @@ class StateDelta(_EventBase):
     timestamp: datetime
 
 
+class CredentialSaved(_EventBase):
+    """ADK-specific event recording a tool OAuth credential.
+
+    The ``credential`` field is a base64-encoded, cipher-self-describing
+    wire blob. Format and AAD binding are defined in
+    ``docs/superpowers/specs/2026-04-27-adk-credential-service-design.md``.
+    """
+
+    credential_key: str
+    credential: str
+    timestamp: datetime
+
+
 __all__ = [  # noqa: RUF022
     "ADK_EXTENSION_KEY",
     # ADK-specific
@@ -85,6 +98,7 @@ __all__ = [  # noqa: RUF022
     "Rewind",
     "Compaction",
     "StateDelta",
+    "CredentialSaved",
     # Re-exported canonical types
     "_EventBase",
     "AgentConfig",
