@@ -96,12 +96,15 @@ def deserialize(recorded: RecordedEvent) -> _EventBase | None:
         payload = json.loads(recorded.data) if recorded.data else {}
         return cls.model_validate(payload)
     except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+        # Log only the exception class name, not the full exception string —
+        # ValidationError messages can include payload-derived field values
+        # (user message text, assistant content). See Qodo review on PR #32.
         logger.warning(
-            "Skipping unparseable event (type=%r, stream=%r, position=%r): %s",
+            "Skipping unparseable event (type=%r, stream=%r, position=%r, error=%s)",
             recorded.type,
             recorded.stream_name,
             recorded.stream_position,
-            exc,
+            type(exc).__name__,
         )
         return None
 

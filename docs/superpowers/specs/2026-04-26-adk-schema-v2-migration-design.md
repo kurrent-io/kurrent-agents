@@ -2,7 +2,7 @@
 
 **Linear:** [DEV-1528](https://linear.app/kurrent/issue/DEV-1528) (parent), with sub-issues [DEV-1533](https://linear.app/kurrent/issue/DEV-1533) (code), [DEV-1534](https://linear.app/kurrent/issue/DEV-1534) (fixture tests), [DEV-1535](https://linear.app/kurrent/issue/DEV-1535) (docs).
 
-**Status:** draft, pending user review before writing the implementation plan.
+**Status:** approved; implementation plan at `docs/superpowers/plans/2026-04-26-adk-schema-v2-migration.md`; delivered in PR #32.
 
 **Date:** 2026-04-26.
 

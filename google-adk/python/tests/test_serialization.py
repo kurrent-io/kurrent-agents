@@ -180,6 +180,10 @@ def test_deserialize_malformed_json_logs_and_returns_none(caplog: pytest.LogCapt
     with caplog.at_level("WARNING", logger="kurrent_google_adk._serialization"):
         assert _serialization.deserialize(bad) is None
     assert any("Skipping unparseable event" in rec.message for rec in caplog.records)
+    # The log line should carry the exception class name, not the raw exception
+    # message — Qodo flagged that ValidationError messages can leak payload
+    # content into WARNING logs.
+    assert any("error=JSONDecodeError" in rec.message for rec in caplog.records)
 
 
 def test_deserialize_schema_mismatch_logs_and_returns_none(caplog: pytest.LogCaptureFixture) -> None:
@@ -198,6 +202,7 @@ def test_deserialize_schema_mismatch_logs_and_returns_none(caplog: pytest.LogCap
     with caplog.at_level("WARNING", logger="kurrent_google_adk._serialization"):
         assert _serialization.deserialize(bad) is None
     assert any("Skipping unparseable event" in rec.message for rec in caplog.records)
+    assert any("error=ValidationError" in rec.message for rec in caplog.records)
 
 
 # --- Fixture round-trip ------------------------------------------------------

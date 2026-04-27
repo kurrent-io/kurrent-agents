@@ -41,8 +41,11 @@ from .events import ADK_EXTENSION_KEY
 logger = logging.getLogger("kurrent_google_adk.session_service")
 
 # Canonical event types eligible for $usage metadata.
+# Includes thinking events because reasoning-only outputs (Gemini 2.5,
+# OpenAI o-series) can carry token usage without producing text/tool calls.
 _ASSISTANT_EVENT_CLASSES: tuple[type, ...] = (
     _events.AssistantTextGenerated,
+    _events.AssistantThinkingGenerated,
     _events.AssistantToolCallsGenerated,
 )
 
