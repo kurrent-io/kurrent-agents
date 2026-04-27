@@ -56,6 +56,16 @@ jobs:
         with:
           version: '1.68.4'
 
+      - name: Check if schema baseline exists on main
+        id: baseline
+        run: |
+          if git cat-file -e origin/main:schema/buf.yaml 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "schema/buf.yaml not present on origin/main yet — skipping breaking-change check."
+          fi
+
       - name: Breaking
-        working-directory: schema
-        run: buf breaking --against ".git#branch=main,subdir=schema"
+        if: steps.baseline.outputs.exists == 'true'
+        run: buf breaking schema --against ".git#branch=main,subdir=schema"
