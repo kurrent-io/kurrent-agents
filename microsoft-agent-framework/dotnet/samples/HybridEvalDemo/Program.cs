@@ -5,6 +5,7 @@
 
 using System.Text;
 using Anthropic;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework;
@@ -37,46 +38,51 @@ var              judgeClient = anthropic.AsIChatClient(model, 1024);
 var sessionId  = Guid.NewGuid().ToString();
 var streamName = StreamNames.AgentSession(sessionId);
 var now        = DateTimeOffset.UtcNow;
+var pNow       = Timestamp.FromDateTimeOffset(now);
+
+UserMessageReceived UserMsg(string content, int idx) =>
+    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
+
+AssistantTextGenerated AsstText(string content, int idx) =>
+    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
 
 Console.WriteLine("========================================");
 Console.WriteLine("Creating synthetic agent session");
 Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
+var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = pNow };
+toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "GetWeather" });
+
 var events = new List<EventData> {
-    Serialize(new SessionStarted(
-        AppName:           null,
-        AgentName:         "HybridEvalAgent",
-        Model:             "test-model",
-        TenantId:          null,
-        UserId:            null,
-        AgentConfig:       null,
-        PreviousSessionId: null,
-        Timestamp:         now)),
+    Serialize(new SessionStarted { AgentName = "HybridEvalAgent", Model = "test-model", Timestamp = pNow }),
 
     // Turn 0 — confident pass: long answer + correct tool call
-    Serialize(new UserMessageReceived("What's the weather in London?", null, null, null, 0, now)),
-    Serialize(new AssistantToolCallsGenerated([new("call-1", "GetWeather", null)], null, null, null, null, 1, now)),
-    Serialize(new ToolResultReceived("call-1", "GetWeather", "Sunny, 22°C", null, null, null, 2, now)),
-    Serialize(new AssistantTextGenerated("The weather in London is sunny at around 22°C right now.", null, null, null, 3, now)),
+    Serialize(UserMsg("What's the weather in London?", 0)),
+    Serialize(toolCalls),
+    Serialize(new ToolResultReceived {
+        CallId = "call-1", ToolName = "GetWeather", Result = "Sunny, 22°C",
+        MessageIndex = 2, Timestamp = pNow,
+    }),
+    Serialize(AsstText("The weather in London is sunny at around 22°C right now.", 3)),
 
     // Turn 1 — confident fail: empty response
-    Serialize(new UserMessageReceived("Tell me a joke", null, null, null, 4, now)),
-    Serialize(new AssistantTextGenerated("", null, null, null, 5, now)),
+    Serialize(UserMsg("Tell me a joke", 4)),
+    Serialize(AsstText("", 5)),
 
     // Turn 2 — ambiguous: short answer that may or may not be acceptable
-    Serialize(new UserMessageReceived("Is Paris the capital of France?", null, null, null, 6, now)),
-    Serialize(new AssistantTextGenerated("Yes.", null, null, null, 7, now)),
+    Serialize(UserMsg("Is Paris the capital of France?", 6)),
+    Serialize(AsstText("Yes.", 7)),
 
     // Turn 3 — ambiguous: medium-length answer that hedges instead of using a tool
-    Serialize(new UserMessageReceived("What time is it in Tokyo?", null, null, null, 8, now)),
-    Serialize(new AssistantTextGenerated("Tokyo is in JST, which is UTC+9, so you can work it out from your local time.", null, null, null, 9, now)),
+    Serialize(UserMsg("What time is it in Tokyo?", 8)),
+    Serialize(AsstText("Tokyo is in JST, which is UTC+9, so you can work it out from your local time.", 9)),
 
     // Turn 4 — ambiguous: plausible-sounding but factually wrong
-    Serialize(new UserMessageReceived("Who wrote Hamlet?", null, null, null, 10, now)),
-    Serialize(new AssistantTextGenerated("Hamlet was written by Christopher Marlowe in the late 1500s.", null, null, null, 11, now)),
+    Serialize(UserMsg("Who wrote Hamlet?", 10)),
+    Serialize(AsstText("Hamlet was written by Christopher Marlowe in the late 1500s.", 11)),
 
-    Serialize(new SessionEnded("completed", now)),
+    Serialize(new SessionEnded { Reason = "completed", Timestamp = pNow }),
 };
 
 await kurrentDb.AppendToStreamAsync(streamName, StreamState.Any, events);

@@ -25,24 +25,19 @@ public class EventTypeMapTests {
 
     [Test]
     [MethodDataSource(nameof(KnownEventTypes))]
-    public async Task GetName_ReturnsExpectedName(Type clrType, string expectedName) {
-        await Assert.That(EventTypeMap.GetName(clrType)).IsEqualTo(expectedName);
+    public async Task NameMapsToClrType(Type clrType, string expectedName) {
+        await Assert.That(EventTypeMap.All[expectedName]).IsEqualTo(clrType);
     }
 
     [Test]
     [MethodDataSource(nameof(KnownEventTypes))]
-    public async Task GetType_ResolvesBackToClrType(Type expectedClrType, string name) {
-        await Assert.That(EventTypeMap.GetType(name)).IsEqualTo(expectedClrType);
+    public async Task ClrTypeMapsBackToName(Type expectedClrType, string name) {
+        var byType = EventTypeMap.All.First(kv => kv.Value == expectedClrType).Key;
+        await Assert.That(byType).IsEqualTo(name);
     }
 
     [Test]
-    public async Task GetName_ThrowsForUnknownClrType() {
-        await Assert.That(() => EventTypeMap.GetName(typeof(string)))
-            .ThrowsExactly<ArgumentException>();
-    }
-
-    [Test]
-    public async Task GetType_ReturnsNullForUnknownName() {
-        await Assert.That(EventTypeMap.GetType("SomeUnknownEvent")).IsNull();
+    public async Task UnknownNameReturnsFalse() {
+        await Assert.That(EventTypeMap.All.ContainsKey("SomeUnknownEvent")).IsFalse();
     }
 }

@@ -1,3 +1,4 @@
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Capture;
@@ -96,16 +97,15 @@ public sealed class KurrentDBChatHistoryProvider(
 
         // Emit SessionStarted as the first event in a new stream
         if (!_sessionStarted) {
-            events.Add(EventSerializer.Serialize(new SessionStarted(
-                AppName:           appName,
-                AgentName:         agentName ?? context.Agent.Name,
-                Model:             modelName,
-                TenantId:          tenantId,
-                UserId:            userId,
-                AgentConfig:       null,
-                PreviousSessionId: null,
-                Timestamp:         now
-            )));
+            var started = new SessionStarted {
+                Timestamp = Timestamp.FromDateTimeOffset(now),
+            };
+            if (appName is not null)                       started.AppName   = appName;
+            if ((agentName ?? context.Agent.Name) is { } a) started.AgentName = a;
+            if (modelName is not null)                     started.Model     = modelName;
+            if (tenantId is not null)                      started.TenantId  = tenantId;
+            if (userId is not null)                        started.UserId    = userId;
+            events.Add(EventSerializer.Serialize(started));
             _sessionStarted = true;
         }
 
@@ -149,10 +149,13 @@ public sealed class KurrentDBChatHistoryProvider(
     public async Task EndSessionAsync(string? reason = null, CancellationToken cancellationToken = default) {
         var streamName = StreamNames.AgentSession(sessionId);
 
+        var ended = new SessionEnded { Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
+        if (reason is not null) ended.Reason = reason;
+
         await client.AppendToStreamAsync(
             streamName,
             StreamState.Any,
-            [EventSerializer.Serialize(new SessionEnded(Reason: reason, Timestamp: DateTimeOffset.UtcNow))],
+            [EventSerializer.Serialize(ended)],
             cancellationToken: cancellationToken
         ).ConfigureAwait(false);
     }

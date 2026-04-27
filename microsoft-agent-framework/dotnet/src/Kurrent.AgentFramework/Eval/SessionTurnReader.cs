@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
@@ -41,12 +43,16 @@ public static class SessionTurnReader {
                             outputTokens = null;
                         }
 
-                        currentInput = userMsg.Content;
+                        currentInput = userMsg.HasContent ? userMsg.Content : null;
 
                         break;
 
                     case AssistantToolCallsGenerated toolCalls:
-                        currentTools.AddRange(toolCalls.ToolCalls.Select(tc => new ToolCall(tc.ToolName, tc.Arguments?.ToString(), null, false)));
+                        currentTools.AddRange(toolCalls.ToolCalls.Select(tc => new ToolCall(
+                            tc.ToolName,
+                            StructToJson(tc.Arguments),
+                            null,
+                            false)));
 
                         ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
 
@@ -56,7 +62,7 @@ public static class SessionTurnReader {
                         // Find the matching tool call and set its result
                         for (var i = currentTools.Count - 1; i >= 0; i--) {
                             if (currentTools[i].Result is null) {
-                                currentTools[i] = currentTools[i] with { Result = toolResult.Result };
+                                currentTools[i] = currentTools[i] with { Result = toolResult.HasResult ? toolResult.Result : null };
 
                                 break;
                             }
@@ -65,7 +71,7 @@ public static class SessionTurnReader {
                         break;
 
                     case AssistantTextGenerated assistantMsg:
-                        currentOutput = assistantMsg.Content;
+                        currentOutput = assistantMsg.HasContent ? assistantMsg.Content : null;
                         ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
 
                         break;
@@ -80,6 +86,11 @@ public static class SessionTurnReader {
 
         return turns;
     }
+
+    static string? StructToJson(Struct? args) =>
+        args is null || args.Fields.Count == 0
+            ? null
+            : JsonFormatter.Default.Format(args);
 
     static void ReadUsageFromMetadata(ResolvedEvent resolved, ref long? inputTokens, ref long? outputTokens) {
         if (resolved.Event.Metadata.Length == 0) return;

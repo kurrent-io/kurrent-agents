@@ -28,7 +28,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, _EventBase
+from google.protobuf.message import Message
+from kurrent_agent_schema import EVENT_TYPE_BY_NAME, from_json
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_agent_framework import serialization
@@ -64,13 +65,14 @@ def _fixture_cases() -> list[Path]:
     return sorted(EVENTS_DIR.glob("*.json"))
 
 
-def _parse(fixture_path: Path) -> tuple[dict, _EventBase]:
+def _parse(fixture_path: Path) -> tuple[dict, Message]:
     # Pin UTF-8 so the drift tests stay deterministic on non-UTF-8 locales —
     # at least one fixture (AssistantTextGenerated.json) contains ``°C``.
-    original = json.loads(fixture_path.read_text(encoding="utf-8"))
+    raw = fixture_path.read_text(encoding="utf-8")
+    original = json.loads(raw)
     model = EVENT_TYPE_BY_NAME.get(fixture_path.stem)
     assert model is not None, f"No canonical model registered for '{fixture_path.stem}'"
-    parsed = model.model_validate(original)
+    parsed = from_json(model, raw)
     return original, parsed
 
 

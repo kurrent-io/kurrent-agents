@@ -1,3 +1,4 @@
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.ChatHistory;
@@ -47,12 +48,20 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
         var ended = EventSerializer.Deserialize(read) as SessionEnded;
         await Assert.That(ended).IsNotNull();
-        await Assert.That(ended!.Reason).IsNull();
+        // proto3 optional: HasReason tracks presence; Reason returns "" when unset.
+        await Assert.That(ended!.HasReason).IsFalse();
     }
 
     // --- message_index continuation (qodo review, DEV-1548) ---
 
-    static readonly DateTimeOffset IndexTs = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset IndexTs  = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      IndexPts = Timestamp.FromDateTimeOffset(IndexTs);
+
+    static UserMessageReceived UserMsg(string content, string messageId, int idx) =>
+        new() { Content = content, MessageId = messageId, AuthorName = "user", CreatedAt = IndexPts, MessageIndex = idx, Timestamp = IndexPts };
+
+    static AssistantTextGenerated AsstText(string content, string messageId, int idx) =>
+        new() { Content = content, MessageId = messageId, AuthorName = "agent", CreatedAt = IndexPts, MessageIndex = idx, Timestamp = IndexPts };
 
     [Test]
     public async Task ReadNextMessageIndex_OnMissingStream_ReturnsZero() {
@@ -71,9 +80,9 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         var streamName   = StreamNames.AgentSession(sessionId);
 
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [
-            EventSerializer.Serialize(new UserMessageReceived("q", "m-1", "user", IndexTs, 0, IndexTs)),
-            EventSerializer.Serialize(new AssistantTextGenerated("a", "m-2", "agent", IndexTs, 1, IndexTs)),
-            EventSerializer.Serialize(new UserMessageReceived("q2", "m-3", "user", IndexTs, 2, IndexTs)),
+            EventSerializer.Serialize(UserMsg("q", "m-1", 0)),
+            EventSerializer.Serialize(AsstText("a", "m-2", 1)),
+            EventSerializer.Serialize(UserMsg("q2", "m-3", 2)),
         ]);
 
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(client, sessionId);
@@ -89,17 +98,9 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         var streamName   = StreamNames.AgentSession(sessionId);
 
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [
-            EventSerializer.Serialize(new SessionStarted(
-                AppName:           null,
-                AgentName:         "a",
-                Model:             "m",
-                TenantId:          null,
-                UserId:            null,
-                AgentConfig:       null,
-                PreviousSessionId: null,
-                Timestamp:         IndexTs)),
-            EventSerializer.Serialize(new UserMessageReceived("hi", "m-1", "user", IndexTs, 5, IndexTs)),
-            EventSerializer.Serialize(new SessionEnded("done", IndexTs)),
+            EventSerializer.Serialize(new SessionStarted { AgentName = "a", Model = "m", Timestamp = IndexPts }),
+            EventSerializer.Serialize(UserMsg("hi", "m-1", 5)),
+            EventSerializer.Serialize(new SessionEnded { Reason = "done", Timestamp = IndexPts }),
         ]);
 
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(client, sessionId);

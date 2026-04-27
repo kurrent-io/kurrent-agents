@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
@@ -51,7 +52,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
         var now    = DateTimeOffset.UtcNow;
 
         // Write EvalRunStarted
-        await AppendAsync(stream, new EvalRunStarted(sessionId, scorerName, criteria, now), ct).ConfigureAwait(false);
+        await AppendAsync(stream, new EvalRunStarted {
+            SessionId = sessionId,
+            Scorer    = scorerName,
+            Criteria  = criteria,
+            Timestamp = Timestamp.FromDateTimeOffset(now),
+        }, ct).ConfigureAwait(false);
 
         // Score each turn
         var scoredTurns = new List<ScoredTurn>();
@@ -60,20 +66,18 @@ public sealed class EvalRunner(KurrentDBClient client) {
             var scored = await scorer(turn, ct).ConfigureAwait(false);
             scoredTurns.Add(scored);
 
-            await AppendAsync(
-                stream,
-                new TurnScored(
-                    SessionId: sessionId,
-                    TurnIndex: turn.Index,
-                    Input: turn.UserInput,
-                    Output: turn.AssistantOutput,
-                    Score: scored.Score,
-                    ScoreLabel: scored.Label,
-                    Reason: scored.Reason,
-                    Timestamp: DateTimeOffset.UtcNow
-                ),
-                ct
-            ).ConfigureAwait(false);
+            var turnScored = new TurnScored {
+                SessionId = sessionId,
+                TurnIndex = turn.Index,
+                Score     = scored.Score,
+                Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            };
+            if (turn.UserInput       is not null) turnScored.Input      = turn.UserInput;
+            if (turn.AssistantOutput is not null) turnScored.Output     = turn.AssistantOutput;
+            if (scored.Label         is not null) turnScored.ScoreLabel = scored.Label;
+            if (scored.Reason        is not null) turnScored.Reason     = scored.Reason;
+
+            await AppendAsync(stream, turnScored, ct).ConfigureAwait(false);
         }
 
         var avgScore = scoredTurns.Count > 0 ? scoredTurns.Average(s => s.Score) : 0;
@@ -81,13 +85,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
         // Write EvalRunCompleted
         await AppendAsync(
             stream,
-            new EvalRunCompleted(
-                SessionId: sessionId,
-                TurnsScored: scoredTurns.Count,
-                AverageScore: avgScore,
-                TotalCost: null,
-                Timestamp: DateTimeOffset.UtcNow
-            ),
+            new EvalRunCompleted {
+                SessionId    = sessionId,
+                TurnsScored  = scoredTurns.Count,
+                AverageScore = avgScore,
+                Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+            },
             ct
         ).ConfigureAwait(false);
 

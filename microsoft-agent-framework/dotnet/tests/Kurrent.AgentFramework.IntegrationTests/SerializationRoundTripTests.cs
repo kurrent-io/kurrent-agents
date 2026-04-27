@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
@@ -12,7 +13,8 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 /// </summary>
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class SerializationRoundTripTests(KurrentDbFixture db) {
-    static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset Ts  = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
 
     async Task<object?> RoundTrip(object @event) {
         using var client     = db.CreateClient();
@@ -30,15 +32,15 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
 
     [Test]
     public async Task SessionStarted_RoundTrips() {
-        var original = new SessionStarted(
-            AppName:           "demo-app",
-            AgentName:         "agent-x",
-            Model:             "claude-test",
-            TenantId:          "tenant-1",
-            UserId:            "user-1",
-            AgentConfig:       null,
-            PreviousSessionId: "sess-prior",
-            Timestamp:         Ts);
+        var original = new SessionStarted {
+            AppName           = "demo-app",
+            AgentName         = "agent-x",
+            Model             = "claude-test",
+            TenantId          = "tenant-1",
+            UserId            = "user-1",
+            PreviousSessionId = "sess-prior",
+            Timestamp         = Pts,
+        };
 
         var decoded = await RoundTrip(original);
 
@@ -47,37 +49,52 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
 
     [Test]
     public async Task SessionEnded_RoundTrips() {
-        var original = new SessionEnded("completed", Ts);
+        var original = new SessionEnded { Reason = "completed", Timestamp = Pts };
 
         await Assert.That(await RoundTrip(original)).IsEqualTo(original);
     }
 
     [Test]
     public async Task UserMessageReceived_RoundTrips() {
-        var original = new UserMessageReceived("hello", "m-1", "daisy", Ts, 0, Ts);
+        var original = new UserMessageReceived {
+            Content      = "hello",
+            MessageId    = "m-1",
+            AuthorName   = "daisy",
+            CreatedAt    = Pts,
+            MessageIndex = 0,
+            Timestamp    = Pts,
+        };
 
         await Assert.That(await RoundTrip(original)).IsEqualTo(original);
     }
 
     [Test]
     public async Task AssistantTextGenerated_RoundTrips() {
-        var original = new AssistantTextGenerated("hi there", "m-2", "agent-x", Ts, 1, Ts);
+        var original = new AssistantTextGenerated {
+            Content      = "hi there",
+            MessageId    = "m-2",
+            AuthorName   = "agent-x",
+            CreatedAt    = Pts,
+            MessageIndex = 1,
+            Timestamp    = Pts,
+        };
 
         await Assert.That(await RoundTrip(original)).IsEqualTo(original);
     }
 
     [Test]
     public async Task AssistantToolCallsGenerated_RoundTrips() {
-        var args     = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" });
-        var original = new AssistantToolCallsGenerated(
-            ToolCalls: [new ToolCallInfo("call-1", "get_weather", args)],
-            Content: "looking",
-            MessageId: "m-3",
-            AuthorName: "agent-x",
-            CreatedAt: Ts,
-            MessageIndex: 2,
-            Timestamp: Ts
-        );
+        var args = ChatMessageConverter.JsonElementToStruct(
+            JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" }));
+        var original = new AssistantToolCallsGenerated {
+            Content      = "looking",
+            MessageId    = "m-3",
+            AuthorName   = "agent-x",
+            CreatedAt    = Pts,
+            MessageIndex = 2,
+            Timestamp    = Pts,
+        };
+        original.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "get_weather", Arguments = args });
 
         var decoded = await RoundTrip(original) as AssistantToolCallsGenerated;
 
@@ -87,23 +104,30 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
         await Assert.That(decoded.ToolCalls.Count).IsEqualTo(1);
         await Assert.That(decoded.ToolCalls[0].CallId).IsEqualTo("call-1");
         await Assert.That(decoded.ToolCalls[0].ToolName).IsEqualTo("get_weather");
-        // JsonElement comparison: compare the raw JSON text, which survives the round-trip.
-        await Assert.That(decoded.ToolCalls[0].Arguments!.Value.GetRawText())
-            .IsEqualTo(args.GetRawText());
+        await Assert.That(decoded.ToolCalls[0].Arguments?.Fields["city"].StringValue).IsEqualTo("Paris");
     }
 
     [Test]
     public async Task ToolResultReceived_RoundTrips() {
-        var original = new ToolResultReceived("call-1", "get_weather", "sunny", "m-4", "agent-x", Ts, 3, Ts);
+        var original = new ToolResultReceived {
+            CallId       = "call-1",
+            ToolName     = "get_weather",
+            Result       = "sunny",
+            MessageId    = "m-4",
+            AuthorName   = "agent-x",
+            CreatedAt    = Pts,
+            MessageIndex = 3,
+            Timestamp    = Pts,
+        };
 
         await Assert.That(await RoundTrip(original)).IsEqualTo(original);
     }
 
     [Test]
     public async Task EvalEvents_RoundTrip() {
-        var started   = new EvalRunStarted("sess-1", "heuristic", "correctness", Ts);
-        var scored    = new TurnScored("sess-1", 0, "in", "out", 0.85, "good", "solid answer", Ts);
-        var completed = new EvalRunCompleted("sess-1", 3, 0.9, 0.012, Ts);
+        var started   = new EvalRunStarted   { SessionId = "sess-1", Scorer = "heuristic", Criteria = "correctness", Timestamp = Pts };
+        var scored    = new TurnScored       { SessionId = "sess-1", TurnIndex = 0, Input = "in", Output = "out", Score = 0.85, ScoreLabel = "good", Reason = "solid answer", Timestamp = Pts };
+        var completed = new EvalRunCompleted { SessionId = "sess-1", TurnsScored = 3, AverageScore = 0.9, TotalCost = 0.012, Timestamp = Pts };
 
         await Assert.That(await RoundTrip(started)).IsEqualTo(started);
         await Assert.That(await RoundTrip(scored)).IsEqualTo(scored);
@@ -133,15 +157,7 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
 
         var metadata = new Dictionary<string, object?> { ["tenant_id"] = "t-1", ["trace_id"] = "abc" };
         var ed       = EventSerializer.Serialize(
-            new SessionStarted(
-                AppName:           null,
-                AgentName:         "a",
-                Model:             "m",
-                TenantId:          null,
-                UserId:            null,
-                AgentConfig:       null,
-                PreviousSessionId: null,
-                Timestamp:         Ts),
+            new SessionStarted { AgentName = "a", Model = "m", Timestamp = Pts },
             metadata: metadata);
 
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
@@ -163,7 +179,7 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
         using var client     = db.CreateClient();
         var       streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
-        var ed = EventSerializer.Serialize(new SessionEnded("done", Ts));
+        var ed = EventSerializer.Serialize(new SessionEnded { Reason = "done", Timestamp = Pts });
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
 
         var read = await client
@@ -186,7 +202,9 @@ public class SerializationRoundTripTests(KurrentDbFixture db) {
             ["$schema_version"] = 99,
             ["tenant_id"]       = "t-1",
         };
-        var ed = EventSerializer.Serialize(new SessionEnded("done", Ts), metadata: rogueMetadata);
+        var ed = EventSerializer.Serialize(
+            new SessionEnded { Reason = "done", Timestamp = Pts },
+            metadata: rogueMetadata);
         await client.AppendToStreamAsync(streamName, StreamState.NoStream, [ed]);
 
         var read = await client

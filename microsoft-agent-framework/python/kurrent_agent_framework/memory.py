@@ -15,10 +15,10 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 from agent_framework import ContextProvider, Message
+from google.protobuf.json_format import ParseError
 from kurrent_agent_schema import FactRetained, agent_memory_stream
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
-from pydantic import ValidationError
 
 from . import serialization
 
@@ -90,9 +90,9 @@ class KurrentDBAgentMemory:
     async def recall(self, query: str) -> AsyncIterator[str]:
         """Yield every retained fact, newest first. ``query`` is ignored.
 
-        Malformed events (invalid JSON or failing Pydantic validation) are
-        skipped rather than aborting the iteration, matching the C#
-        implementation's defensive ``JsonException`` handling.
+        Malformed events (invalid JSON or failing protobuf parse) are skipped
+        rather than aborting the iteration, matching the C# implementation's
+        defensive ``JsonException`` handling.
         """
         del query  # unused — recall returns every fact
         try:
@@ -100,7 +100,7 @@ class KurrentDBAgentMemory:
             async for recorded in response:
                 try:
                     event = serialization.deserialize(recorded)
-                except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
+                except (json.JSONDecodeError, ParseError, UnicodeDecodeError):
                     continue
                 if not isinstance(event, FactRetained):
                     continue

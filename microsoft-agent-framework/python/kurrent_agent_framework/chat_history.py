@@ -16,6 +16,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent_framework import Content, HistoryProvider, Message, UsageDetails
+from google.protobuf.json_format import MessageToDict, ParseError
+from google.protobuf.message import Message as ProtoMessage
+from google.protobuf.struct_pb2 import Struct
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     AssistantToolCallsGenerated,
@@ -28,7 +31,6 @@ from kurrent_agent_schema import (
 )
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
-from pydantic import BaseModel, ValidationError
 
 from . import serialization
 from .capture import UsageCapture
@@ -101,7 +103,7 @@ class KurrentDBHistoryProvider(HistoryProvider):
                 self._started_sessions.add(session_id)
                 try:
                     event = serialization.deserialize(recorded)
-                except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+                except (json.JSONDecodeError, ParseError, UnicodeDecodeError) as exc:
                     # Skip malformed/schema-mismatched events rather than aborting
                     # the whole history read. Matches the defensive behaviour of
                     # ``KurrentDBAgentMemory.recall`` and ``FactExtractionService``.
@@ -206,7 +208,7 @@ def _message_to_events(
     *,
     message_index: int,
     timestamp: datetime,
-) -> Iterable[BaseModel]:
+) -> Iterable[ProtoMessage]:
     """Decompose a ``Message`` into one or more canonical events."""
     msg_id = message.message_id
     author = message.author_name
@@ -223,15 +225,7 @@ def _message_to_events(
         return
 
     if role == "assistant":
-        tool_calls = [
-            ToolCallInfo(
-                call_id=c.call_id or "",
-                tool_name=c.name or "",
-                arguments=_coerce_arguments(c.arguments),
-            )
-            for c in message.contents
-            if c.type == "function_call"
-        ]
+        tool_calls = [_build_tool_call_info(c) for c in message.contents if c.type == "function_call"]
         if tool_calls:
             yield AssistantToolCallsGenerated(
                 tool_calls=tool_calls,
@@ -257,7 +251,6 @@ def _message_to_events(
                 continue
             yield ToolResultReceived(
                 call_id=c.call_id or "",
-                tool_name=None,
                 result=_coerce_result(c.result),
                 message_id=msg_id,
                 author_name=author,
@@ -266,21 +259,21 @@ def _message_to_events(
             )
 
 
-def _event_to_message(event: BaseModel) -> Message | None:
+def _event_to_message(event: ProtoMessage) -> Message | None:
     """Reconstruct a ``Message`` from a canonical event, or ``None`` for lifecycle events."""
     if isinstance(event, UserMessageReceived):
         return Message(
             role="user",
-            contents=[Content(type="text", text=event.content or "")],
-            message_id=event.message_id,
-            author_name=event.author_name,
+            contents=[Content(type="text", text=event.content)],
+            message_id=_opt(event, "message_id"),
+            author_name=_opt(event, "author_name"),
         )
     if isinstance(event, AssistantTextGenerated):
         return Message(
             role="assistant",
-            contents=[Content(type="text", text=event.content or "")],
-            message_id=event.message_id,
-            author_name=event.author_name,
+            contents=[Content(type="text", text=event.content)],
+            message_id=_opt(event, "message_id"),
+            author_name=_opt(event, "author_name"),
         )
     if isinstance(event, AssistantToolCallsGenerated):
         contents: list[Content] = []
@@ -291,24 +284,46 @@ def _event_to_message(event: BaseModel) -> Message | None:
                 type="function_call",
                 call_id=tc.call_id,
                 name=tc.tool_name,
-                arguments=tc.arguments,
+                arguments=_struct_to_dict(tc.arguments) if tc.HasField("arguments") else None,
             )
             for tc in event.tool_calls
         )
         return Message(
             role="assistant",
             contents=contents,
-            message_id=event.message_id,
-            author_name=event.author_name,
+            message_id=_opt(event, "message_id"),
+            author_name=_opt(event, "author_name"),
         )
     if isinstance(event, ToolResultReceived):
         return Message(
             role="tool",
-            contents=[Content(type="function_result", call_id=event.call_id, result=event.result)],
-            message_id=event.message_id,
-            author_name=event.author_name,
+            contents=[
+                Content(
+                    type="function_result",
+                    call_id=event.call_id,
+                    result=_opt(event, "result"),
+                )
+            ],
+            message_id=_opt(event, "message_id"),
+            author_name=_opt(event, "author_name"),
         )
     return None
+
+
+def _opt(message: ProtoMessage, field: str) -> str | None:
+    """Read an ``optional string`` field, distinguishing unset from the empty
+    default. Proto3 returns ``""`` for unset string accessors; only ``HasField``
+    can tell unset from an explicit empty string."""
+    return getattr(message, field) if message.HasField(field) else None
+
+
+def _build_tool_call_info(content: Any) -> ToolCallInfo:
+    info = ToolCallInfo(call_id=content.call_id or "", tool_name=content.name or "")
+    args = _coerce_arguments(content.arguments)
+    if args is not None:
+        # Empty dict is preserved by design — see schema commit ff1540d.
+        info.arguments.update(args)
+    return info
 
 
 def _coerce_arguments(arguments: Any) -> dict[str, Any] | None:
@@ -323,6 +338,11 @@ def _coerce_arguments(arguments: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _struct_to_dict(struct: Struct) -> dict[str, Any]:
+    """Convert a ``google.protobuf.Struct`` value to a plain Python dict."""
+    return MessageToDict(struct, preserving_proto_field_name=True)
 
 
 # Canonical :class:`kurrent_agent_schema.TokenUsage` slots beyond the core

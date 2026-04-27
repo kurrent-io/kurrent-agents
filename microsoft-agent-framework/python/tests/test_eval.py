@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from agent_framework import ChatResponse, Message
+from google.protobuf.message import Message as ProtoMessage
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     AssistantThinkingGenerated,
@@ -26,7 +27,6 @@ from kurrent_agent_schema import (
 )
 from kurrentdbclient import NewEvent, RecordedEvent
 from kurrentdbclient.exceptions import NotFoundError
-from pydantic import BaseModel
 
 from kurrent_agent_framework import (
     EvalRunner,
@@ -92,7 +92,7 @@ class FakeClient:
 async def _seed_session(
     client: FakeClient,
     session_id: str,
-    *events: BaseModel,
+    *events: ProtoMessage,
     metadata: Sequence[dict[str, Any] | None] | None = None,
 ) -> None:
     """Append serialized canonical events to the session stream for ``session_id``."""
@@ -173,13 +173,14 @@ async def test_read_session_turns_segments_on_user_message() -> None:
 
 async def test_read_session_turns_correlates_tool_call_and_result() -> None:
     client = FakeClient()
+    tool_call = ToolCallInfo(call_id="call-1", tool_name="get_weather")
+    tool_call.arguments.update({"city": "Paris"})
     await _seed_session(
         client,
         "s1",
         UserMessageReceived(content="weather?", message_index=0, timestamp=TS),
         AssistantToolCallsGenerated(
-            tool_calls=[ToolCallInfo(call_id="call-1", tool_name="get_weather", arguments={"city": "Paris"})],
-            content=None,
+            tool_calls=[tool_call],
             message_index=1,
             timestamp=TS,
         ),
@@ -208,7 +209,6 @@ async def test_read_session_turns_aggregates_usage_from_metadata() -> None:
         UserMessageReceived(content="hi", message_index=0, timestamp=TS),
         AssistantToolCallsGenerated(
             tool_calls=[ToolCallInfo(call_id="call-1", tool_name="t")],
-            content=None,
             message_index=1,
             timestamp=TS,
         ),
@@ -347,15 +347,18 @@ async def test_run_emits_event_sequence_to_eval_run_stream() -> None:
     assert started["criteria"] == "helpfulness"
     assert started["session_id"] == "s1"
 
+    # Proto3 JSON canonical form omits default-valued non-optional scalars
+    # (turn_index = 0, turns_scored = 0); treat missing as default per the
+    # proto3 contract.
     scored = json.loads(events[1].data)
-    assert scored["turn_index"] == 0
+    assert scored.get("turn_index", 0) == 0
     assert scored["score"] == 0.9
     assert scored["score_label"] == "good"
     assert scored["input"] == "q"
     assert scored["output"] == "a"
 
     completed = json.loads(events[2].data)
-    assert completed["turns_scored"] == 1
+    assert completed.get("turns_scored", 0) == 1
     assert completed["average_score"] == 0.9
 
 
@@ -526,7 +529,6 @@ async def test_read_session_turns_correlates_results_by_call_id_out_of_order() -
                 ToolCallInfo(call_id="weather-1", tool_name="GetWeather"),
                 ToolCallInfo(call_id="time-1", tool_name="GetTime"),
             ],
-            content=None,
             message_index=1,
             timestamp=TS,
         ),

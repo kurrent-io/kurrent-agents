@@ -24,6 +24,8 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from agent_framework import ChatResponse, Message, SupportsChatGetResponse
+from google.protobuf.json_format import MessageToDict, ParseError
+from google.protobuf.struct_pb2 import Struct
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     AssistantThinkingGenerated,
@@ -38,7 +40,6 @@ from kurrent_agent_schema import (
 )
 from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent, StreamState
 from kurrentdbclient.exceptions import NotFoundError
-from pydantic import ValidationError
 
 from . import serialization
 
@@ -148,7 +149,7 @@ async def read_session_turns(
         async for recorded in response:
             try:
                 event = serialization.deserialize(recorded)
-            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+            except (json.JSONDecodeError, ParseError, UnicodeDecodeError) as exc:
                 # Match the defensive behaviour of ``KurrentDBHistoryProvider``:
                 # a single malformed event must not abort the whole replay.
                 logger.warning(
@@ -168,12 +169,12 @@ async def read_session_turns(
                 if turn_open:
                     flush()
                 turn_open = True
-                current_input = event.content
+                current_input = event.content if event.HasField("content") else None
             elif isinstance(event, AssistantToolCallsGenerated):
                 current_tools.extend(
                     ToolCall(
                         name=tc.tool_name,
-                        arguments=_arguments_to_str(tc.arguments),
+                        arguments=_arguments_to_str(tc.arguments) if tc.HasField("arguments") else None,
                         result=None,
                         is_error=False,
                         call_id=tc.call_id or None,
@@ -186,7 +187,7 @@ async def read_session_turns(
             elif isinstance(event, ToolResultReceived):
                 _attach_tool_result(current_tools, event)
             elif isinstance(event, AssistantTextGenerated):
-                current_output = event.content
+                current_output = event.content if event.HasField("content") else None
                 input_tokens, output_tokens = _accumulate_usage(
                     recorded, input_tokens, output_tokens
                 )
@@ -215,22 +216,22 @@ def _attach_tool_result(current_tools: list[ToolCall], event: ToolResultReceived
     call only when ``call_id`` is missing on either side (older streams or
     integrations that didn't populate it).
     """
+    result = event.result if event.HasField("result") else None
     if event.call_id:
         for i in range(len(current_tools) - 1, -1, -1):
             if current_tools[i].call_id == event.call_id and current_tools[i].result is None:
-                current_tools[i] = replace(current_tools[i], result=event.result)
+                current_tools[i] = replace(current_tools[i], result=result)
                 return
     for i in range(len(current_tools) - 1, -1, -1):
         if current_tools[i].result is None and not current_tools[i].call_id:
-            current_tools[i] = replace(current_tools[i], result=event.result)
+            current_tools[i] = replace(current_tools[i], result=result)
             return
 
 
-def _arguments_to_str(arguments: dict[str, Any] | None) -> str | None:
-    """Render tool-call arguments as a compact JSON string for display."""
-    if arguments is None:
-        return None
-    return json.dumps(arguments, separators=(",", ":"))
+def _arguments_to_str(arguments: Struct) -> str | None:
+    """Render tool-call arguments (``google.protobuf.Struct``) as a compact JSON
+    string for display."""
+    return json.dumps(MessageToDict(arguments, preserving_proto_field_name=True), separators=(",", ":"))
 
 
 def _accumulate_usage(

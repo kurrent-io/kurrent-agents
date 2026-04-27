@@ -1,8 +1,13 @@
 version: v2
 plugins:
-  - remote: buf.build/protocolbuffers/python
+  # Pin to v32.x: emits gencode targeting protobuf-python runtime 6.32.x.
+  # The default (latest) plugin is currently v34, which requires runtime
+  # >= 7.34.1 — incompatible with grpcio-status 1.80's protobuf<7 cap that
+  # transitively flows through every kurrentdbclient consumer in this repo.
+  # See project memory: schema_python_proto_runtime_mismatch.
+  - remote: buf.build/protocolbuffers/python:v32.1
     out: python/kurrent_agent_schema/_generated
-  - remote: buf.build/protocolbuffers/pyi
+  - remote: buf.build/protocolbuffers/pyi:v32.1
     out: python/kurrent_agent_schema/_generated
   - remote: buf.build/protocolbuffers/csharp
     out: dotnet/Kurrent.Agent.Schema/Generated

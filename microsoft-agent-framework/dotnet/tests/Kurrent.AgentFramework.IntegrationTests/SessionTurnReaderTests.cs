@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Eval;
@@ -9,7 +10,8 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class SessionTurnReaderTests(KurrentDbFixture db) {
-    static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly DateTimeOffset Ts  = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
 
     static async Task AppendAsync(KurrentDBClient client, string streamName, params EventData[] events) {
         await client.AppendToStreamAsync(streamName, StreamState.Any, events);
@@ -17,6 +19,12 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
 
     static EventData EventFor(object @event, IDictionary<string, object?>? metadata = null) =>
         EventSerializer.Serialize(@event, metadata: metadata);
+
+    static UserMessageReceived UserMsg(string content, string messageId, int idx) =>
+        new() { Content = content, MessageId = messageId, AuthorName = "user", CreatedAt = Pts, MessageIndex = idx, Timestamp = Pts };
+
+    static AssistantTextGenerated AsstText(string content, string messageId, int idx) =>
+        new() { Content = content, MessageId = messageId, AuthorName = "agent", CreatedAt = Pts, MessageIndex = idx, Timestamp = Pts };
 
     [Test]
     public async Task ReadTurns_OnMissingStream_ReturnsEmpty() {
@@ -34,17 +42,9 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
         var streamName   = StreamNames.AgentSession(sessionId);
 
         await AppendAsync(client, streamName,
-            EventFor(new SessionStarted(
-                AppName:           null,
-                AgentName:         "agent",
-                Model:             "model",
-                TenantId:          null,
-                UserId:            null,
-                AgentConfig:       null,
-                PreviousSessionId: null,
-                Timestamp:         Ts)),
-            EventFor(new UserMessageReceived("hello", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantTextGenerated("hi back", "m-2", "agent", Ts, 1, Ts)));
+            EventFor(new SessionStarted { AgentName = "agent", Model = "model", Timestamp = Pts }),
+            EventFor(UserMsg("hello", "m-1", 0)),
+            EventFor(AsstText("hi back", "m-2", 1)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 
@@ -62,12 +62,12 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
         var streamName   = StreamNames.AgentSession(sessionId);
 
         await AppendAsync(client, streamName,
-            EventFor(new UserMessageReceived("Q1", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantTextGenerated("A1", "m-2", "agent", Ts, 1, Ts)),
-            EventFor(new UserMessageReceived("Q2", "m-3", "user", Ts, 2, Ts)),
-            EventFor(new AssistantTextGenerated("A2", "m-4", "agent", Ts, 3, Ts)),
-            EventFor(new UserMessageReceived("Q3", "m-5", "user", Ts, 4, Ts)),
-            EventFor(new AssistantTextGenerated("A3", "m-6", "agent", Ts, 5, Ts)));
+            EventFor(UserMsg("Q1", "m-1", 0)),
+            EventFor(AsstText("A1", "m-2", 1)),
+            EventFor(UserMsg("Q2", "m-3", 2)),
+            EventFor(AsstText("A2", "m-4", 3)),
+            EventFor(UserMsg("Q3", "m-5", 4)),
+            EventFor(AsstText("A3", "m-6", 5)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 
@@ -83,20 +83,26 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
         var sessionId    = Guid.NewGuid().ToString("N");
         var streamName   = StreamNames.AgentSession(sessionId);
 
-        var args = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" });
+        var args = ChatMessageConverter.JsonElementToStruct(
+            JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" }));
+
+        var toolCalls = new AssistantToolCallsGenerated {
+            MessageId    = "m-2",
+            AuthorName   = "agent",
+            CreatedAt    = Pts,
+            MessageIndex = 1,
+            Timestamp    = Pts,
+        };
+        toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "get_weather", Arguments = args });
 
         await AppendAsync(client, streamName,
-            EventFor(new UserMessageReceived("weather?", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantToolCallsGenerated(
-                ToolCalls: [new ToolCallInfo("call-1", "get_weather", args)],
-                Content: null,
-                MessageId: "m-2",
-                AuthorName: "agent",
-                CreatedAt: Ts,
-                MessageIndex: 1,
-                Timestamp: Ts)),
-            EventFor(new ToolResultReceived("call-1", "get_weather", "sunny", "m-3", null, Ts, 2, Ts)),
-            EventFor(new AssistantTextGenerated("it's sunny", "m-4", "agent", Ts, 3, Ts)));
+            EventFor(UserMsg("weather?", "m-1", 0)),
+            EventFor(toolCalls),
+            EventFor(new ToolResultReceived {
+                CallId = "call-1", ToolName = "get_weather", Result = "sunny",
+                MessageId = "m-3", CreatedAt = Pts, MessageIndex = 2, Timestamp = Pts,
+            }),
+            EventFor(AsstText("it's sunny", "m-4", 3)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 
@@ -120,20 +126,23 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
             },
         };
 
+        var toolCalls = new AssistantToolCallsGenerated {
+            MessageId    = "m-2",
+            AuthorName   = "agent",
+            CreatedAt    = Pts,
+            MessageIndex = 1,
+            Timestamp    = Pts,
+        };
+        toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "t" });
+
         await AppendAsync(client, streamName,
-            EventFor(new UserMessageReceived("hi", "m-1", "user", Ts, 0, Ts)),
-            EventFor(new AssistantToolCallsGenerated(
-                    ToolCalls: [new ToolCallInfo("call-1", "t", null)],
-                    Content: null,
-                    MessageId: "m-2",
-                    AuthorName: "agent",
-                    CreatedAt: Ts,
-                    MessageIndex: 1,
-                    Timestamp: Ts),
-                metadata: Usage(10, 5)),
-            EventFor(new ToolResultReceived("call-1", "t", "r", "m-3", null, Ts, 2, Ts)),
-            EventFor(new AssistantTextGenerated("done", "m-4", "agent", Ts, 3, Ts),
-                metadata: Usage(20, 7)));
+            EventFor(UserMsg("hi", "m-1", 0)),
+            EventFor(toolCalls, metadata: Usage(10, 5)),
+            EventFor(new ToolResultReceived {
+                CallId = "call-1", ToolName = "t", Result = "r",
+                MessageId = "m-3", CreatedAt = Pts, MessageIndex = 2, Timestamp = Pts,
+            }),
+            EventFor(AsstText("done", "m-4", 3), metadata: Usage(20, 7)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 
@@ -150,7 +159,7 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
 
         // Mid-flight session: user asked, agent hasn't responded yet.
         await AppendAsync(client, streamName,
-            EventFor(new UserMessageReceived("pending", "m-1", "user", Ts, 0, Ts)));
+            EventFor(UserMsg("pending", "m-1", 0)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 
@@ -169,9 +178,9 @@ public class SessionTurnReaderTests(KurrentDbFixture db) {
         var raw = new EventData(Uuid.NewUuid(), "TotallyUnknown", "{}"u8.ToArray());
 
         await AppendAsync(client, streamName,
-            EventFor(new UserMessageReceived("Q", "m-1", "user", Ts, 0, Ts)),
+            EventFor(UserMsg("Q", "m-1", 0)),
             raw,
-            EventFor(new AssistantTextGenerated("A", "m-2", "agent", Ts, 1, Ts)));
+            EventFor(AsstText("A", "m-2", 1)));
 
         var turns = await SessionTurnReader.ReadTurnsAsync(client, sessionId);
 

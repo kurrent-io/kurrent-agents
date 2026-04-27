@@ -4,7 +4,9 @@ KurrentDB ``NewEvent``s.
 Uses the shared :data:`EVENT_TYPE_NAMES` / :data:`EVENT_TYPE_BY_NAME` registries
 for wire naming and stamps ``$schema_version`` on every event's metadata per
 ``schema/SCHEMA_v2.md §9``. Mirrors ``Kurrent.AgentFramework.Serialization.EventSerializer``
-on the .NET side.
+on the .NET side. Schema 0.2.0 swaps Pydantic for protobuf, so the codec goes
+through :func:`kurrent_agent_schema.to_json` / :func:`from_json` (the sanctioned
+JSON entry point) rather than ``model_dump_json`` / ``model_validate``.
 """
 
 from __future__ import annotations
@@ -13,16 +15,21 @@ import json
 import uuid
 from typing import Any
 
-from kurrent_agent_schema import SCHEMA_VERSION
-from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES
+from google.protobuf.message import Message
+from kurrent_agent_schema import (
+    EVENT_TYPE_BY_NAME,
+    EVENT_TYPE_NAMES,
+    SCHEMA_VERSION,
+    from_json,
+    to_json,
+)
 from kurrentdbclient import NewEvent, RecordedEvent
-from pydantic import BaseModel
 
 SCHEMA_VERSION_METADATA_KEY: str = "$schema_version"
 """Metadata key stamped on every canonical event. See SCHEMA_v2 §9."""
 
 
-def _name_for(event: BaseModel) -> str:
+def _name_for(event: Message) -> str:
     name = EVENT_TYPE_NAMES.get(type(event))
     if name is None:
         raise ValueError(f"Unknown event type: {type(event).__name__}")
@@ -30,7 +37,7 @@ def _name_for(event: BaseModel) -> str:
 
 
 def serialize(
-    event: BaseModel,
+    event: Message,
     *,
     event_id: uuid.UUID | None = None,
     metadata: dict[str, Any] | None = None,
@@ -41,8 +48,7 @@ def serialize(
     last and wins over any caller-supplied value so the wire version stays
     authoritative.
     """
-    # ``model_dump_json`` produces compact UTF-8 bytes directly — no parse/reserialize round-trip.
-    data = event.model_dump_json(exclude_none=True, by_alias=True).encode("utf-8")
+    data = to_json(event).encode("utf-8")
 
     effective: dict[str, Any] = dict(metadata) if metadata else {}
     effective[SCHEMA_VERSION_METADATA_KEY] = SCHEMA_VERSION
@@ -56,15 +62,16 @@ def serialize(
     )
 
 
-def deserialize(recorded: RecordedEvent) -> BaseModel | None:
+def deserialize(recorded: RecordedEvent) -> Message | None:
     """Deserialize a ``RecordedEvent`` into a canonical event, or ``None`` if
     the event type is not in the canonical map (framework-specific or unknown
     types are skipped by readers)."""
     cls = EVENT_TYPE_BY_NAME.get(recorded.type)
     if cls is None:
         return None
-    payload = json.loads(recorded.data) if recorded.data else {}
-    return cls.model_validate(payload)
+    if not recorded.data:
+        return cls()
+    return from_json(cls, recorded.data.decode("utf-8"))
 
 
 def read_metadata(recorded: RecordedEvent) -> dict[str, Any] | None:

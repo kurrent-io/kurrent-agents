@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema.Events;
 using Microsoft.Extensions.AI;
 
@@ -18,15 +19,15 @@ public static class ChatMessageConverter {
         var created = message.CreatedAt;
 
         if (message.Role == ChatRole.User) {
-            yield return new UserMessageReceived(
-                Content: message.Text,
-                MessageId: msgId,
-                AuthorName: author,
-                CreatedAt: created,
-                MessageIndex: messageIndex,
-                Timestamp: timestamp
-            );
-
+            var evt = new UserMessageReceived {
+                MessageIndex = messageIndex,
+                Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+            };
+            if (message.Text is { } text) evt.Content    = text;
+            if (msgId       is not null)  evt.MessageId  = msgId;
+            if (author      is not null)  evt.AuthorName = author;
+            if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            yield return evt;
             yield break;
         }
 
@@ -36,32 +37,26 @@ public static class ChatMessageConverter {
                 .ToList();
 
             if (functionCalls.Count > 0) {
-                yield return new AssistantToolCallsGenerated(
-                    ToolCalls: functionCalls.Select(fc => new ToolCallInfo(
-                                CallId: fc.CallId ?? "",
-                                ToolName: fc.Name ?? "",
-                                Arguments: fc.Arguments is not null
-                                    ? JsonSerializer.SerializeToElement(fc.Arguments)
-                                    : null
-                            )
-                        )
-                        .ToList(),
-                    Content: message.Text,
-                    MessageId: msgId,
-                    AuthorName: author,
-                    CreatedAt: created,
-                    MessageIndex: messageIndex,
-                    Timestamp: timestamp
-                );
+                var evt = new AssistantToolCallsGenerated {
+                    MessageIndex = messageIndex,
+                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+                };
+                evt.ToolCalls.AddRange(functionCalls.Select(BuildToolCallInfo));
+                if (message.Text is { } text) evt.Content    = text;
+                if (msgId       is not null)  evt.MessageId  = msgId;
+                if (author      is not null)  evt.AuthorName = author;
+                if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+                yield return evt;
             } else {
-                yield return new AssistantTextGenerated(
-                    Content: message.Text,
-                    MessageId: msgId,
-                    AuthorName: author,
-                    CreatedAt: created,
-                    MessageIndex: messageIndex,
-                    Timestamp: timestamp
-                );
+                var evt = new AssistantTextGenerated {
+                    MessageIndex = messageIndex,
+                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+                };
+                if (message.Text is { } text) evt.Content    = text;
+                if (msgId       is not null)  evt.MessageId  = msgId;
+                if (author      is not null)  evt.AuthorName = author;
+                if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+                yield return evt;
             }
 
             yield break;
@@ -69,16 +64,16 @@ public static class ChatMessageConverter {
 
         if (message.Role == ChatRole.Tool) {
             foreach (var result in message.Contents.OfType<FunctionResultContent>()) {
-                yield return new ToolResultReceived(
-                    CallId: result.CallId ?? "",
-                    ToolName: null,
-                    Result: result.Result?.ToString(),
-                    MessageId: msgId,
-                    AuthorName: author,
-                    CreatedAt: created,
-                    MessageIndex: messageIndex,
-                    Timestamp: timestamp
-                );
+                var evt = new ToolResultReceived {
+                    CallId       = result.CallId ?? "",
+                    MessageIndex = messageIndex,
+                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+                };
+                if (result.Result?.ToString() is { } r) evt.Result     = r;
+                if (msgId   is not null)                evt.MessageId  = msgId;
+                if (author  is not null)                evt.AuthorName = author;
+                if (created is { } c)                   evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+                yield return evt;
             }
         }
     }
@@ -96,48 +91,97 @@ public static class ChatMessageConverter {
     };
 
     static ChatMessage FromUser(UserMessageReceived e) =>
-        new(ChatRole.User, e.Content) {
-            MessageId  = e.MessageId,
-            AuthorName = e.AuthorName,
-            CreatedAt  = e.CreatedAt,
+        new(ChatRole.User, e.HasContent ? e.Content : null) {
+            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            AuthorName = e.HasAuthorName ? e.AuthorName : null,
+            CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
 
     static ChatMessage FromAssistantText(AssistantTextGenerated e) =>
-        new(ChatRole.Assistant, e.Content) {
-            MessageId  = e.MessageId,
-            AuthorName = e.AuthorName,
-            CreatedAt  = e.CreatedAt,
+        new(ChatRole.Assistant, e.HasContent ? e.Content : null) {
+            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            AuthorName = e.HasAuthorName ? e.AuthorName : null,
+            CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
 
     static ChatMessage FromAssistantToolCalls(AssistantToolCallsGenerated e) {
         var contents = new List<AIContent>();
 
-        if (!string.IsNullOrEmpty(e.Content)) {
+        if (e.HasContent && !string.IsNullOrEmpty(e.Content)) {
             contents.Add(new TextContent(e.Content));
         }
 
         contents.AddRange(
-            (from tc in e.ToolCalls
-             let args = tc.Arguments is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null }
-                 ? tc.Arguments.Value.Deserialize<IDictionary<string, object?>>()
-                 : null
-             select new FunctionCallContent(tc.CallId, tc.ToolName, args)).Cast<AIContent>()
+            from tc in e.ToolCalls
+            let args = StructToArguments(tc.Arguments)
+            select new FunctionCallContent(tc.CallId, tc.ToolName, args)
         );
 
         return new(ChatRole.Assistant, contents) {
-            MessageId  = e.MessageId,
-            AuthorName = e.AuthorName,
-            CreatedAt  = e.CreatedAt,
+            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            AuthorName = e.HasAuthorName ? e.AuthorName : null,
+            CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
     }
 
     static ChatMessage FromToolResult(ToolResultReceived e) {
-        var result = new FunctionResultContent(e.CallId, e.Result);
+        var result = new FunctionResultContent(e.CallId, e.HasResult ? e.Result : null);
 
         return new(ChatRole.Tool, [result]) {
-            MessageId  = e.MessageId,
-            AuthorName = e.AuthorName,
-            CreatedAt  = e.CreatedAt,
+            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            AuthorName = e.HasAuthorName ? e.AuthorName : null,
+            CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
     }
+
+    static ToolCallInfo BuildToolCallInfo(FunctionCallContent fc) {
+        var info = new ToolCallInfo {
+            CallId   = fc.CallId ?? "",
+            ToolName = fc.Name   ?? "",
+        };
+        if (fc.Arguments is { Count: > 0 }) {
+            // Free-form JSON arguments fold into the canonical Struct shape.
+            info.Arguments = JsonElementToStruct(JsonSerializer.SerializeToElement(fc.Arguments));
+        }
+        return info;
+    }
+
+    static IDictionary<string, object?>? StructToArguments(Struct? args) {
+        if (args is null || args.Fields.Count == 0) return null;
+
+        return args.Fields.ToDictionary(
+            kv => kv.Key,
+            kv => (object?)ValueToObject(kv.Value)
+        );
+    }
+
+    static object? ValueToObject(Value value) => value.KindCase switch {
+        Value.KindOneofCase.NullValue   => null,
+        Value.KindOneofCase.BoolValue   => value.BoolValue,
+        Value.KindOneofCase.NumberValue => value.NumberValue,
+        Value.KindOneofCase.StringValue => value.StringValue,
+        Value.KindOneofCase.StructValue => value.StructValue.Fields
+            .ToDictionary(kv => kv.Key, kv => (object?)ValueToObject(kv.Value)),
+        Value.KindOneofCase.ListValue   => value.ListValue.Values
+            .Select(ValueToObject).ToList(),
+        _ => null,
+    };
+
+    internal static Struct JsonElementToStruct(JsonElement element) {
+        var s = new Struct();
+        if (element.ValueKind != JsonValueKind.Object) return s;
+        foreach (var prop in element.EnumerateObject())
+            s.Fields[prop.Name] = JsonElementToValue(prop.Value);
+        return s;
+    }
+
+    static Value JsonElementToValue(JsonElement element) => element.ValueKind switch {
+        JsonValueKind.Object => Value.ForStruct(JsonElementToStruct(element)),
+        JsonValueKind.Array  => Value.ForList(element.EnumerateArray().Select(JsonElementToValue).ToArray()),
+        JsonValueKind.String => Value.ForString(element.GetString() ?? ""),
+        JsonValueKind.Number => Value.ForNumber(element.GetDouble()),
+        JsonValueKind.True   => Value.ForBool(true),
+        JsonValueKind.False  => Value.ForBool(false),
+        _                    => Value.ForNull(),
+    };
 }

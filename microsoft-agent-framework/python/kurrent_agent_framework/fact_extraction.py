@@ -21,11 +21,11 @@ from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+from google.protobuf.json_format import ParseError
 from kurrent_agent_schema import UserMessageReceived
 from kurrent_agent_schema.streams import AGENT_SESSION_PREFIX
 from kurrentdbclient import AsyncKurrentDBClient, RecordedEvent
 from kurrentdbclient.exceptions import AlreadyExistsError, NotFoundError
-from pydantic import ValidationError
 
 from . import serialization
 from .memory import AgentMemory
@@ -183,15 +183,15 @@ class FactExtractionService:
             return
         try:
             domain_event = serialization.deserialize(event)
-        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError):
+        except (json.JSONDecodeError, ParseError, UnicodeDecodeError):
             return
         if not isinstance(domain_event, UserMessageReceived):
             return
-        content = (domain_event.content or "").strip()
+        content = domain_event.content.strip()
         if not content:
             return
 
-        for fact in self._extractor(domain_event.content or ""):
+        for fact in self._extractor(domain_event.content):
             if not fact or not fact.strip():
                 continue
             logger.debug(

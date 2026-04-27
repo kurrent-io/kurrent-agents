@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
@@ -81,7 +82,10 @@ public sealed class KurrentDBAgentMemory : IAgentMemory {
     public async Task RetainAsync(string fact, CancellationToken ct = default) {
         if (string.IsNullOrWhiteSpace(fact)) return;
 
-        var eventData = EventSerializer.Serialize(new FactRetained(fact, DateTimeOffset.UtcNow));
+        var eventData = EventSerializer.Serialize(new FactRetained {
+            Fact       = fact,
+            RetainedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        });
 
         await _client.AppendToStreamAsync(
             _streamName,

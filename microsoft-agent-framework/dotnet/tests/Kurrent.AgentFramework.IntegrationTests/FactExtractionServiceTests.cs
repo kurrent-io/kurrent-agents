@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Memory;
@@ -17,8 +18,12 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 /// </summary>
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class FactExtractionServiceTests(KurrentDbFixture db) {
-    static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(10);
-    static readonly DateTimeOffset Ts = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly TimeSpan       WaitBudget = TimeSpan.FromSeconds(10);
+    static readonly DateTimeOffset Ts         = new(2026, 4, 17, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts        = Timestamp.FromDateTimeOffset(Ts);
+
+    static UserMessageReceived UserMsg(string content, string messageId, int idx) =>
+        new() { Content = content, MessageId = messageId, AuthorName = "user", CreatedAt = Pts, MessageIndex = idx, Timestamp = Pts };
 
     sealed class InMemoryMemory : IAgentMemory {
         readonly List<string> _facts = [];
@@ -115,7 +120,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
 
         var content = $"{marker} user fact content";
         await AppendAsync(h.Client, streamName,
-            new UserMessageReceived(content, "m-1", "user", Ts, 0, Ts));
+            UserMsg(content, "m-1", 0));
 
         var ok = await WaitUntil(() => h.Memory.Snapshot().Contains(content), WaitBudget);
 
@@ -133,17 +138,16 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // SessionStarted + AssistantTextGenerated embed the marker but aren't
         // UserMessageReceived, so the service must not route them to the extractor.
         await AppendAsync(h.Client, streamName,
-            new SessionStarted(
-                AppName:           null,
-                AgentName:         $"{marker} agent",
-                Model:             "model",
-                TenantId:          null,
-                UserId:            null,
-                AgentConfig:       null,
-                PreviousSessionId: null,
-                Timestamp:         Ts),
-            new AssistantTextGenerated($"{marker} assistant", "m-1", "agent", Ts, 0, Ts),
-            new UserMessageReceived(sentinel, "m-2", "user", Ts, 1, Ts));
+            new SessionStarted { AgentName = $"{marker} agent", Model = "model", Timestamp = Pts },
+            new AssistantTextGenerated {
+                Content      = $"{marker} assistant",
+                MessageId    = "m-1",
+                AuthorName   = "agent",
+                CreatedAt    = Pts,
+                MessageIndex = 0,
+                Timestamp    = Pts,
+            },
+            UserMsg(sentinel, "m-2", 1));
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -167,9 +171,9 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // observed in memory, any earlier events in the same stream must have already
         // been processed (KurrentDB preserves order within a single stream on $all).
         await AppendAsync(h.Client, streamName,
-            new UserMessageReceived("", "m-1", "user", Ts, 0, Ts),
-            new UserMessageReceived("   ", "m-2", "user", Ts, 1, Ts),
-            new UserMessageReceived(sentinel, "m-3", "user", Ts, 2, Ts));
+            UserMsg("", "m-1", 0),
+            UserMsg("   ", "m-2", 1),
+            UserMsg(sentinel, "m-3", 2));
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -193,10 +197,10 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // prefix is outside "AgentSession-", so the server-side StreamFilter.Prefix
         // must suppress it.
         await AppendAsync(h.Client, outsidePrefix,
-            new UserMessageReceived(outsideContent, "m-1", "user", Ts, 0, Ts));
+            UserMsg(outsideContent, "m-1", 0));
 
         await AppendAsync(h.Client, agentStream,
-            new UserMessageReceived(sentinelContent, "m-2", "user", Ts, 0, Ts));
+            UserMsg(sentinelContent, "m-2", 0));
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinelContent), WaitBudget);
 
@@ -221,8 +225,8 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         var sentinel    = $"{marker} proof of life";
 
         await AppendAsync(h.Client, streamName,
-            new UserMessageReceived(nonMatching, "m-1", "user", Ts, 0, Ts),
-            new UserMessageReceived(sentinel, "m-2", "user", Ts, 1, Ts));
+            UserMsg(nonMatching, "m-1", 0),
+            UserMsg(sentinel, "m-2", 1));
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -252,7 +256,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         try {
             var content = $"{marker} real fact";
             await AppendAsync(client, streamName,
-                new UserMessageReceived(content, "m-1", "user", Ts, 0, Ts));
+                UserMsg(content, "m-1", 0));
 
             await WaitUntil(() => memory.Snapshot().Contains(content), WaitBudget);
 
@@ -286,7 +290,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
             var first   = $"{marker} first";
             var (mem1, svc1) = await StartOnce();
             try {
-                await AppendAsync(client, streamName, new UserMessageReceived(first, "m-1", "user", Ts, 0, Ts));
+                await AppendAsync(client, streamName, UserMsg(first, "m-1", 0));
                 await WaitUntil(() => mem1.Snapshot().Contains(first), WaitBudget);
                 await Assert.That(mem1.Snapshot()).Contains(first);
             } finally {
@@ -298,7 +302,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
             var second = $"{marker} second";
             var (mem2, svc2) = await StartOnce();
             try {
-                await AppendAsync(client, streamName, new UserMessageReceived(second, "m-2", "user", Ts, 1, Ts));
+                await AppendAsync(client, streamName, UserMsg(second, "m-2", 1));
                 await WaitUntil(() => mem2.Snapshot().Contains(second), WaitBudget);
                 await Assert.That(mem2.Snapshot()).Contains(second);
                 await Assert.That(mem2.Snapshot()).DoesNotContain(first);

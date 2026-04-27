@@ -68,4 +68,8 @@ jobs:
 
       - name: Breaking
         if: steps.baseline.outputs.exists == 'true'
-        run: buf breaking schema --against ".git#branch=main,subdir=schema"
+        # Resolve the main branch as a remote-tracking ref. ``actions/checkout``
+        # with ``fetch-depth: 0`` populates ``refs/remotes/origin/main`` but does
+        # not create a local ``main``, so ``--against ".git#branch=main"`` fails
+        # with "couldn't find remote ref main". ``ref=`` accepts any git ref.
+        run: buf breaking schema --against ".git#ref=refs/remotes/origin/main,subdir=schema"

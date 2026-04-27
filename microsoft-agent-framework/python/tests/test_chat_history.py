@@ -92,7 +92,8 @@ async def test_get_messages_skips_malformed_events_and_continues() -> None:
 
     stream = "AgentSession-s1"
     # Mix three events in stream order: broken JSON, a well-formed user message,
-    # and a canonical type that fails validation (missing required field).
+    # and a JSON payload whose field types don't match the canonical schema.
+    # Protobuf's JSON parser ignores unknown fields but rejects type mismatches.
     await client.append_to_stream(
         stream_name=stream,
         current_version=None,
@@ -102,7 +103,10 @@ async def test_get_messages_skips_malformed_events_and_continues() -> None:
                 type="UserMessageReceived",
                 data=b'{"content":"hello","message_index":0,"timestamp":"2026-04-22T10:00:00Z"}',
             ),
-            NewEvent(type="UserMessageReceived", data=b'{"timestamp":"2026-04-22T10:00:01Z"}'),  # missing message_index
+            NewEvent(
+                type="UserMessageReceived",
+                data=b'{"message_index":"not-a-number","timestamp":"2026-04-22T10:00:01Z"}',
+            ),
         ],
     )
 
