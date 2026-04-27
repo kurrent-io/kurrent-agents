@@ -5,6 +5,8 @@ import os
 import uuid
 from dataclasses import dataclass
 
+import pytest
+from cryptography.exceptions import InvalidTag
 from google.adk.auth.auth_credential import (
     AuthCredential,
     AuthCredentialTypes,
@@ -13,7 +15,7 @@ from google.adk.auth.auth_credential import (
 )
 from google.adk.auth.auth_schemes import AuthSchemeType
 from google.adk.auth.auth_tool import AuthConfig
-from kurrentdbclient import AsyncKurrentDBClient
+from kurrentdbclient import AsyncKurrentDBClient, NewEvent, StreamState
 
 from kurrent_google_adk import KurrentDBCredentialService
 from kurrent_google_adk._streams import for_credentials
@@ -172,3 +174,34 @@ class TestMissing:
         await service.save_credential(_auth_config(scope="written"), ctx)  # type: ignore[arg-type]
         loaded = await service.load_credential(_auth_config(scope="never-written"), ctx)  # type: ignore[arg-type]
         assert loaded is None
+
+
+class TestAadBinding:
+    async def test_relocating_event_to_other_user_breaks_decrypt(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        """A ciphertext lifted from user A and replanted under user B
+        must fail to decrypt because AAD includes the user_id."""
+        cipher = AesGcmCredentialCipher(keys=[os.urandom(32)])
+        service = KurrentDBCredentialService(kurrentdb_client, cipher=cipher)
+        app, alice = _ids()
+        _, bob = _ids()
+        cfg = _auth_config()
+
+        # Write under alice.
+        await service.save_credential(cfg, _ctx(app, alice))  # type: ignore[arg-type]
+
+        # Copy alice's event verbatim into bob's stream.
+        alice_stream = for_credentials(app, alice)
+        async for record in await kurrentdb_client.read_stream(alice_stream, backwards=True):
+            replayed = NewEvent(id=record.id, type=record.type, data=record.data, metadata=record.metadata)
+            await kurrentdb_client.append_to_stream(
+                for_credentials(app, bob),
+                events=[replayed],
+                current_version=StreamState.ANY,
+            )
+            break
+
+        # Bob's load must NOT silently succeed; it must raise (decrypt failure).
+        with pytest.raises(InvalidTag):
+            await service.load_credential(cfg, _ctx(app, bob))  # type: ignore[arg-type]
