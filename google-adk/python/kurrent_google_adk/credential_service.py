@@ -96,18 +96,17 @@ class KurrentDBCredentialService(BaseCredentialService):
 
         try:
             recorded = await self._client.read_stream(stream, backwards=True)
+            async for record in recorded:
+                event = _serialization.deserialize(record)
+                if not isinstance(event, CredentialSaved):
+                    continue
+                if event.credential_key != key:
+                    continue
+                wire = base64.b64decode(event.credential)
+                plaintext = self._cipher.decrypt(wire, ctx)
+                return AuthCredential.model_validate_json(plaintext)
         except NotFoundError:
             return None
-
-        async for record in recorded:
-            event = _serialization.deserialize(record)
-            if not isinstance(event, CredentialSaved):
-                continue
-            if event.credential_key != key:
-                continue
-            wire = base64.b64decode(event.credential)
-            plaintext = self._cipher.decrypt(wire, ctx)
-            return AuthCredential.model_validate_json(plaintext)
 
         return None
 
