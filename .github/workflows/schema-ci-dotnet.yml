@@ -3,12 +3,14 @@ name: Schema .NET CI
 on:
   pull_request:
     paths:
+      - 'schema/proto/**'
       - 'schema/dotnet/**'
       - 'schema/fixtures/**'
       - '.github/workflows/schema-ci-dotnet.yml'
   push:
     branches: [main]
     paths:
+      - 'schema/proto/**'
       - 'schema/dotnet/**'
       - 'schema/fixtures/**'
       - '.github/workflows/schema-ci-dotnet.yml'
