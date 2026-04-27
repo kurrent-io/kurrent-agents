@@ -1028,13 +1028,15 @@ JSON canonical form (unset optional fields are omitted instead of \`null\`)."
 
 ---
 
-## Task 8: Generate .NET code and wire it into the project
+## Task 8: Generate .NET code, retire hand-written records, wire into the project
 
 **Files:**
-- Modify: `schema/dotnet/Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj`
+- Modify: `schema/dotnet/Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj` (add `Google.Protobuf`)
 - Create: `schema/dotnet/Kurrent.Agent.Schema/Generated/` (committed buf output)
+- Delete: `schema/dotnet/Kurrent.Agent.Schema/Events/*.cs` (hand-written records replaced by generated)
+- Delete: `schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs` (replaced by generated)
 
-**Rationale:** Add the `Google.Protobuf` package, point the csproj at the generated tree, and confirm a build.
+**Rationale:** Generated event/value types share names AND namespace (`Kurrent.Agent.Schema.Events`) with the hand-written records, plus `TokenUsage` is regenerated under `Kurrent.Agent.Schema`. Adding the generated tree without simultaneously deleting the hand-written records produces a non-building intermediate state (CS0101: namespace already contains a definition). Doing both in one commit avoids the broken intermediate. The test project still won't build until Task 10 rewrites `EventTypeMap.cs` and `FixtureRoundTripTests.cs` on the generated types — that's expected.
 
 - [ ] **Step 1: Add `Google.Protobuf` to the csproj**
 
@@ -1054,21 +1056,40 @@ cd schema && buf generate
 
 Expected: produces `schema/dotnet/Kurrent.Agent.Schema/Generated/Events.cs`, `Usage.cs`, `ValueTypes.cs`. Generated event/value types use `namespace Kurrent.Agent.Schema.Events` (matches the existing hand-written namespace, so consumers' `using` lines don't change). `TokenUsage` is generated under `namespace Kurrent.Agent.Schema`.
 
-- [ ] **Step 3: Build**
+- [ ] **Step 3: Delete the hand-written records and TokenUsage**
+
+```bash
+rm -r schema/dotnet/Kurrent.Agent.Schema/Events/
+rm schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs
+```
+
+- [ ] **Step 4: Build (main project only)**
 
 ```bash
 cd schema/dotnet
-dotnet build Kurrent.Agent.Schema.slnx -c Release
+dotnet build Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj -c Release
 ```
 
-Expected: build succeeds. (Tests will fail at this stage — that's Task 9–10.)
+Expected: main project build succeeds. The test project (`Kurrent.Agent.Schema.Tests.csproj`) will fail because it still references `EventTypeMap.All` mapped to deleted types and uses `SchemaJsonOptions` for the System.Text.Json path; both are rewritten in Tasks 9–10. Don't try to build the full slnx yet.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add schema/dotnet/Kurrent.Agent.Schema/Kurrent.Agent.Schema.csproj \
         schema/dotnet/Kurrent.Agent.Schema/Generated/
-git commit -m "feat(schema-net): generate C# protobuf code from buf"
+git rm -r schema/dotnet/Kurrent.Agent.Schema/Events/
+git rm schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs
+git commit -m "$(cat <<'EOF'
+feat(schema-net): generate C# protobuf code, retire hand-written records
+
+Adds Google.Protobuf 3.28.3, commits buf-generated Events.cs (under
+Kurrent.Agent.Schema.Events), Usage.cs and ValueTypes.cs (Usage under
+Kurrent.Agent.Schema, ValueTypes under .Events). Removes hand-written
+event records and TokenUsage.cs which are now provided by the generated
+tree. Test project will be restored by Tasks 9–10 (SchemaJsonOptions
+rewrite + EventTypeMap/FixtureRoundTripTests on the new types).
+EOF
+)"
 ```
 
 ---
@@ -1178,11 +1199,9 @@ git commit -m "feat(schema-net): SchemaJsonOptions backed by protobuf JsonFormat
 
 **Files:**
 - Modify: `schema/dotnet/Kurrent.Agent.Schema/EventTypeMap.cs`
-- Delete: `schema/dotnet/Kurrent.Agent.Schema/Events/*.cs`
-- Delete: `schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs`
 - Modify: `schema/dotnet/Kurrent.Agent.Schema.Tests/FixtureRoundTripTests.cs`
 
-**Rationale:** Point the registry at generated types, retire the hand-written records, and update the existing fixture test to use `SchemaJsonOptions.ToJson` / `FromJson`.
+**Rationale:** Point the registry at generated types and update the existing fixture test to use `SchemaJsonOptions.ToJson` / `FromJson`. (Hand-written records were already deleted in Task 8.)
 
 - [ ] **Step 1: Rewrite `EventTypeMap.cs`**
 
@@ -1218,14 +1237,7 @@ public static class EventTypeMap {
 }
 ```
 
-- [ ] **Step 2: Delete the hand-written event records and TokenUsage**
-
-```bash
-rm -r schema/dotnet/Kurrent.Agent.Schema/Events/
-rm schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs
-```
-
-- [ ] **Step 3: Rewrite `FixtureRoundTripTests.cs`**
+- [ ] **Step 2: Rewrite `FixtureRoundTripTests.cs`**
 
 `schema/dotnet/Kurrent.Agent.Schema.Tests/FixtureRoundTripTests.cs`:
 
@@ -1318,23 +1330,21 @@ public class FixtureRoundTripTests {
 
 (The `Additional_counts_preserves_non_snake_case_keys` test from the original file is dropped — `Struct` preserves keys verbatim by construction, so the regression no longer applies. The cross-language test in Task 11 covers this case.)
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 3: Run tests**
 
 ```bash
 cd schema/dotnet
 dotnet test Kurrent.Agent.Schema.slnx -c Release
 ```
 
-Expected: all tests PASS. If a fixture fails, inspect the diff — it should be a casing/null-omission delta, not a semantic difference. Re-run Python's `regen_fixtures.py` from a previous task only if the Python tests still pass on the regenerated form — both languages must agree on the canonical form.
+Expected: all tests PASS. If a fixture fails, inspect the diff — it should be a casing/null-omission delta, not a semantic difference. Re-run Python's regeneration script from Task 7 only if the Python tests still pass on the regenerated form — both languages must agree on the canonical form.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git rm -r schema/dotnet/Kurrent.Agent.Schema/Events/
-git rm schema/dotnet/Kurrent.Agent.Schema/TokenUsage.cs
 git add schema/dotnet/Kurrent.Agent.Schema/EventTypeMap.cs \
         schema/dotnet/Kurrent.Agent.Schema.Tests/FixtureRoundTripTests.cs
-git commit -m "refactor(schema-net): swap hand-written records for generated protobuf types"
+git commit -m "refactor(schema-net): EventTypeMap + FixtureRoundTripTests on generated types"
 ```
 
 ---
