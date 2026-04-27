@@ -10,7 +10,11 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+from google.protobuf.message import Message
+from google.protobuf.struct_pb2 import Struct
 from kurrent_agent_schema import (
+    EVENT_TYPE_BY_NAME,
+    EVENT_TYPE_NAMES,
     AssistantToolCallsGenerated,
     FactRetained,
     SessionStarted,
@@ -18,20 +22,24 @@ from kurrent_agent_schema import (
     TurnScored,
     UserMessageReceived,
 )
-from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES
-from pydantic import BaseModel
 
 from kurrent_agent_framework import serialization
 
 
-def _payload(event: BaseModel) -> dict:
+def _payload(event: Message) -> dict:
     new_event = serialization.serialize(event)
     return json.loads(new_event.data)
 
 
-def _metadata(event: BaseModel) -> dict:
+def _metadata(event: Message) -> dict:
     new_event = serialization.serialize(event)
     return json.loads(new_event.metadata)
+
+
+def _struct(d: dict) -> Struct:
+    s = Struct()
+    s.update(d)
+    return s
 
 
 def test_session_started_wire_format() -> None:
@@ -57,8 +65,19 @@ def test_user_message_wire_format() -> None:
     payload = _payload(evt)
     assert payload["content"] == "hello"
     assert payload["message_id"] == "m1"
-    assert payload["message_index"] == 0
-    assert "author_name" not in payload  # exclude_none
+    # message_index = 0 is the proto3 default for int32; canonical JSON
+    # omits default-valued non-optional scalars.
+    assert "message_index" not in payload
+    assert "author_name" not in payload  # unset optional
+
+
+def test_user_message_non_default_index_is_emitted() -> None:
+    evt = UserMessageReceived(
+        content="hi",
+        message_index=5,
+        timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
+    )
+    assert _payload(evt)["message_index"] == 5
 
 
 def test_assistant_tool_calls_wire_format() -> None:
@@ -67,7 +86,7 @@ def test_assistant_tool_calls_wire_format() -> None:
             ToolCallInfo(
                 call_id="c1",
                 tool_name="get_weather",
-                arguments={"city": "London"},
+                arguments=_struct({"city": "London"}),
             )
         ],
         message_index=1,
@@ -81,9 +100,11 @@ def test_assistant_tool_calls_wire_format() -> None:
 
 
 def test_turn_scored_wire_format() -> None:
+    # Use a non-default turn_index so we can assert it appears on the wire;
+    # proto3 JSON omits default-valued non-optional scalars (turn_index = 0).
     evt = TurnScored(
         session_id="s1",
-        turn_index=0,
+        turn_index=2,
         input="What's the weather?",
         output="Sunny.",
         score=0.9,
@@ -93,7 +114,7 @@ def test_turn_scored_wire_format() -> None:
     )
     assert _payload(evt) == {
         "session_id": "s1",
-        "turn_index": 0,
+        "turn_index": 2,
         "input": "What's the weather?",
         "output": "Sunny.",
         "score": 0.9,
