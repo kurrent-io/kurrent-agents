@@ -1528,8 +1528,41 @@ jobs:
           SCHEMA_DUMP_OUT: ${{ runner.temp }}/net-out
         run: dotnet test Kurrent.Agent.Schema.slnx -c Release --no-build --filter "FullyQualifiedName~DumpCanonicalOutput"
 
-      - name: Compare outputs
-        run: diff -r ${{ runner.temp }}/py-out ${{ runner.temp }}/net-out
+      - name: Compare outputs (structural)
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          PY_OUT = Path("${{ runner.temp }}/py-out")
+          NET_OUT = Path("${{ runner.temp }}/net-out")
+
+          def normalise(x):
+              # Numeric equivalence: proto3 JSON for google.protobuf.Value
+              # admits both integer and ".0"-suffixed double forms (Python
+              # writes the latter, .NET the former). Treat them as equal.
+              if isinstance(x, float) and x.is_integer():
+                  return int(x)
+              if isinstance(x, dict):
+                  return {k: normalise(v) for k, v in sorted(x.items())}
+              if isinstance(x, list):
+                  return [normalise(v) for v in x]
+              return x
+
+          mismatches = []
+          for py_file in sorted(PY_OUT.rglob("*.json")):
+              rel = py_file.relative_to(PY_OUT)
+              net_file = NET_OUT / rel
+              if not net_file.exists():
+                  mismatches.append(f"missing in .NET: {rel}")
+                  continue
+              if normalise(json.loads(py_file.read_text())) != normalise(json.loads(net_file.read_text())):
+                  mismatches.append(f"diff: {rel}")
+          if mismatches:
+              print("\n".join(mismatches))
+              sys.exit(1)
+          print(f"All {sum(1 for _ in PY_OUT.rglob('*.json'))} fixtures structurally equal across Python and .NET writers.")
+          PY
 ```
 
 - [ ] **Step 5: Commit**
