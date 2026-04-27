@@ -229,9 +229,28 @@ Binary payloads above a configurable threshold (default `1 MiB`) are offloaded; 
 
 ### 7.4 `KurrentDBCredentialService`
 
-Implements `BaseCredentialService.load_credential` / `save_credential`. Keys off `auth_config.get_credential_key()` (stable string ADK generates from the auth scheme + scopes). Credentials are written to `Credentials-{app_name}-{user_id}` as `CredentialSaved` events keyed by the credential key; read is a backward scan for the most-recent matching key.
+Implements `BaseCredentialService.load_credential` / `save_credential`. Keys
+off `auth_config.credential_key` (stable string ADK derives from auth scheme
++ scopes). Credentials are written to `Credentials-{app_name}-{user_id}` as
+ADK-specific `CredentialSaved` events keyed by the credential key; read is a
+backward scan returning the most-recent matching key, or `None` if absent.
 
-Credential events are ADK-specific — no AFW counterpart today, so they sit outside the canonical schema. Encryption-at-rest is out of scope for v1; a pluggable `CredentialCipher` interface can be added later without a breaking change.
+A pluggable `CredentialCipher` is required at construction; there is no
+plaintext default. Two implementations ship in the package:
+
+- `AesGcmCredentialCipher` (recommended): AES-256-GCM with AAD binding to
+  `(app_name, user_id, credential_key)`, so a ciphertext blob lifted from
+  one user's stream and replanted under another user's stream fails to
+  decrypt. Versioned wire format with a `key_id` byte for in-place key
+  rotation. Requires the `cryptography` package — install via
+  `pip install kurrent-google-adk[crypto]`.
+- `NullCredentialCipher`: explicit no-encryption path for tests and the
+  small set of users who genuinely don't want encryption. Same outer wire
+  container as the AES path so the on-stream shape is uniform regardless
+  of cipher choice.
+
+See `docs/superpowers/specs/2026-04-27-adk-credential-service-design.md`
+for the wire format, AAD construction, and rotation procedure.
 
 ### 7.5 `UsageCapturePlugin`
 
@@ -362,7 +381,7 @@ runner = Runner(
 ## 13. Open questions
 
 1. **Artifact inline threshold default.** Starting point: `1 MiB`. Configurable per service instance.
-2. **Credential encryption.** Pluggable `CredentialCipher` interface — add in v1 as a no-op default, or defer to v2?
+2. **Credential encryption.** ~~Pluggable `CredentialCipher` interface — add in v1 as a no-op default, or defer to v2?~~ **Resolved.** Pluggable `CredentialCipher` is part of v1; AES-256-GCM with AAD binding is the recommended default. See §7.4 and `docs/superpowers/specs/2026-04-27-adk-credential-service-design.md`.
 3. **State cache eviction.** App/user state streams can grow large. LRU is an obvious default; need real numbers from a workload to tune.
 4. **`run_live` audio artifacts.** Transcription buffering in Runner writes audio-reference events (`runners.py:872-931`). Large `file_data` should probably go through `BlobSink` automatically — confirm the trigger condition.
 5. **`$ce-AgentSession` vs. a purpose-built projection.** The system category is free but coarse. A user-defined projection keyed by `(app_name, user_id)` (both on `SessionStarted`) would make `list_sessions` cheaper. Ship with `$ce-...`; add a projection in v2 if needed.
