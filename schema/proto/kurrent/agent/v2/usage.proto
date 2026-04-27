@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package kurrent.agent.v2;
+
+import "google/protobuf/struct.proto";
+
+// Different csharp_namespace from value_types.proto / events.proto is
+// intentional and is granted by the PACKAGE_SAME_CSHARP_NAMESPACE
+// exception in schema/buf.yaml. TokenUsage stays at the existing
+// Kurrent.Agent.Schema root namespace; events stay under .Events.
+option csharp_namespace = "Kurrent.Agent.Schema";
+
+// Token-usage record placed on KurrentDB event metadata under the $usage key.
+// See SCHEMA_v2.md §3.6.
+message TokenUsage {
+  optional int64 input_tokens = 1;
+  optional int64 output_tokens = 2;
+  optional int64 total_tokens = 3;
+  optional int64 cached_input_tokens = 4;
+  optional int64 reasoning_tokens = 5;
+  optional string model = 6;
+  // Free-form bucket for provider-specific counters not mapped to canonical
+  // slots. Values may themselves be objects (e.g. nested ServerToolUse).
+  // Modelled as Struct (not map<string, int64>) to admit nested values.
+  google.protobuf.Struct additional_counts = 7;
+}
