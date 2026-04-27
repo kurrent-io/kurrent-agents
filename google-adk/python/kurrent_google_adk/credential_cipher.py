@@ -34,7 +34,7 @@ class CredentialContext:
     credential_key: str
 
     def aad(self) -> bytes:
-        return f"{self.app_name}|{self.user_id}|{self.credential_key}".encode("utf-8")
+        return f"{self.app_name}|{self.user_id}|{self.credential_key}".encode()
 
 
 class CredentialCipher(Protocol):
