@@ -21,6 +21,7 @@ from kurrent_google_adk.events import (
     AgentTransferred,
     AssistantThinkingGenerated,
     Compaction,
+    CredentialSaved,
     Rewind,
     SessionStarted,
     StateDelta,
@@ -233,3 +234,21 @@ def test_usage_fixture_round_trip() -> None:
 
 def test_usage_metadata_key_constant() -> None:
     assert USAGE_METADATA_KEY == "$usage"
+
+
+def test_credential_saved_round_trip() -> None:
+    event = CredentialSaved(
+        credential_key="oauth2:scope=read",
+        credential="AQABAGRlYWRiZWVm",  # dummy base64
+        timestamp=datetime(2026, 4, 27, 12, 0, tzinfo=UTC),
+    )
+    assert _serialization.name_for(event) == "CredentialSaved"
+
+    new_event = _serialization.serialize(event)
+    assert new_event.type == "CredentialSaved"
+
+    decoded = _serialization.deserialize(_recorded(new_event))
+    assert isinstance(decoded, CredentialSaved)
+    assert decoded.credential_key == event.credential_key
+    assert decoded.credential == event.credential
+    assert decoded.timestamp == event.timestamp

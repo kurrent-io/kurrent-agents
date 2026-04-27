@@ -1,11 +1,11 @@
 """ADK-specific event types and re-exports of the shared canonical schema.
 
-Four event types live here because they describe ADK-specific session
+Five event types live here because they describe ADK-specific session
 mechanics (agent handoff, rewind boundary, event-range compaction,
-session-scoped state delta) and are not canonical across frameworks. The
-remaining canonical types are re-exported from
-``kurrent_agent_schema.events`` so internal callers have a single import
-path.
+session-scoped state delta, tool credential persistence) and are not
+canonical across frameworks. The remaining canonical types are re-exported
+from ``kurrent_agent_schema.events`` so internal callers have a single
+import path.
 """
 
 from __future__ import annotations
@@ -78,6 +78,19 @@ class StateDelta(_EventBase):
     timestamp: datetime
 
 
+class CredentialSaved(_EventBase):
+    """ADK-specific event recording a tool OAuth credential.
+
+    The ``credential`` field is a base64-encoded, cipher-self-describing
+    wire blob. Format and AAD binding are defined in
+    ``docs/superpowers/specs/2026-04-27-adk-credential-service-design.md``.
+    """
+
+    credential_key: str
+    credential: str
+    timestamp: datetime
+
+
 __all__ = [  # noqa: RUF022
     "ADK_EXTENSION_KEY",
     # ADK-specific
@@ -85,6 +98,7 @@ __all__ = [  # noqa: RUF022
     "Rewind",
     "Compaction",
     "StateDelta",
+    "CredentialSaved",
     # Re-exported canonical types
     "_EventBase",
     "AgentConfig",

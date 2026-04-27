@@ -22,7 +22,7 @@ from kurrent_agent_schema.events import EVENT_TYPE_BY_NAME, EVENT_TYPE_NAMES, _E
 from kurrentdbclient import NewEvent, RecordedEvent
 from pydantic import ValidationError
 
-from .events import AgentTransferred, Compaction, Rewind, StateDelta
+from .events import AgentTransferred, Compaction, CredentialSaved, Rewind, StateDelta
 
 logger = logging.getLogger("kurrent_google_adk._serialization")
 
@@ -34,6 +34,7 @@ _ADK_LOCAL_TYPES: dict[type[_EventBase], str] = {
     Rewind: "Rewind",
     Compaction: "Compaction",
     StateDelta: "StateDelta",
+    CredentialSaved: "CredentialSaved",
 }
 
 _TYPE_TO_NAME: dict[type[_EventBase], str] = {
