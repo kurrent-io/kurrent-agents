@@ -13,6 +13,7 @@ authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "agents", "llm", "schema"]
 dependencies = [
   "pydantic >= 2.5",
+  "protobuf >= 5.27, < 8",
 ]
 
 [project.optional-dependencies]
