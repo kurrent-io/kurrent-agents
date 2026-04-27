@@ -531,15 +531,16 @@ git commit -m "feat(schema): add events.proto (17 canonical event types)"
 
 - [ ] **Step 1: Add `protobuf` to `pyproject.toml`**
 
-Modify `schema/python/pyproject.toml`:
+Modify `schema/python/pyproject.toml` to add `protobuf` alongside the existing `pydantic` dep:
 
 ```toml
 dependencies = [
+  "pydantic >= 2.5",
   "protobuf >= 5.27, < 7",
 ]
 ```
 
-(Drop the `pydantic` dependency — events no longer use it. `TokenUsage` and `streams.py` are pure Python.)
+`pydantic` cannot be dropped here because `events.py` still imports it; that drop happens in Task 7 when `events.py` is deleted.
 
 - [ ] **Step 2: Run codegen**
 
@@ -832,11 +833,13 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 2: Delete `events.py`**
+- [ ] **Step 2: Delete `events.py` and drop `pydantic` from `pyproject.toml`**
 
 ```bash
 rm schema/python/kurrent_agent_schema/events.py
 ```
+
+In `schema/python/pyproject.toml`, remove the `pydantic` dependency line — nothing in the package needs it any more (generated types are pure protobuf, `streams.py`/`usage.py`/`version.py` are stdlib only). The remaining dep is just `protobuf >= 5.27, < 7`.
 
 - [ ] **Step 3: Trim `usage.py` to constants only**
 
