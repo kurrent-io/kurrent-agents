@@ -536,11 +536,13 @@ Modify `schema/python/pyproject.toml` to add `protobuf` alongside the existing `
 ```toml
 dependencies = [
   "pydantic >= 2.5",
-  "protobuf >= 5.27, < 7",
+  "protobuf >= 5.27, < 8",
 ]
 ```
 
 `pydantic` cannot be dropped here because `events.py` still imports it; that drop happens in Task 7 when `events.py` is deleted.
+
+The upper bound is `< 8` because buf's `protocolbuffers/python` remote plugin currently emits gencode requiring protobuf 7.x runtime (version 7.34.1+). A `< 7` bound makes the package un-importable.
 
 - [ ] **Step 2: Run codegen**
 
@@ -555,10 +557,31 @@ Expected: produces files under `schema/python/kurrent_agent_schema/_generated/ku
 
 - [ ] **Step 3: Add `__init__.py` files to make `_generated` a Python package**
 
-Create `schema/python/kurrent_agent_schema/_generated/__init__.py` (empty file).
-Create `schema/python/kurrent_agent_schema/_generated/kurrent/__init__.py` (empty file).
-Create `schema/python/kurrent_agent_schema/_generated/kurrent/agent/__init__.py` (empty file).
-Create `schema/python/kurrent_agent_schema/_generated/kurrent/agent/v2/__init__.py` (empty file).
+The intermediate `__init__.py` files are empty. The top-level one contains a small `sys.path` bootstrap so that the generated cross-imports (e.g. `events_pb2.py` doing `from kurrent.agent.v2 import value_types_pb2`) resolve. `protoc-gen-python` emits absolute imports based on the proto `package` declaration, not the filesystem layout — without the bootstrap, `from kurrent_agent_schema._generated... import events_pb2` raises `ModuleNotFoundError: kurrent.agent.v2`.
+
+`schema/python/kurrent_agent_schema/_generated/__init__.py`:
+
+```python
+"""Buf-generated protobuf code for the canonical schema.
+
+Adds its own directory to ``sys.path`` so the cross-imports emitted by
+``protoc-gen-python`` (e.g. ``from kurrent.agent.v2 import value_types_pb2``
+inside ``events_pb2.py``) resolve. Without this, the generated code is
+unimportable unless the consumer manages ``sys.path`` themselves.
+"""
+
+import sys
+from pathlib import Path
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+```
+
+Create empty `__init__.py` at:
+- `schema/python/kurrent_agent_schema/_generated/kurrent/__init__.py`
+- `schema/python/kurrent_agent_schema/_generated/kurrent/agent/__init__.py`
+- `schema/python/kurrent_agent_schema/_generated/kurrent/agent/v2/__init__.py`
 
 - [ ] **Step 4: Sync deps and verify imports**
 
