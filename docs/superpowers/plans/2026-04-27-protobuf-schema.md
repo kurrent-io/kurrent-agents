@@ -459,7 +459,7 @@ message FactRetained {
 message ArtifactVersionCreated {
   int32 version = 1;
   optional string mime_type = 2;
-  bytes inline_bytes = 3;  // base64 in JSON; empty bytes encode as "" in proto3 JSON
+  optional bytes inline_bytes = 3;  // base64 in JSON; absent when null
   optional string canonical_uri = 4;
   google.protobuf.Struct custom_metadata = 5;
   google.protobuf.Timestamp created_at = 6;
