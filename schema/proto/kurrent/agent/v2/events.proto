@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package kurrent.agent.v2;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+import "kurrent/agent/v2/value_types.proto";
+
+option csharp_namespace = "Kurrent.Agent.Schema.Events";
+
+// =====================================================================
+// Session lifecycle (SCHEMA_v2.md §3.1)
+// =====================================================================
+
+message SessionStarted {
+  optional string app_name = 1;
+  optional string agent_name = 2;
+  optional string model = 3;
+  optional string tenant_id = 4;
+  optional string user_id = 5;
+  AgentConfig agent_config = 6;
+  optional string previous_session_id = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  // Framework-specific extension envelope keyed by slug.
+  // See SCHEMA_v2.md §5.
+  map<string, google.protobuf.Struct> extensions = 9;
+}
+
+message SessionEnded {
+  optional string reason = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  map<string, google.protobuf.Struct> extensions = 3;
+}
+
+message SessionContinuedAs {
+  string next_session_id = 1;
+  optional string reason = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  map<string, google.protobuf.Struct> extensions = 4;
+}
+
+// =====================================================================
+// Conversation events (SCHEMA_v2.md §3.4)
+// =====================================================================
+
+message UserMessageReceived {
+  optional string content = 1;
+  optional string message_id = 2;
+  optional string author_name = 3;
+  optional google.protobuf.Timestamp created_at = 4;
+  int32 message_index = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  map<string, google.protobuf.Struct> extensions = 7;
+}
+
+message AssistantTextGenerated {
+  optional string content = 1;
+  optional string message_id = 2;
+  optional string author_name = 3;
+  optional google.protobuf.Timestamp created_at = 4;
+  int32 message_index = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  map<string, google.protobuf.Struct> extensions = 7;
+}
+
+message AssistantToolCallsGenerated {
+  repeated ToolCallInfo tool_calls = 1;
+  optional string content = 2;
+  optional string message_id = 3;
+  optional string author_name = 4;
+  optional google.protobuf.Timestamp created_at = 5;
+  int32 message_index = 6;
+  google.protobuf.Timestamp timestamp = 7;
+  map<string, google.protobuf.Struct> extensions = 8;
+}
+
+message AssistantThinkingGenerated {
+  optional string content = 1;
+  // Provider returned an opaque blob instead of plaintext (OpenAI o-series).
+  // The opaque value, when present, lives under extensions.openai.thinking.raw.
+  bool encrypted = 2;
+  optional string signature = 3;
+  optional string message_id = 4;
+  optional string author_name = 5;
+  optional google.protobuf.Timestamp created_at = 6;
+  int32 message_index = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  map<string, google.protobuf.Struct> extensions = 9;
+}
+
+message ToolResultReceived {
+  string call_id = 1;
+  optional string tool_name = 2;
+  optional string result = 3;
+  optional string message_id = 4;
+  optional string author_name = 5;
+  optional google.protobuf.Timestamp created_at = 6;
+  int32 message_index = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  map<string, google.protobuf.Struct> extensions = 9;
+}
+
+// =====================================================================
+// Interrupts (SCHEMA_v2.md §3.3)
+// =====================================================================
+
+message InterruptIssued {
+  string request_id = 1;
+  // Open string. Documented set: permission | approval | input | auth.
+  string kind = 2;
+  optional string tool_name = 3;
+  optional string prompt = 4;
+  optional string message_id = 5;
+  google.protobuf.Timestamp timestamp = 6;
+  map<string, google.protobuf.Struct> extensions = 7;
+}
+
+message InterruptResolved {
+  string request_id = 1;
+  // Open string. Documented set: allow | allow_once | allow_always |
+  // deny | cancel | answered | timeout.
+  string outcome = 2;
+  optional string response = 3;
+  optional string message_id = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, google.protobuf.Struct> extensions = 6;
+}
+
+// =====================================================================
+// Subagents (SCHEMA_v2.md §3.5)
+// =====================================================================
+
+message SubagentStarted {
+  string agent_id = 1;
+  optional string agent_type = 2;
+  optional string prompt = 3;
+  optional string subsession_stream = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, google.protobuf.Struct> extensions = 6;
+}
+
+message SubagentCompleted {
+  string agent_id = 1;
+  optional string outcome = 2;
+  optional string summary = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, google.protobuf.Struct> extensions = 5;
+}
+
+// =====================================================================
+// Memory (SCHEMA_v2.md §3.7)
+// =====================================================================
+
+message FactRetained {
+  string fact = 1;
+  google.protobuf.Timestamp retained_at = 2;
+  map<string, google.protobuf.Struct> extensions = 3;
+}
+
+// =====================================================================
+// Artifacts (SCHEMA_v2.md §3.7)
+// =====================================================================
+
+message ArtifactVersionCreated {
+  int32 version = 1;
+  optional string mime_type = 2;
+  bytes inline_bytes = 3;  // base64 in JSON; empty bytes encode as "" in proto3 JSON
+  optional string canonical_uri = 4;
+  google.protobuf.Struct custom_metadata = 5;
+  google.protobuf.Timestamp created_at = 6;
+  map<string, google.protobuf.Struct> extensions = 7;
+}
+
+// =====================================================================
+// Evaluation (SCHEMA_v2.md §3.7)
+// =====================================================================
+
+message EvalRunStarted {
+  string session_id = 1;
+  string scorer = 2;
+  string criteria = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, google.protobuf.Struct> extensions = 5;
+}
+
+message TurnScored {
+  string session_id = 1;
+  int32 turn_index = 2;
+  optional string input = 3;
+  optional string output = 4;
+  double score = 5;
+  optional string score_label = 6;
+  optional string reason = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  map<string, google.protobuf.Struct> extensions = 9;
+}
+
+message EvalRunCompleted {
+  string session_id = 1;
+  int32 turns_scored = 2;
+  double average_score = 3;
+  optional double total_cost = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, google.protobuf.Struct> extensions = 6;
+}
