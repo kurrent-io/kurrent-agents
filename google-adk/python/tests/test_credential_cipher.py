@@ -13,6 +13,7 @@ import pytest
 from kurrent_google_adk.credential_cipher import (
     CredentialCipher,
     CredentialContext,
+    NullCredentialCipher,
 )
 
 
@@ -46,3 +47,29 @@ def test_concrete_class_satisfies_protocol() -> None:
     ctx = CredentialContext("a", "u", "k")
     assert impl.encrypt(b"x", ctx) == b"x"
     assert impl.decrypt(b"x", ctx) == b"x"
+
+
+class TestNullCredentialCipher:
+    def test_round_trip(self) -> None:
+        cipher = NullCredentialCipher()
+        ctx = CredentialContext("app", "user", "k")
+        plaintext = b'{"hello": "world"}'
+
+        wire = cipher.encrypt(plaintext, ctx)
+        assert wire[0] == 0x00, "version byte must be 0x00"
+        assert plaintext in wire, "null cipher does not encrypt"
+
+        decoded = cipher.decrypt(wire, ctx)
+        assert decoded == plaintext
+
+    def test_decrypt_rejects_wrong_version(self) -> None:
+        cipher = NullCredentialCipher()
+        ctx = CredentialContext("app", "user", "k")
+        with pytest.raises(ValueError, match="version"):
+            cipher.decrypt(b"\x01garbage", ctx)
+
+    def test_decrypt_rejects_empty(self) -> None:
+        cipher = NullCredentialCipher()
+        ctx = CredentialContext("app", "user", "k")
+        with pytest.raises(ValueError, match="empty"):
+            cipher.decrypt(b"", ctx)

@@ -47,3 +47,30 @@ class CredentialCipher(Protocol):
     def encrypt(self, plaintext: bytes, context: CredentialContext) -> bytes: ...
 
     def decrypt(self, ciphertext: bytes, context: CredentialContext) -> bytes: ...
+
+
+NULL_CIPHER_VERSION: int = 0x00
+
+
+class NullCredentialCipher:
+    """Plaintext "cipher" with the same outer container as real ciphers.
+
+    Used by tests and by deployments that explicitly opt out of
+    encryption. The wire format is ``b"\\x00" + plaintext`` so readers
+    branch on a single version byte regardless of which cipher wrote
+    the event.
+    """
+
+    def encrypt(self, plaintext: bytes, context: CredentialContext) -> bytes:
+        del context  # unused for null
+        return bytes([NULL_CIPHER_VERSION]) + plaintext
+
+    def decrypt(self, ciphertext: bytes, context: CredentialContext) -> bytes:
+        del context  # unused for null
+        if not ciphertext:
+            raise ValueError("Cannot decrypt empty ciphertext")
+        if ciphertext[0] != NULL_CIPHER_VERSION:
+            raise ValueError(
+                f"NullCredentialCipher cannot decrypt version 0x{ciphertext[0]:02x}"
+            )
+        return ciphertext[1:]
