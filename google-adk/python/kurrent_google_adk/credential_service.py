@@ -24,6 +24,7 @@ from google.adk.auth.auth_credential import AuthCredential
 from google.adk.auth.auth_tool import AuthConfig
 from google.adk.auth.credential_service.base_credential_service import BaseCredentialService
 from kurrentdbclient import StreamState
+from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
 from ._streams import for_credentials
@@ -85,7 +86,30 @@ class KurrentDBCredentialService(BaseCredentialService):
     async def load_credential(
         self, auth_config: AuthConfig, callback_context: CallbackContext
     ) -> AuthCredential | None:
-        raise NotImplementedError  # implemented in Task 7
+        app_name, user_id = _scope(callback_context)
+        key = auth_config.credential_key
+        if key is None:
+            raise ValueError("auth_config.credential_key is required")
+
+        ctx = CredentialContext(app_name=app_name, user_id=user_id, credential_key=key)
+        stream = for_credentials(app_name, user_id)
+
+        try:
+            recorded = await self._client.read_stream(stream, backwards=True)
+        except NotFoundError:
+            return None
+
+        async for record in recorded:
+            event = _serialization.deserialize(record)
+            if not isinstance(event, CredentialSaved):
+                continue
+            if event.credential_key != key:
+                continue
+            wire = base64.b64decode(event.credential)
+            plaintext = self._cipher.decrypt(wire, ctx)
+            return AuthCredential.model_validate_json(plaintext)
+
+        return None
 
 
 def _scope(callback_context: CallbackContext) -> tuple[str, str]:
