@@ -666,7 +666,7 @@ def to_json(message: Message) -> str:
     return json_format.MessageToJson(
         message,
         preserving_proto_field_name=True,
-        including_default_value_fields=False,
+        always_print_fields_with_no_presence=False,
         sort_keys=False,
         indent=None,
     )
