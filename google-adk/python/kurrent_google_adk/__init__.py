@@ -11,15 +11,25 @@ shared with the Microsoft Agent Framework integrations.
 from . import client
 from ._revisions import StaleSessionError
 from .artifact_service import KurrentDBArtifactService
+from .credential_cipher import (
+    AesGcmCredentialCipher,
+    CredentialCipher,
+    CredentialContext,
+    NullCredentialCipher,
+)
 from .credential_service import KurrentDBCredentialService
 from .memory_service import KurrentDBMemoryService
 from .session_service import KurrentDBSessionService
 
 __all__ = [
+    "AesGcmCredentialCipher",
+    "CredentialCipher",
+    "CredentialContext",
     "KurrentDBArtifactService",
     "KurrentDBCredentialService",
     "KurrentDBMemoryService",
     "KurrentDBSessionService",
+    "NullCredentialCipher",
     "StaleSessionError",
     "client",
 ]
