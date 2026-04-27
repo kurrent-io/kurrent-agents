@@ -1550,7 +1550,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+crypto = [
+    { name = "cryptography" },
+]
 dev = [
+    { name = "cryptography" },
     { name = "kurrent-agents-testing" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1559,6 +1563,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", marker = "extra == 'crypto'", specifier = ">=42" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=42" },
     { name = "google-adk", specifier = ">=1.0.0" },
     { name = "kurrent-agent-schema", editable = "../../schema/python" },
     { name = "kurrent-agents-testing", marker = "extra == 'dev'", editable = "../../testing" },
@@ -1568,7 +1574,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "crypto"]
 
 [[package]]
 name = "kurrentdbclient"
