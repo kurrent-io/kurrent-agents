@@ -1168,11 +1168,7 @@ public static class SchemaJsonOptions {
     public static string ToJson(IMessage message) => Formatter.Format(message);
 
     /// <summary>Parse a JSON wire payload into the given canonical event type.</summary>
-    public static T FromJson<T>(string json) where T : IMessage<T>, new() {
-        var msg = new T();
-        Parser.Merge(json, msg);
-        return msg;
-    }
+    public static T FromJson<T>(string json) where T : IMessage<T>, new() => Parser.Parse<T>(json);
 }
 ```
 
