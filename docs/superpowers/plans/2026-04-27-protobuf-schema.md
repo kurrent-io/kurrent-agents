@@ -97,6 +97,13 @@ modules:
 lint:
   use:
     - STANDARD
+  except:
+    # Intentional: TokenUsage (csharp_namespace = "Kurrent.Agent.Schema")
+    # and events/value types (csharp_namespace = "Kurrent.Agent.Schema.Events")
+    # share proto package "kurrent.agent.v2" but live in different .NET
+    # namespaces to preserve the existing hand-written package layout.
+    # All other STANDARD rules remain in force.
+    - PACKAGE_SAME_CSHARP_NAMESPACE
 breaking:
   use:
     - WIRE_JSON
@@ -234,6 +241,10 @@ package kurrent.agent.v2;
 
 import "google/protobuf/struct.proto";
 
+// Different csharp_namespace from value_types.proto / events.proto is
+// intentional and is granted by the PACKAGE_SAME_CSHARP_NAMESPACE
+// exception in schema/buf.yaml. TokenUsage stays at the existing
+// Kurrent.Agent.Schema root namespace; events stay under .Events.
 option csharp_namespace = "Kurrent.Agent.Schema";
 
 // Token-usage record placed on KurrentDB event metadata under the $usage key.
