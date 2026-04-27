@@ -101,9 +101,25 @@ class UnknownKeyIdError(ValueError):
 class AesGcmCredentialCipher:
     """AES-256-GCM credential cipher with AAD context binding.
 
-    Encrypt with ``keys[0]``; decrypt by ``key_id`` lookup. Rotation:
-    prepend the new key to ``keys`` and keep the old key at the end of
-    the list until no old ciphertexts remain.
+    Encrypt always uses ``keys[0]`` and tags the wire with ``key_id=0``.
+    Decrypt picks the keyed-by-id position as a fast path, then falls
+    back to trial-decryption against the other keys on ``InvalidTag``.
+    The fallback is what makes prepend-style rotation work: an old
+    ciphertext written when key K was at index 0 still decrypts after
+    a new key has been prepended (K is now at index 1).
+
+    Rotation procedure:
+
+    1. Prepend the new key: ``keys=[new, old]``. Existing ciphertexts
+       still decrypt (via trial fallback to ``old``); new writes are
+       encrypted under ``new``.
+    2. Optional: re-encrypt every existing ``CredentialSaved`` event by
+       reading + writing through the service. Append-only + load-latest
+       semantics naturally retire the old-key ciphertexts.
+    3. Once no ciphertext is still encrypted under the old key, drop
+       it: ``keys=[new]``. Anything still tagged for the dropped key
+       raises ``InvalidTag`` (or ``UnknownKeyIdError`` if its ``key_id``
+       is now out of range).
 
     Raises :class:`ImportError` at construction if ``cryptography`` is
     not installed (install via the ``[crypto]`` extra).

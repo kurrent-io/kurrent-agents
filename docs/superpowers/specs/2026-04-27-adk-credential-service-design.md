@@ -63,7 +63,16 @@ The plaintext is the JSON serialisation of `AuthCredential.model_dump(mode="json
 ```
 
 - `version=0x01` ⇒ AES-256-GCM with AAD = `f"{app_name}|{user_id}|{credential_key}".encode("utf-8")`.
-- `key_id` indexes into the cipher's key list. `encrypt` always uses `keys[0]`; `decrypt` looks up by `key_id` and raises `UnknownKeyIdError` if absent. 1 byte ⇒ 256 keys, ample for rotation.
+- `key_id` is a fast-path index into the cipher's key list. `encrypt`
+  always uses `keys[0]` and writes `key_id=0`. On `decrypt`, the cipher
+  tries the keyed-by-id position first; on `InvalidTag`, it falls back
+  to trial decryption against the other keys in the list. The fallback
+  is what makes prepend-style rotation work — old ciphertexts tagged
+  with `key_id=0` still decrypt after a new key has been prepended,
+  because trial-decryption tries the now-shifted old key. A `key_id`
+  greater than `len(keys) - 1` raises `UnknownKeyIdError` (forged or
+  truncated key list).
+- 1 byte ⇒ 256 keys, ample for rotation.
 - `nonce` is 12 random bytes per encryption (NIST SP 800-38D §8.2.1 random construction; with `2^32` writes per key the collision probability stays under `2^-32`, comfortably bounded for credential workloads).
 - AAD binding: a ciphertext blob lifted from one user's stream and replanted in another user's stream fails to decrypt because the AAD bytes don't match.
 
@@ -153,14 +162,28 @@ class KurrentDBCredentialService(BaseCredentialService):
 cipher = AesGcmCredentialCipher(keys=[new_key, old_key])
 ```
 
-- Encrypt always uses `keys[0]` ⇒ new writes encrypt under the new key.
-- Decrypt picks by `key_id` byte ⇒ old ciphertexts continue to decrypt against `keys[1]`.
+- Encrypt always uses `keys[0]` ⇒ new writes encrypt under the new key
+  and tag the wire with `key_id=0`.
+- Decrypt picks `keys[key_id]` as a fast path, then falls back to trial
+  decryption on `InvalidTag` ⇒ old ciphertexts that were tagged with
+  `key_id=0` while their key was at index 0 still decrypt after
+  prepending, because the fallback finds the now-shifted old key.
 - Rotation procedure for a deployment:
-  1. Add new key at index 0, keep old at index 1. Deploy. New writes now encrypt under new key.
-  2. Optional: read every existing `Credentials-` stream, decrypt + re-encrypt under the new key, append fresh `CredentialSaved` events. The append-only model + load-most-recent semantics retire old ciphertexts naturally.
-  3. Once confident no old `key_id` is in flight, drop the old key from the list.
+  1. Add new key at index 0, keep old at index 1. Deploy. New writes
+     now encrypt under the new key; old ciphertexts continue to
+     decrypt via the fallback.
+  2. Optional: read every existing `Credentials-` stream, decrypt +
+     re-encrypt under the new key, append fresh `CredentialSaved`
+     events. The append-only model + load-latest semantics retire old
+     ciphertexts naturally.
+  3. Once confident no old `key_id` is in flight, drop the old key
+     from the list. Anything still encrypted under the dropped key
+     raises `InvalidTag` (or `UnknownKeyIdError` if its `key_id` is now
+     out of range).
 
-Rotation never requires a stream rewrite; it leans on the load-latest semantics of the service.
+Rotation never requires a stream rewrite; it leans on trial-decryption
+during the transition and the load-latest semantics of the service to
+retire old ciphertexts.
 
 ### Packaging
 
