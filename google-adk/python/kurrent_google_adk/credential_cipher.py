@@ -29,6 +29,12 @@ class CredentialContext:
     relocating a ciphertext blob between users or between credential keys
     on the same user — decryption will fail because the AAD bytes don't
     match.
+
+    The AAD encoding is length-prefixed (4 bytes big-endian per field,
+    followed by the UTF-8 bytes) rather than separator-delimited so two
+    different ``(app_name, user_id, credential_key)`` tuples cannot
+    collide on the same AAD bytes regardless of what characters appear
+    in any field.
     """
 
     app_name: str
@@ -36,7 +42,12 @@ class CredentialContext:
     credential_key: str
 
     def aad(self) -> bytes:
-        return f"{self.app_name}|{self.user_id}|{self.credential_key}".encode()
+        parts = (
+            self.app_name.encode(),
+            self.user_id.encode(),
+            self.credential_key.encode(),
+        )
+        return b"".join(len(p).to_bytes(4, "big") + p for p in parts)
 
 
 class CredentialCipher(Protocol):

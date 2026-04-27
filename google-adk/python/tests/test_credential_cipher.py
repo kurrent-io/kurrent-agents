@@ -30,6 +30,35 @@ def test_credential_context_is_frozen() -> None:
         ctx.app_name = "other"  # type: ignore[misc]
 
 
+def test_aad_does_not_collide_under_field_boundary_shifts() -> None:
+    """Length-prefix encoding prevents AAD collisions even when fields
+    contain characters that an old separator-delimited encoding would
+    have used as a delimiter.
+    """
+    a = CredentialContext("app", "alice|bob", "k").aad()
+    b = CredentialContext("app", "alice", "bob|k").aad()
+    assert a != b, "AAD must distinguish field boundaries"
+
+    c = CredentialContext("a", "bcd", "ef").aad()
+    d = CredentialContext("ab", "cd", "ef").aad()
+    assert c != d, "AAD must distinguish field lengths even when concatenations match"
+
+
+class TestAesGcmAadCollisionResistance:
+    def test_relocation_across_pipe_containing_user_id_rejected(self) -> None:
+        """Even when one tuple's user_id shares a substring across the
+        old separator boundary with another tuple, ciphertexts must not
+        cross-decrypt.
+        """
+        cipher = AesGcmCredentialCipher(keys=[_key()])
+        ctx_a = CredentialContext("app", "alice|bob", "k")
+        ctx_b = CredentialContext("app", "alice", "bob|k")
+
+        wire = cipher.encrypt(b"secret", ctx_a)
+        with pytest.raises(InvalidTag):
+            cipher.decrypt(wire, ctx_b)
+
+
 def test_protocol_has_encrypt_and_decrypt() -> None:
     """The protocol exposes encrypt/decrypt with `(plaintext|ciphertext, context)` shape."""
     encrypt_sig = inspect.signature(CredentialCipher.encrypt, eval_str=True)

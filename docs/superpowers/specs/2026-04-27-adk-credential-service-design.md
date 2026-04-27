@@ -62,7 +62,7 @@ The plaintext is the JSON serialisation of `AuthCredential.model_dump(mode="json
 | 1B version | 1B key_id | 12B nonce | N bytes ciphertext | 16B tag |
 ```
 
-- `version=0x01` ⇒ AES-256-GCM with AAD = `f"{app_name}|{user_id}|{credential_key}".encode("utf-8")`.
+- `version=0x01` ⇒ AES-256-GCM with AAD = length-prefixed UTF-8 encoding of `(app_name, user_id, credential_key)`. Each field is emitted as a 4-byte big-endian length followed by its UTF-8 bytes; the three fields are concatenated. Length-prefix (rather than separator-delimited) framing prevents collisions when any field contains a would-be separator character — `("a", "bc", "d")` and `("a", "b", "cd")` always produce distinct AAD.
 - `key_id` is a fast-path index into the cipher's key list. `encrypt`
   always uses `keys[0]` and writes `key_id=0`. On `decrypt`, the cipher
   tries the keyed-by-id position first; on `InvalidTag`, it falls back
