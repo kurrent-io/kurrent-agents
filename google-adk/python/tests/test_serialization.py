@@ -21,6 +21,7 @@ from kurrent_google_adk.events import (
     AgentTransferred,
     AssistantThinkingGenerated,
     Compaction,
+    CredentialSaved,
     Rewind,
     SessionStarted,
     StateDelta,
@@ -236,29 +237,17 @@ def test_usage_metadata_key_constant() -> None:
 
 
 def test_credential_saved_round_trip() -> None:
-    from datetime import datetime, timezone
-
-    from kurrent_google_adk._serialization import deserialize, name_for, serialize
-    from kurrent_google_adk.events import CredentialSaved
-
     event = CredentialSaved(
         credential_key="oauth2:scope=read",
         credential="AQABAGRlYWRiZWVm",  # dummy base64
-        timestamp=datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 4, 27, 12, 0, tzinfo=UTC),
     )
-    assert name_for(event) == "CredentialSaved"
+    assert _serialization.name_for(event) == "CredentialSaved"
 
-    new_event = serialize(event)
+    new_event = _serialization.serialize(event)
     assert new_event.type == "CredentialSaved"
 
-    class _Recorded:
-        type = new_event.type
-        data = new_event.data
-        metadata = new_event.metadata
-        stream_name = "Credentials-app-user"
-        stream_position = 0
-
-    decoded = deserialize(_Recorded())  # type: ignore[arg-type]
+    decoded = _serialization.deserialize(_recorded(new_event))
     assert isinstance(decoded, CredentialSaved)
     assert decoded.credential_key == event.credential_key
     assert decoded.credential == event.credential

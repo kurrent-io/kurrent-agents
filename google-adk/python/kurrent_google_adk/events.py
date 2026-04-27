@@ -1,11 +1,11 @@
 """ADK-specific event types and re-exports of the shared canonical schema.
 
-Four event types live here because they describe ADK-specific session
+Five event types live here because they describe ADK-specific session
 mechanics (agent handoff, rewind boundary, event-range compaction,
-session-scoped state delta) and are not canonical across frameworks. The
-remaining canonical types are re-exported from
-``kurrent_agent_schema.events`` so internal callers have a single import
-path.
+session-scoped state delta, tool credential persistence) and are not
+canonical across frameworks. The remaining canonical types are re-exported
+from ``kurrent_agent_schema.events`` so internal callers have a single
+import path.
 """
 
 from __future__ import annotations
