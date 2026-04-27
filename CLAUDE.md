@@ -14,7 +14,7 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 
 | Framework | DESIGN doc | Storage style |
 |---|---|---|
-| Google ADK (Python) | [`google-adk/python/DESIGN.md`](./google-adk/python/DESIGN.md) | verbatim `Event` with state-scope routing (app / user / session streams) |
+| Google ADK (Python) | [`google-adk/python/DESIGN.md`](./google-adk/python/DESIGN.md) | verbatim `Event` with state-scope routing (app / user / session streams); canonical types from shared `kurrent-agent-schema` (Python) |
 | MS Agent Framework (.NET) | [`microsoft-agent-framework/dotnet/README.md`](./microsoft-agent-framework/dotnet/README.md) | typed canonical events via shared `Kurrent.Agent.Schema` (.NET); MAF-specific fields under `extensions.afw` |
 | MS Agent Framework (Python) | [`microsoft-agent-framework/python/README.md`](./microsoft-agent-framework/python/README.md) | typed canonical events via shared `kurrent-agent-schema` (Python); MAF-specific fields under `extensions.afw`; canonical-payload parity with MAF .NET (structural, not raw-byte) |
 | Strands (Python) | [`strands/python/DESIGN.md`](./strands/python/DESIGN.md) | snapshot-to-events on each turn; Strands-specific state in `extensions.strands` + `StrandsAgentState` event |
@@ -35,6 +35,7 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 - **ADK `get_session` must re-hydrate `Event.usage_metadata`.** It lives on `LlmResponse`, not in our canonical payload. Missing this silently loses token counts. See commit `de2c3eb` (DEV-1479).
 - **ADK codec handles empty-args tool calls.** Pydantic serialisation drops empty dicts; the codec must preserve them for round-trip. See commit `ff1540d`.
 - **Strands tool-result status round-trips via `extensions.strands`.** Canonical `ToolResultReceived` has no status field. See commit `2080f7a`.
+- **ADK-owned stream prefixes dropped the `Agent-` prefix in v2.** `AgentAppState-` → `AppState-`, `AgentUserState-` → `UserState-`, `AgentCredentials-` → `Credentials-`, per `SCHEMA_v2.md §2.2`. Library was unshipped, so no migration concern; readers querying old prefixes will not find new streams. See DEV-1528.
 - **MAF Python depends on `agent-framework-core`, not the `agent-framework` meta-package.** The meta-package pulls in `agent-framework-azure-ai-search==0.0.0a1`, a placeholder whose 0-byte `agent_framework/__init__.py` clobbers the real re-exports during install and breaks every top-level import (`Content`, `Message`, `HistoryProvider`, …). See DEV-1495.
 
 ## When to promote something to this file

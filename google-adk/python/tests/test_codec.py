@@ -19,10 +19,11 @@ from kurrent_google_adk._codec import (
     event_to_canonical,
     extract_usage_metadata,
 )
-from kurrent_google_adk._schema.events import (
+from kurrent_google_adk.events import (
     ADK_EXTENSION_KEY,
     AgentTransferred,
     AssistantTextGenerated,
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
     Compaction,
     Rewind,
@@ -487,3 +488,86 @@ class TestUsageMetadata:
             "total_tokens": 1_710,
             "cached_input_tokens": 0,
         }
+
+
+def test_thought_part_emits_assistant_thinking_generated() -> None:
+    # ADK Event with one thought part and one normal text part on a model author.
+    adk_event = AdkEvent(
+        author="root",
+        invocation_id="inv-th-1",
+        content=types.Content(
+            parts=[
+                types.Part(text="planning steps", thought=True),
+                types.Part(text="here is the answer"),
+            ],
+            role="model",
+        ),
+    )
+
+    canonical = event_to_canonical(adk_event)
+
+    assert any(isinstance(c, AssistantThinkingGenerated) for c in canonical)
+    assert any(isinstance(c, AssistantTextGenerated) for c in canonical)
+
+    thinking = next(c for c in canonical if isinstance(c, AssistantThinkingGenerated))
+    assert thinking.content == "planning steps"
+    assert thinking.encrypted is False
+    assert thinking.signature is None
+
+    text = next(c for c in canonical if isinstance(c, AssistantTextGenerated))
+    assert text.content == "here is the answer"
+
+
+def test_text_part_with_thought_false_stays_in_assistant_text() -> None:
+    adk_event = AdkEvent(
+        author="root",
+        invocation_id="inv-th-2",
+        content=types.Content(parts=[types.Part(text="just text", thought=False)], role="model"),
+    )
+
+    canonical = event_to_canonical(adk_event)
+    assert [type(c).__name__ for c in canonical] == ["AssistantTextGenerated"]
+    assert canonical[0].content == "just text"
+
+
+def test_thought_and_tool_call_round_trip() -> None:
+    adk_event = AdkEvent(
+        author="root",
+        invocation_id="inv-th-3",
+        content=types.Content(
+            parts=[
+                types.Part(text="reasoning", thought=True),
+                types.Part(text="here is the answer"),
+                types.Part(
+                    function_call=types.FunctionCall(id="c-1", name="search", args={"q": "x"})
+                ),
+            ],
+            role="model",
+        ),
+    )
+
+    canonical = event_to_canonical(adk_event)
+    rebuilt = canonical_to_events(canonical)
+    assert len(rebuilt) == 1
+    rebuilt_parts = rebuilt[0].content.parts
+    assert any(p.text == "reasoning" and getattr(p, "thought", False) for p in rebuilt_parts)
+    assert any(p.text == "here is the answer" and not getattr(p, "thought", False) for p in rebuilt_parts)
+    assert any(p.function_call is not None and p.function_call.name == "search" for p in rebuilt_parts)
+
+
+def test_empty_args_tool_call_round_trip_preserves_empty_dict() -> None:
+    adk_event = AdkEvent(
+        author="root",
+        invocation_id="inv-empty",
+        content=types.Content(
+            parts=[types.Part(function_call=types.FunctionCall(id="c-1", name="ping", args={}))],
+            role="model",
+        ),
+    )
+
+    canonical = event_to_canonical(adk_event)
+    rebuilt = canonical_to_events(canonical)
+    assert len(rebuilt) == 1
+    fc = rebuilt[0].content.parts[0].function_call
+    assert fc is not None
+    assert fc.args == {}

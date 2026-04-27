@@ -1,7 +1,7 @@
 """``KurrentDBEvalSetResultsManager`` — see ``DESIGN.md`` §7.6.
 
 Writes canonical eval events (``EvalRunStarted``, ``TurnScored``,
-``EvalRunCompleted``; ``SCHEMA.md`` §3.5) to ``EvalRun-{run_id}``.
+``EvalRunCompleted``; ``SCHEMA_v2.md`` §3.7) to ``EvalRun-{run_id}``.
 """
 
 from __future__ import annotations

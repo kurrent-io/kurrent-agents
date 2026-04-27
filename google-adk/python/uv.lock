@@ -1504,6 +1504,22 @@ wheels = [
 ]
 
 [[package]]
+name = "kurrent-agent-schema"
+version = "0.1.2"
+source = { editable = "../../schema/python" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.5" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "kurrent-agents-testing"
 version = "0.0.1"
 source = { editable = "../../testing" }
@@ -1528,6 +1544,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "google-adk" },
+    { name = "kurrent-agent-schema" },
     { name = "kurrentdbclient" },
     { name = "pydantic" },
 ]
@@ -1543,6 +1560,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "google-adk", specifier = ">=1.0.0" },
+    { name = "kurrent-agent-schema", editable = "../../schema/python" },
     { name = "kurrent-agents-testing", marker = "extra == 'dev'", editable = "../../testing" },
     { name = "kurrentdbclient", specifier = ">=1.2.0" },
     { name = "pydantic", specifier = ">=2.5" },

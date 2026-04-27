@@ -4,7 +4,13 @@ KurrentDB integration for [Google ADK (Python)](https://github.com/google/adk-py
 
 **Status: scaffolding.** Canonical schema types are in place; service implementations are stubs.
 
-Shares the canonical event schema with the Microsoft Agent Framework integrations (Python and .NET) — see [`schema/SCHEMA.md`](../../schema/SCHEMA.md) at the repo root. A session written by an ADK agent is readable by an AFW agent and vice versa.
+Shares the canonical event schema with the Microsoft Agent Framework integrations (Python and .NET) — see [`schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md) at the repo root. A session written by an ADK agent is readable by an AFW agent and vice versa.
+
+Canonical events come from the shared `kurrent-agent-schema` Python
+package. ADK-specific event types (`AgentTransferred`, `Rewind`,
+`Compaction`, `StateDelta`) are added locally and serialised alongside
+the canonical set. Token usage rides on the canonical `$usage` event
+metadata key (shape: `kurrent_agent_schema.usage.TokenUsage`).
 
 ## Design
 
