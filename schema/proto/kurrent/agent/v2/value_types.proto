@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package kurrent.agent.v2;
+
+import "google/protobuf/struct.proto";
+
+option csharp_namespace = "Kurrent.Agent.Schema.Events";
+
+// Tool description captured in AgentConfig.tools.
+message ToolSpec {
+  string name = 1;
+  optional string description = 2;
+  // Free-form JSON schema describing the tool inputs.
+  // Absent (null in JSON) when not provided.
+  google.protobuf.Struct input_schema = 3;
+  optional string source = 4;
+}
+
+// Informational snapshot of the agent configuration at session start.
+message AgentConfig {
+  repeated ToolSpec tools = 1;
+  repeated string plugins = 2;
+  // Free-form JSON description of the conversation manager.
+  google.protobuf.Struct conversation_manager = 3;
+  // Free-form JSON description of model parameters (temperature, etc).
+  google.protobuf.Struct model_parameters = 4;
+}
+
+// One tool call within AssistantToolCallsGenerated.tool_calls.
+message ToolCallInfo {
+  string call_id = 1;
+  string tool_name = 2;
+  // Free-form JSON arguments. Empty object preserved (Pydantic codec
+  // empty-args bug — see commit ff1540d).
+  google.protobuf.Struct arguments = 3;
+}

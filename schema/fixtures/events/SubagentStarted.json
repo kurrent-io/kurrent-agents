@@ -3,12 +3,12 @@
   "agent_type": "research",
   "prompt": "Summarise recent filings for ACME Corp.",
   "subsession_stream": "AgentSubsession-sess-0001-sub-research-0001",
+  "timestamp": "2026-04-21T10:05:00Z",
   "extensions": {
     "claude_code": {
-      "repo_path": "/Users/alice/dev/example",
       "worktree_path": "/Users/alice/dev/example-wt-sub1",
-      "effort": "medium"
+      "effort": "medium",
+      "repo_path": "/Users/alice/dev/example"
     }
-  },
-  "timestamp": "2026-04-21T10:05:00Z"
+  }
 }

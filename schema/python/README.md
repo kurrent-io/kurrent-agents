@@ -4,9 +4,13 @@ Canonical event schema types for Kurrent agent integrations — schema version *
 
 This package is the Python mirror of the canonical agent event schema shared across Kurrent's agent-framework integrations (Google ADK, Microsoft Agent Framework, Strands, OpenAI Agents, Claude Agent SDK) and Capacitor. The prose specification lives in [`schema/SCHEMA_v2.md`](../SCHEMA_v2.md); the .NET mirror is [`Kurrent.Agent.Schema`](../dotnet/Kurrent.Agent.Schema/).
 
+## Wire format
+
+Backed by Protobuf codegen from [`schema/proto/`](../proto/). The JSON wire format follows the proto3 canonical mapping with `preserve_proto_field_name` (snake_case on the wire). The sanctioned JSON entry points are `to_json(event)` and `from_json(cls, src)` — direct calls to `google.protobuf.json_format` are not supported.
+
 ## What's here
 
-- **Canonical event models** (Pydantic v2): `SessionStarted`, `SessionEnded`, `SessionContinuedAs`, `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `AssistantThinkingGenerated`, `ToolResultReceived`, `InterruptIssued`, `InterruptResolved`, `SubagentStarted`, `SubagentCompleted`, `FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted`, `TurnScored`, `EvalRunCompleted`.
+- **Canonical event models** (generated Protobuf message classes): `SessionStarted`, `SessionEnded`, `SessionContinuedAs`, `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `AssistantThinkingGenerated`, `ToolResultReceived`, `InterruptIssued`, `InterruptResolved`, `SubagentStarted`, `SubagentCompleted`, `FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted`, `TurnScored`, `EvalRunCompleted`.
 - **Value types**: `AgentConfig`, `ToolSpec`, `ToolCallInfo`.
 - **Usage metadata**: `TokenUsage` (carried on KurrentDB event metadata under the `$usage` key, not as a standalone event).
 - **Stream-name builders**: `agent_session_stream`, `agent_subsession_stream`, `agent_memory_stream`, `agent_artifact_stream`, `eval_run_stream`.
@@ -50,5 +54,5 @@ pytest
 
 ## Version
 
-- Package: `0.1.1` (adds `TokenUsage.additional_counts` — provider-specific counters bucket).
+- Package: `0.2.0` (Protobuf-generated source; see [`CHANGELOG.md`](./CHANGELOG.md) for breaking changes).
 - Schema: `SCHEMA_VERSION = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.

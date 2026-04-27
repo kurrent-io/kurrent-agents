@@ -18,18 +18,18 @@
     ],
     "conversation_manager": {
       "type": "sliding_window",
-      "max_messages": 20
+      "max_messages": 20.0
     },
     "model_parameters": {
       "temperature": 0.2
     }
   },
   "previous_session_id": "sess-prior-0001",
+  "timestamp": "2026-04-21T10:00:00Z",
   "extensions": {
     "claude_code": {
       "cwd": "/Users/alice/dev/example",
       "git_branch": "main"
     }
-  },
-  "timestamp": "2026-04-21T10:00:00Z"
+  }
 }

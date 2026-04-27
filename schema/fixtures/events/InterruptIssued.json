@@ -3,17 +3,17 @@
   "kind": "permission",
   "tool_name": "Bash",
   "prompt": "Allow running: rm -rf ./build ?",
+  "timestamp": "2026-04-21T10:00:10Z",
   "extensions": {
     "claude_code": {
       "permission": {
-        "tool_input": {
-          "command": "rm -rf ./build",
-          "timeout_ms": 5000
-        },
         "rule_id": "bash:rm",
+        "tool_input": {
+          "timeout_ms": 5000.0,
+          "command": "rm -rf ./build"
+        },
         "suggestion_type": "once"
       }
     }
-  },
-  "timestamp": "2026-04-21T10:00:10Z"
+  }
 }

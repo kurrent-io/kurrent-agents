@@ -1,9 +1,9 @@
 {
   "reason": "user_closed",
+  "timestamp": "2026-04-21T11:30:00Z",
   "extensions": {
     "afw": {
       "finalised": true
     }
-  },
-  "timestamp": "2026-04-21T11:30:00Z"
+  }
 }

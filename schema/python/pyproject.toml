@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kurrent-agent-schema"
-version = "0.1.2"
+version = "0.2.0"
 description = "Canonical event schema for Kurrent agent integrations (schema v2)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "agents", "llm", "schema"]
 dependencies = [
-  "pydantic >= 2.5",
+  "protobuf >= 5.27, < 8",
 ]
 
 [project.optional-dependencies]

@@ -1,14 +1,14 @@
 {
-  "content": "Oslo is 8°C with light rain today.",
+  "content": "Oslo is 8\u00b0C with light rain today.",
   "message_id": "msg-002",
   "author_name": "root",
   "created_at": "2026-04-21T10:00:08Z",
   "message_index": 1,
+  "timestamp": "2026-04-21T10:00:08Z",
   "extensions": {
     "adk": {
-      "invocation_id": "inv_abc",
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "invocation_id": "inv_abc"
     }
-  },
-  "timestamp": "2026-04-21T10:00:08Z"
+  }
 }

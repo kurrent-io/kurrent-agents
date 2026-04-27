@@ -4,13 +4,17 @@ Canonical event schema types for Kurrent agent integrations — schema version *
 
 This package is the .NET mirror of the canonical agent event schema shared across Kurrent's agent-framework integrations (Google ADK, Microsoft Agent Framework, Strands, OpenAI Agents, Claude Agent SDK) and Capacitor. The prose specification lives in [`schema/SCHEMA_v2.md`](../SCHEMA_v2.md); the Python mirror is [`kurrent-agent-schema`](../python/).
 
+## Wire format
+
+Backed by Protobuf codegen from [`schema/proto/`](../proto/). The JSON wire format follows the proto3 canonical mapping with `preserve_proto_field_name` (snake_case on the wire). The sanctioned JSON entry points are `SchemaJsonOptions.ToJson(message)` and `SchemaJsonOptions.FromJson<T>(src)` — direct calls to `Google.Protobuf.JsonFormatter` are not supported.
+
 ## What's here
 
-- **Canonical event records** (`Kurrent.Agent.Schema.Events`): `SessionStarted`, `SessionEnded`, `SessionContinuedAs`, `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `AssistantThinkingGenerated`, `ToolResultReceived`, `InterruptIssued`, `InterruptResolved`, `SubagentStarted`, `SubagentCompleted`, `FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted`, `TurnScored`, `EvalRunCompleted`.
+- **Canonical event message classes** (`Kurrent.Agent.Schema.Events`, generated from Protobuf): `SessionStarted`, `SessionEnded`, `SessionContinuedAs`, `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `AssistantThinkingGenerated`, `ToolResultReceived`, `InterruptIssued`, `InterruptResolved`, `SubagentStarted`, `SubagentCompleted`, `FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted`, `TurnScored`, `EvalRunCompleted`.
 - **Value types**: `AgentConfig`, `ToolSpec`, `ToolCallInfo`.
 - **Usage metadata**: `TokenUsage` + `UsageMetadata.Key` (the `$usage` KurrentDB metadata key).
 - **Stream-name builders**: `StreamNames.AgentSession`, `AgentSubsession`, `AgentMemory`, `AgentArtifact`, `EvalRun`.
-- **JSON options**: `SchemaJsonOptions.Default` — snake_case policy, skip-unknown on read, null-skip on write, `Z`-suffix for UTC datetimes.
+- **JSON helpers**: `SchemaJsonOptions.ToJson(message)` / `SchemaJsonOptions.FromJson<T>(src)` wrap `Google.Protobuf.JsonFormatter` / `JsonParser` with `preserve_proto_field_name` and tolerant-read settings.
 - **Event-type map**: `EventTypeMap.GetName(Type)` / `GetType(string)` / `All`.
 
 ## What's not here
@@ -20,21 +24,18 @@ Framework-specific events (ADK `AgentTransferred`, AFW `WorkflowCheckpoint`, Cap
 ## Usage
 
 ```csharp
-using System.Text.Json;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 
-var evt = new UserMessageReceived(
-    Content:      "hello",
-    MessageId:    null,
-    AuthorName:   null,
-    CreatedAt:    null,
-    MessageIndex: 0,
-    Timestamp:    DateTimeOffset.UtcNow,
-    Extensions:   null
-);
+var evt = new UserMessageReceived {
+    Content      = "hello",
+    MessageIndex = 0,
+    Timestamp    = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+};
 
-var json = JsonSerializer.Serialize(evt, SchemaJsonOptions.Default);
+var json = SchemaJsonOptions.ToJson(evt);
+var roundTripped = SchemaJsonOptions.FromJson<UserMessageReceived>(json);
+
 var stream = StreamNames.AgentSession("sess-0001"); // "AgentSession-sess-0001"
 var eventTypeName = EventTypeMap.GetName(typeof(UserMessageReceived)); // "UserMessageReceived"
 ```
@@ -50,5 +51,5 @@ dotnet test
 
 ## Version
 
-- Package: `0.1.1` (adds `TokenUsage.AdditionalCounts` — provider-specific counters bucket).
+- Package: `0.2.0` (Protobuf-generated source; see [`Kurrent.Agent.Schema/CHANGELOG.md`](./Kurrent.Agent.Schema/CHANGELOG.md) for breaking changes).
 - Schema: `SchemaVersion.Current = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.

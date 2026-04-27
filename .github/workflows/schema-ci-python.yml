@@ -3,12 +3,14 @@ name: Schema Python CI
 on:
   pull_request:
     paths:
+      - 'schema/proto/**'
       - 'schema/python/**'
       - 'schema/fixtures/**'
       - '.github/workflows/schema-ci-python.yml'
   push:
     branches: [main]
     paths:
+      - 'schema/proto/**'
       - 'schema/python/**'
       - 'schema/fixtures/**'
       - '.github/workflows/schema-ci-python.yml'

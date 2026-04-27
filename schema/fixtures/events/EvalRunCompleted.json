@@ -3,10 +3,10 @@
   "turns_scored": 3,
   "average_score": 0.88,
   "total_cost": 0.0342,
+  "timestamp": "2026-04-21T12:00:45Z",
   "extensions": {
     "afw": {
       "report_uri": "s3://bucket/eval/sess-eval-0001.json"
     }
-  },
-  "timestamp": "2026-04-21T12:00:45Z"
+  }
 }

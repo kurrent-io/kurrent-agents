@@ -1,0 +1,71 @@
+name: Schema codegen
+
+on:
+  pull_request:
+    paths:
+      - 'schema/proto/**'
+      - 'schema/buf.yaml'
+      - 'schema/buf.gen.yaml'
+      - 'schema/python/kurrent_agent_schema/_generated/**'
+      - 'schema/dotnet/Kurrent.Agent.Schema/Generated/**'
+      - '.github/workflows/schema-codegen.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'schema/proto/**'
+      - 'schema/buf.yaml'
+      - 'schema/buf.gen.yaml'
+      - '.github/workflows/schema-codegen.yml'
+
+concurrency:
+  group: schema-codegen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Drift gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: '1.68.4'
+
+      - name: Lint
+        working-directory: schema
+        run: buf lint
+
+      - name: Generate
+        working-directory: schema
+        run: buf generate
+
+      - name: Fail on diff
+        run: git diff --exit-code
+
+  breaking:
+    name: Breaking-change check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: '1.68.4'
+
+      - name: Check if schema baseline exists on main
+        id: baseline
+        run: |
+          if git cat-file -e origin/main:schema/buf.yaml 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "schema/buf.yaml not present on origin/main yet — skipping breaking-change check."
+          fi
+
+      - name: Breaking
+        if: steps.baseline.outputs.exists == 'true'
+        run: buf breaking schema --against ".git#branch=main,subdir=schema"
