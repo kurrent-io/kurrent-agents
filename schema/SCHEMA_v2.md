@@ -46,7 +46,7 @@ v1 entries unchanged. New in v2:
 |---|---|---|
 | `AppState-{app_name}` | ADK | App-scoped state. |
 | `UserState-{app_name}-{user_id}` | ADK | User-scoped state. |
-| `Credentials-{app_name}-{user_id}` | ADK | Tool OAuth credentials. Payload is a base64-encoded, cipher-self-describing wire blob (see `kurrent_google_adk/DESIGN.md` §7.4 — recommended cipher is AES-256-GCM with AAD binding). |
+| `Credentials-{app_name}-{user_id}` | ADK | Tool OAuth credentials. Payload is a base64-encoded, cipher-self-describing wire blob (see `google-adk/python/DESIGN.md` §7.4 — recommended cipher is AES-256-GCM with AAD binding). |
 | `WorkflowCheckpoint-{id}` | AFW | Workflow superstep checkpoints. |
 | `GroupChat-{id}` | AFW | Multi-agent group-chat turn history. |
 | `MetaSession-{slug}` | Capacitor | **New in v2.** Human-readable grouping across chained sessions. Aggregation only; no canonical replay semantics. |

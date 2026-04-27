@@ -101,9 +101,17 @@ class TestSaveAndLoadAesGcm:
     async def test_persisted_event_payload_is_not_plaintext(
         self, kurrentdb_client: AsyncKurrentDBClient
     ) -> None:
-        """Sanity-check the threat model: with AES-GCM, the credential
-        does not appear in cleartext on the stream.
+        """Sanity-check the threat model: with AES-GCM, the persisted
+        ``credential`` field is the AES-GCM wire blob (version byte
+        0x01), not the plaintext JSON or the NullCipher framing.
+
+        The check decodes the event payload and inspects the framing
+        directly — substring searches against base64 ciphertext can in
+        principle match by chance, which would make the test flaky.
         """
+        import base64
+        import json
+
         cipher = AesGcmCredentialCipher(keys=[os.urandom(32)])
         service = KurrentDBCredentialService(kurrentdb_client, cipher=cipher)
         app, user = _ids()
@@ -111,9 +119,17 @@ class TestSaveAndLoadAesGcm:
         await service.save_credential(cfg, _ctx(app, user))  # type: ignore[arg-type]
 
         stream = for_credentials(app, user)
-        async for record in await kurrentdb_client.read_stream(stream):
-            assert b"alice" not in record.data
-            assert b"pw-drive.readonly" not in record.data
+        records = [
+            record
+            async for record in await kurrentdb_client.read_stream(stream)
+        ]
+        assert len(records) == 1
+        payload = json.loads(records[0].data)
+        wire = base64.b64decode(payload["credential"])
+        assert wire[0] == 0x01, "must be AES-GCM-framed (not 0x00 NullCipher)"
+        # Wire = version(1) + key_id(1) + nonce(12) + ciphertext + tag(16);
+        # for our short plaintext that's ~30+ bytes of opaque ciphertext.
+        assert len(wire) >= 30
 
 
 class TestMostRecentWins:

@@ -35,7 +35,7 @@ Cross-framework continuation of a session is an explicit design goal. A session 
 |---|---|---|
 | `AppState-{app_name}` | ADK | App-scoped state (`app:` prefix). |
 | `UserState-{app_name}-{user_id}` | ADK | User-scoped state (`user:` prefix). |
-| `Credentials-{app_name}-{user_id}` | ADK | Tool OAuth credentials. Payload is a base64-encoded, cipher-self-describing wire blob (see `kurrent_google_adk/DESIGN.md` §7.4 — recommended cipher is AES-256-GCM with AAD binding). |
+| `Credentials-{app_name}-{user_id}` | ADK | Tool OAuth credentials. Payload is a base64-encoded, cipher-self-describing wire blob (see `google-adk/python/DESIGN.md` §7.4 — recommended cipher is AES-256-GCM with AAD binding). |
 | `WorkflowCheckpoint-{id}` | AFW | Workflow superstep checkpoints. |
 | `GroupChat-{id}` | AFW | Multi-agent group-chat turn history. |
 
@@ -339,7 +339,7 @@ Explicit list of things a cross-framework reader will not reconstruct:
 - **AFW workflow checkpoints.** Stored in `WorkflowCheckpoint-{id}`, not in the session stream. ADK ignores.
 - **AFW group chat.** Stored in `GroupChat-{id}`, not the session stream. ADK ignores (ADK has its own multi-agent model).
 - **ADK app-scoped and user-scoped state.** Stored in separate streams; no AFW equivalent.
-- **ADK OAuth credentials.** Stored in `Credentials-...` as `CredentialSaved` events; no AFW equivalent yet. The `credential` field on the event is a base64-encoded ciphertext blob whose wire format is owned by the writing cipher (see `kurrent_google_adk/DESIGN.md` §7.4).
+- **ADK OAuth credentials.** Stored in `Credentials-...` as `CredentialSaved` events; no AFW equivalent yet. The `credential` field on the event is a base64-encoded ciphertext blob whose wire format is owned by the writing cipher (see `google-adk/python/DESIGN.md` §7.4).
 - **Cross-user or cross-app memory sharing.** Not supported in v1; memory is strictly `AgentMemory-{app}-{user}` scoped.
 
 ## 8. Open questions
