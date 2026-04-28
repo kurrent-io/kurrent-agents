@@ -12,7 +12,9 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "agents", "llm", "schema"]
 dependencies = [
-  "protobuf >= 5.27, < 8",
+  # Floor matches the runtime version embedded by the pinned codegen plugin
+  # (buf protocolbuffers/python:v32.1 emits ValidateProtobufRuntimeVersion(6, 32, 1, ...)).
+  "protobuf >= 6.32, < 8",
 ]
 
 [project.optional-dependencies]

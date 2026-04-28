@@ -165,7 +165,7 @@ message FactRetained {
 message ArtifactVersionCreated {
   int32 version = 1;
   string mime_type = 2;
-  bytes inline_bytes = 3;  // base64 in JSON; absent when null
+  bytes inline_bytes = 3;  // base64 in JSON; omitted when not set
   string canonical_uri = 4;
   google.protobuf.Struct custom_metadata = 5;
   google.protobuf.Timestamp created_at = 6;

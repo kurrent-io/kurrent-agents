@@ -159,7 +159,7 @@ namespace Kurrent.Agent.Schema.Events {
     private global::Google.Protobuf.WellKnownTypes.Struct inputSchema_;
     /// <summary>
     /// Free-form JSON schema describing the tool inputs.
-    /// Absent (null in JSON) when not provided.
+    /// Omitted in JSON when not provided.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]

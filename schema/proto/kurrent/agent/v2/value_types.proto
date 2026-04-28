@@ -11,7 +11,7 @@ message ToolSpec {
   string name = 1;
   string description = 2;
   // Free-form JSON schema describing the tool inputs.
-  // Absent (null in JSON) when not provided.
+  // Omitted in JSON when not provided.
   google.protobuf.Struct input_schema = 3;
   string source = 4;
 }

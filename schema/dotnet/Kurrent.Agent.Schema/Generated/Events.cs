@@ -6231,7 +6231,7 @@ namespace Kurrent.Agent.Schema.Events {
 
     private pb::ByteString inlineBytes_;
     /// <summary>
-    /// base64 in JSON; absent when null
+    /// base64 in JSON; omitted when not set
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
