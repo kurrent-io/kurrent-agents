@@ -25,22 +25,19 @@ namespace Kurrent.Agent.Schema {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChxrdXJyZW50L2FnZW50L3YyL3VzYWdlLnByb3RvEhBrdXJyZW50LmFnZW50",
-            "LnYyGhxnb29nbGUvcHJvdG9idWYvc3RydWN0LnByb3RvIrcDCgpUb2tlblVz",
-            "YWdlEiYKDGlucHV0X3Rva2VucxgBIAEoA0gAUgtpbnB1dFRva2Vuc4gBARIo",
-            "Cg1vdXRwdXRfdG9rZW5zGAIgASgDSAFSDG91dHB1dFRva2Vuc4gBARImCgx0",
-            "b3RhbF90b2tlbnMYAyABKANIAlILdG90YWxUb2tlbnOIAQESMwoTY2FjaGVk",
-            "X2lucHV0X3Rva2VucxgEIAEoA0gDUhFjYWNoZWRJbnB1dFRva2Vuc4gBARIu",
-            "ChByZWFzb25pbmdfdG9rZW5zGAUgASgDSARSD3JlYXNvbmluZ1Rva2Vuc4gB",
-            "ARIZCgVtb2RlbBgGIAEoCUgFUgVtb2RlbIgBARJEChFhZGRpdGlvbmFsX2Nv",
-            "dW50cxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSEGFkZGl0aW9u",
-            "YWxDb3VudHNCDwoNX2lucHV0X3Rva2Vuc0IQCg5fb3V0cHV0X3Rva2Vuc0IP",
-            "Cg1fdG90YWxfdG9rZW5zQhYKFF9jYWNoZWRfaW5wdXRfdG9rZW5zQhMKEV9y",
-            "ZWFzb25pbmdfdG9rZW5zQggKBl9tb2RlbEIXqgIUS3VycmVudC5BZ2VudC5T",
-            "Y2hlbWFiBnByb3RvMw=="));
+            "LnYyGhxnb29nbGUvcHJvdG9idWYvc3RydWN0LnByb3RvIq4CCgpUb2tlblVz",
+            "YWdlEiEKDGlucHV0X3Rva2VucxgBIAEoA1ILaW5wdXRUb2tlbnMSIwoNb3V0",
+            "cHV0X3Rva2VucxgCIAEoA1IMb3V0cHV0VG9rZW5zEiEKDHRvdGFsX3Rva2Vu",
+            "cxgDIAEoA1ILdG90YWxUb2tlbnMSLgoTY2FjaGVkX2lucHV0X3Rva2VucxgE",
+            "IAEoA1IRY2FjaGVkSW5wdXRUb2tlbnMSKQoQcmVhc29uaW5nX3Rva2VucxgF",
+            "IAEoA1IPcmVhc29uaW5nVG9rZW5zEhQKBW1vZGVsGAYgASgJUgVtb2RlbBJE",
+            "ChFhZGRpdGlvbmFsX2NvdW50cxgHIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5T",
+            "dHJ1Y3RSEGFkZGl0aW9uYWxDb3VudHNCF6oCFEt1cnJlbnQuQWdlbnQuU2No",
+            "ZW1hYghlZGl0aW9uc3DpBw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.TokenUsage), global::Kurrent.Agent.Schema.TokenUsage.Parser, new[]{ "InputTokens", "OutputTokens", "TotalTokens", "CachedInputTokens", "ReasoningTokens", "Model", "AdditionalCounts" }, new[]{ "InputTokens", "OutputTokens", "TotalTokens", "CachedInputTokens", "ReasoningTokens", "Model" }, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.TokenUsage), global::Kurrent.Agent.Schema.TokenUsage.Parser, new[]{ "InputTokens", "OutputTokens", "TotalTokens", "CachedInputTokens", "ReasoningTokens", "Model", "AdditionalCounts" }, null, null, null, null)
           }));
     }
     #endregion

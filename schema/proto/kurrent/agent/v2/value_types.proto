@@ -1,4 +1,4 @@
-syntax = "proto3";
+edition = "2024";
 
 package kurrent.agent.v2;
 
@@ -9,11 +9,11 @@ option csharp_namespace = "Kurrent.Agent.Schema.Events";
 // Tool description captured in AgentConfig.tools.
 message ToolSpec {
   string name = 1;
-  optional string description = 2;
+  string description = 2;
   // Free-form JSON schema describing the tool inputs.
-  // Absent (null in JSON) when not provided.
+  // Omitted in JSON when not provided.
   google.protobuf.Struct input_schema = 3;
-  optional string source = 4;
+  string source = 4;
 }
 
 // Informational snapshot of the agent configuration at session start.

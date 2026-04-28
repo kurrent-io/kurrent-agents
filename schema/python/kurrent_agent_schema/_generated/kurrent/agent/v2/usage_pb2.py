@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1ckurrent/agent/v2/usage.proto\x12\x10kurrent.agent.v2\x1a\x1cgoogle/protobuf/struct.proto\"\xb7\x03\n\nTokenUsage\x12&\n\x0cinput_tokens\x18\x01 \x01(\x03H\x00R\x0binputTokens\x88\x01\x01\x12(\n\routput_tokens\x18\x02 \x01(\x03H\x01R\x0coutputTokens\x88\x01\x01\x12&\n\x0ctotal_tokens\x18\x03 \x01(\x03H\x02R\x0btotalTokens\x88\x01\x01\x12\x33\n\x13\x63\x61\x63hed_input_tokens\x18\x04 \x01(\x03H\x03R\x11\x63\x61\x63hedInputTokens\x88\x01\x01\x12.\n\x10reasoning_tokens\x18\x05 \x01(\x03H\x04R\x0freasoningTokens\x88\x01\x01\x12\x19\n\x05model\x18\x06 \x01(\tH\x05R\x05model\x88\x01\x01\x12\x44\n\x11\x61\x64\x64itional_counts\x18\x07 \x01(\x0b\x32\x17.google.protobuf.StructR\x10\x61\x64\x64itionalCountsB\x0f\n\r_input_tokensB\x10\n\x0e_output_tokensB\x0f\n\r_total_tokensB\x16\n\x14_cached_input_tokensB\x13\n\x11_reasoning_tokensB\x08\n\x06_modelB\x17\xaa\x02\x14Kurrent.Agent.Schemab\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1ckurrent/agent/v2/usage.proto\x12\x10kurrent.agent.v2\x1a\x1cgoogle/protobuf/struct.proto\"\xae\x02\n\nTokenUsage\x12!\n\x0cinput_tokens\x18\x01 \x01(\x03R\x0binputTokens\x12#\n\routput_tokens\x18\x02 \x01(\x03R\x0coutputTokens\x12!\n\x0ctotal_tokens\x18\x03 \x01(\x03R\x0btotalTokens\x12.\n\x13\x63\x61\x63hed_input_tokens\x18\x04 \x01(\x03R\x11\x63\x61\x63hedInputTokens\x12)\n\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x14\n\x05model\x18\x06 \x01(\tR\x05model\x12\x44\n\x11\x61\x64\x64itional_counts\x18\x07 \x01(\x0b\x32\x17.google.protobuf.StructR\x10\x61\x64\x64itionalCountsB\x17\xaa\x02\x14Kurrent.Agent.Schemab\x08\x65\x64itionsp\xe9\x07')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,5 +34,5 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\252\002\024Kurrent.Agent.Schema'
   _globals['_TOKENUSAGE']._serialized_start=81
-  _globals['_TOKENUSAGE']._serialized_end=520
+  _globals['_TOKENUSAGE']._serialized_end=383
 # @@protoc_insertion_point(module_scope)

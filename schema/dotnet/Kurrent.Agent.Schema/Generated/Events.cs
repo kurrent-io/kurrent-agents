@@ -27,200 +27,180 @@ namespace Kurrent.Agent.Schema.Events {
             "Ch1rdXJyZW50L2FnZW50L3YyL2V2ZW50cy5wcm90bxIQa3VycmVudC5hZ2Vu",
             "dC52MhocZ29vZ2xlL3Byb3RvYnVmL3N0cnVjdC5wcm90bxofZ29vZ2xlL3By",
             "b3RvYnVmL3RpbWVzdGFtcC5wcm90bxoia3VycmVudC9hZ2VudC92Mi92YWx1",
-            "ZV90eXBlcy5wcm90byLiBAoOU2Vzc2lvblN0YXJ0ZWQSHgoIYXBwX25hbWUY",
-            "ASABKAlIAFIHYXBwTmFtZYgBARIiCgphZ2VudF9uYW1lGAIgASgJSAFSCWFn",
-            "ZW50TmFtZYgBARIZCgVtb2RlbBgDIAEoCUgCUgVtb2RlbIgBARIgCgl0ZW5h",
-            "bnRfaWQYBCABKAlIA1IIdGVuYW50SWSIAQESHAoHdXNlcl9pZBgFIAEoCUgE",
-            "UgZ1c2VySWSIAQESQAoMYWdlbnRfY29uZmlnGAYgASgLMh0ua3VycmVudC5h",
-            "Z2VudC52Mi5BZ2VudENvbmZpZ1ILYWdlbnRDb25maWcSMwoTcHJldmlvdXNf",
-            "c2Vzc2lvbl9pZBgHIAEoCUgFUhFwcmV2aW91c1Nlc3Npb25JZIgBARI4Cgl0",
-            "aW1lc3RhbXAYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0",
-            "aW1lc3RhbXASUAoKZXh0ZW5zaW9ucxgJIAMoCzIwLmt1cnJlbnQuYWdlbnQu",
-            "djIuU2Vzc2lvblN0YXJ0ZWQuRXh0ZW5zaW9uc0VudHJ5UgpleHRlbnNpb25z",
-            "GlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tleRItCgV2YWx1",
-            "ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZhbHVlOgI4AUIL",
-            "CglfYXBwX25hbWVCDQoLX2FnZW50X25hbWVCCAoGX21vZGVsQgwKCl90ZW5h",
-            "bnRfaWRCCgoIX3VzZXJfaWRCFgoUX3ByZXZpb3VzX3Nlc3Npb25faWQimAIK",
-            "DFNlc3Npb25FbmRlZBIbCgZyZWFzb24YASABKAlIAFIGcmVhc29uiAEBEjgK",
-            "CXRpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBS",
-            "CXRpbWVzdGFtcBJOCgpleHRlbnNpb25zGAMgAygLMi4ua3VycmVudC5hZ2Vu",
-            "dC52Mi5TZXNzaW9uRW5kZWQuRXh0ZW5zaW9uc0VudHJ5UgpleHRlbnNpb25z",
-            "GlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tleRItCgV2YWx1",
-            "ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZhbHVlOgI4AUIJ",
-            "CgdfcmVhc29uIswCChJTZXNzaW9uQ29udGludWVkQXMSJgoPbmV4dF9zZXNz",
-            "aW9uX2lkGAEgASgJUg1uZXh0U2Vzc2lvbklkEhsKBnJlYXNvbhgCIAEoCUgA",
-            "UgZyZWFzb26IAQESOAoJdGltZXN0YW1wGAMgASgLMhouZ29vZ2xlLnByb3Rv",
-            "YnVmLlRpbWVzdGFtcFIJdGltZXN0YW1wElQKCmV4dGVuc2lvbnMYBCADKAsy",
-            "NC5rdXJyZW50LmFnZW50LnYyLlNlc3Npb25Db250aW51ZWRBcy5FeHRlbnNp",
-            "b25zRW50cnlSCmV4dGVuc2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tl",
-            "eRgBIAEoCVIDa2V5Ei0KBXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVm",
-            "LlN0cnVjdFIFdmFsdWU6AjgBQgkKB19yZWFzb24ihgQKE1VzZXJNZXNzYWdl",
-            "UmVjZWl2ZWQSHQoHY29udGVudBgBIAEoCUgAUgdjb250ZW50iAEBEiIKCm1l",
-            "c3NhZ2VfaWQYAiABKAlIAVIJbWVzc2FnZUlkiAEBEiQKC2F1dGhvcl9uYW1l",
-            "GAMgASgJSAJSCmF1dGhvck5hbWWIAQESPgoKY3JlYXRlZF9hdBgEIAEoCzIa",
-            "Lmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIA1IJY3JlYXRlZEF0iAEBEiMK",
-            "DW1lc3NhZ2VfaW5kZXgYBSABKAVSDG1lc3NhZ2VJbmRleBI4Cgl0aW1lc3Rh",
-            "bXAYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0aW1lc3Rh",
-            "bXASVQoKZXh0ZW5zaW9ucxgHIAMoCzI1Lmt1cnJlbnQuYWdlbnQudjIuVXNl",
-            "ck1lc3NhZ2VSZWNlaXZlZC5FeHRlbnNpb25zRW50cnlSCmV4dGVuc2lvbnMa",
-            "VgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0KBXZhbHVl",
-            "GAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6AjgBQgoK",
-            "CF9jb250ZW50Qg0KC19tZXNzYWdlX2lkQg4KDF9hdXRob3JfbmFtZUINCgtf",
-            "Y3JlYXRlZF9hdCKMBAoWQXNzaXN0YW50VGV4dEdlbmVyYXRlZBIdCgdjb250",
-            "ZW50GAEgASgJSABSB2NvbnRlbnSIAQESIgoKbWVzc2FnZV9pZBgCIAEoCUgB",
-            "UgltZXNzYWdlSWSIAQESJAoLYXV0aG9yX25hbWUYAyABKAlIAlIKYXV0aG9y",
-            "TmFtZYgBARI+CgpjcmVhdGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVm",
-            "LlRpbWVzdGFtcEgDUgljcmVhdGVkQXSIAQESIwoNbWVzc2FnZV9pbmRleBgF",
-            "IAEoBVIMbWVzc2FnZUluZGV4EjgKCXRpbWVzdGFtcBgGIAEoCzIaLmdvb2ds",
-            "ZS5wcm90b2J1Zi5UaW1lc3RhbXBSCXRpbWVzdGFtcBJYCgpleHRlbnNpb25z",
-            "GAcgAygLMjgua3VycmVudC5hZ2VudC52Mi5Bc3Npc3RhbnRUZXh0R2VuZXJh",
-            "dGVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25z",
-            "RW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5nb29n",
-            "bGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAFCCgoIX2NvbnRlbnRCDQoL",
-            "X21lc3NhZ2VfaWRCDgoMX2F1dGhvcl9uYW1lQg0KC19jcmVhdGVkX2F0ItUE",
-            "ChtBc3Npc3RhbnRUb29sQ2FsbHNHZW5lcmF0ZWQSPQoKdG9vbF9jYWxscxgB",
-            "IAMoCzIeLmt1cnJlbnQuYWdlbnQudjIuVG9vbENhbGxJbmZvUgl0b29sQ2Fs",
-            "bHMSHQoHY29udGVudBgCIAEoCUgAUgdjb250ZW50iAEBEiIKCm1lc3NhZ2Vf",
-            "aWQYAyABKAlIAVIJbWVzc2FnZUlkiAEBEiQKC2F1dGhvcl9uYW1lGAQgASgJ",
-            "SAJSCmF1dGhvck5hbWWIAQESPgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2ds",
-            "ZS5wcm90b2J1Zi5UaW1lc3RhbXBIA1IJY3JlYXRlZEF0iAEBEiMKDW1lc3Nh",
-            "Z2VfaW5kZXgYBiABKAVSDG1lc3NhZ2VJbmRleBI4Cgl0aW1lc3RhbXAYByAB",
-            "KAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0aW1lc3RhbXASXQoK",
-            "ZXh0ZW5zaW9ucxgIIAMoCzI9Lmt1cnJlbnQuYWdlbnQudjIuQXNzaXN0YW50",
-            "VG9vbENhbGxzR2VuZXJhdGVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9u",
-            "cxpWCg9FeHRlbnNpb25zRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFs",
-            "dWUYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAFC",
-            "CgoIX2NvbnRlbnRCDQoLX21lc3NhZ2VfaWRCDgoMX2F1dGhvcl9uYW1lQg0K",
-            "C19jcmVhdGVkX2F0IuMEChpBc3Npc3RhbnRUaGlua2luZ0dlbmVyYXRlZBId",
-            "Cgdjb250ZW50GAEgASgJSABSB2NvbnRlbnSIAQESHAoJZW5jcnlwdGVkGAIg",
-            "ASgIUgllbmNyeXB0ZWQSIQoJc2lnbmF0dXJlGAMgASgJSAFSCXNpZ25hdHVy",
-            "ZYgBARIiCgptZXNzYWdlX2lkGAQgASgJSAJSCW1lc3NhZ2VJZIgBARIkCgth",
-            "dXRob3JfbmFtZRgFIAEoCUgDUgphdXRob3JOYW1liAEBEj4KCmNyZWF0ZWRf",
-            "YXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSARSCWNyZWF0",
-            "ZWRBdIgBARIjCg1tZXNzYWdlX2luZGV4GAcgASgFUgxtZXNzYWdlSW5kZXgS",
-            "OAoJdGltZXN0YW1wGAggASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFt",
-            "cFIJdGltZXN0YW1wElwKCmV4dGVuc2lvbnMYCSADKAsyPC5rdXJyZW50LmFn",
-            "ZW50LnYyLkFzc2lzdGFudFRoaW5raW5nR2VuZXJhdGVkLkV4dGVuc2lvbnNF",
+            "ZV90eXBlcy5wcm90byLsAwoOU2Vzc2lvblN0YXJ0ZWQSGQoIYXBwX25hbWUY",
+            "ASABKAlSB2FwcE5hbWUSHQoKYWdlbnRfbmFtZRgCIAEoCVIJYWdlbnROYW1l",
+            "EhQKBW1vZGVsGAMgASgJUgVtb2RlbBIbCgl0ZW5hbnRfaWQYBCABKAlSCHRl",
+            "bmFudElkEhcKB3VzZXJfaWQYBSABKAlSBnVzZXJJZBJACgxhZ2VudF9jb25m",
+            "aWcYBiABKAsyHS5rdXJyZW50LmFnZW50LnYyLkFnZW50Q29uZmlnUgthZ2Vu",
+            "dENvbmZpZxIuChNwcmV2aW91c19zZXNzaW9uX2lkGAcgASgJUhFwcmV2aW91",
+            "c1Nlc3Npb25JZBI4Cgl0aW1lc3RhbXAYCCABKAsyGi5nb29nbGUucHJvdG9i",
+            "dWYuVGltZXN0YW1wUgl0aW1lc3RhbXASUAoKZXh0ZW5zaW9ucxgJIAMoCzIw",
+            "Lmt1cnJlbnQuYWdlbnQudjIuU2Vzc2lvblN0YXJ0ZWQuRXh0ZW5zaW9uc0Vu",
+            "dHJ5UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASAB",
+            "KAlSA2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1",
+            "Y3RSBXZhbHVlOgI4ASKIAgoMU2Vzc2lvbkVuZGVkEhYKBnJlYXNvbhgBIAEo",
+            "CVIGcmVhc29uEjgKCXRpbWVzdGFtcBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1",
+            "Zi5UaW1lc3RhbXBSCXRpbWVzdGFtcBJOCgpleHRlbnNpb25zGAMgAygLMi4u",
+            "a3VycmVudC5hZ2VudC52Mi5TZXNzaW9uRW5kZWQuRXh0ZW5zaW9uc0VudHJ5",
+            "UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlS",
+            "A2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RS",
+            "BXZhbHVlOgI4ASK8AgoSU2Vzc2lvbkNvbnRpbnVlZEFzEiYKD25leHRfc2Vz",
+            "c2lvbl9pZBgBIAEoCVINbmV4dFNlc3Npb25JZBIWCgZyZWFzb24YAiABKAlS",
+            "BnJlYXNvbhI4Cgl0aW1lc3RhbXAYAyABKAsyGi5nb29nbGUucHJvdG9idWYu",
+            "VGltZXN0YW1wUgl0aW1lc3RhbXASVAoKZXh0ZW5zaW9ucxgEIAMoCzI0Lmt1",
+            "cnJlbnQuYWdlbnQudjIuU2Vzc2lvbkNvbnRpbnVlZEFzLkV4dGVuc2lvbnNF",
             "bnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25zRW50cnkSEAoDa2V5GAEg",
             "ASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3Ry",
-            "dWN0UgV2YWx1ZToCOAFCCgoIX2NvbnRlbnRCDAoKX3NpZ25hdHVyZUINCgtf",
-            "bWVzc2FnZV9pZEIOCgxfYXV0aG9yX25hbWVCDQoLX2NyZWF0ZWRfYXQiygQK",
-            "ElRvb2xSZXN1bHRSZWNlaXZlZBIXCgdjYWxsX2lkGAEgASgJUgZjYWxsSWQS",
-            "IAoJdG9vbF9uYW1lGAIgASgJSABSCHRvb2xOYW1liAEBEhsKBnJlc3VsdBgD",
-            "IAEoCUgBUgZyZXN1bHSIAQESIgoKbWVzc2FnZV9pZBgEIAEoCUgCUgltZXNz",
-            "YWdlSWSIAQESJAoLYXV0aG9yX25hbWUYBSABKAlIA1IKYXV0aG9yTmFtZYgB",
-            "ARI+CgpjcmVhdGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcEgEUgljcmVhdGVkQXSIAQESIwoNbWVzc2FnZV9pbmRleBgHIAEoBVIM",
-            "bWVzc2FnZUluZGV4EjgKCXRpbWVzdGFtcBgIIAEoCzIaLmdvb2dsZS5wcm90",
-            "b2J1Zi5UaW1lc3RhbXBSCXRpbWVzdGFtcBJUCgpleHRlbnNpb25zGAkgAygL",
-            "MjQua3VycmVudC5hZ2VudC52Mi5Ub29sUmVzdWx0UmVjZWl2ZWQuRXh0ZW5z",
-            "aW9uc0VudHJ5UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNr",
-            "ZXkYASABKAlSA2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1",
-            "Zi5TdHJ1Y3RSBXZhbHVlOgI4AUIMCgpfdG9vbF9uYW1lQgkKB19yZXN1bHRC",
-            "DQoLX21lc3NhZ2VfaWRCDgoMX2F1dGhvcl9uYW1lQg0KC19jcmVhdGVkX2F0",
-            "IrQDCg9JbnRlcnJ1cHRJc3N1ZWQSHQoKcmVxdWVzdF9pZBgBIAEoCVIJcmVx",
-            "dWVzdElkEhIKBGtpbmQYAiABKAlSBGtpbmQSIAoJdG9vbF9uYW1lGAMgASgJ",
-            "SABSCHRvb2xOYW1liAEBEhsKBnByb21wdBgEIAEoCUgBUgZwcm9tcHSIAQES",
-            "IgoKbWVzc2FnZV9pZBgFIAEoCUgCUgltZXNzYWdlSWSIAQESOAoJdGltZXN0",
-            "YW1wGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0",
-            "YW1wElEKCmV4dGVuc2lvbnMYByADKAsyMS5rdXJyZW50LmFnZW50LnYyLklu",
-            "dGVycnVwdElzc3VlZC5FeHRlbnNpb25zRW50cnlSCmV4dGVuc2lvbnMaVgoP",
-            "RXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0KBXZhbHVlGAIg",
-            "ASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6AjgBQgwKCl90",
-            "b29sX25hbWVCCQoHX3Byb21wdEINCgtfbWVzc2FnZV9pZCKUAwoRSW50ZXJy",
-            "dXB0UmVzb2x2ZWQSHQoKcmVxdWVzdF9pZBgBIAEoCVIJcmVxdWVzdElkEhgK",
-            "B291dGNvbWUYAiABKAlSB291dGNvbWUSHwoIcmVzcG9uc2UYAyABKAlIAFII",
-            "cmVzcG9uc2WIAQESIgoKbWVzc2FnZV9pZBgEIAEoCUgBUgltZXNzYWdlSWSI",
-            "AQESOAoJdGltZXN0YW1wGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcFIJdGltZXN0YW1wElMKCmV4dGVuc2lvbnMYBiADKAsyMy5rdXJyZW50",
-            "LmFnZW50LnYyLkludGVycnVwdFJlc29sdmVkLkV4dGVuc2lvbnNFbnRyeVIK",
+            "dWN0UgV2YWx1ZToCOAEiuAMKE1VzZXJNZXNzYWdlUmVjZWl2ZWQSGAoHY29u",
+            "dGVudBgBIAEoCVIHY29udGVudBIdCgptZXNzYWdlX2lkGAIgASgJUgltZXNz",
+            "YWdlSWQSHwoLYXV0aG9yX25hbWUYAyABKAlSCmF1dGhvck5hbWUSOQoKY3Jl",
+            "YXRlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBSCWNy",
+            "ZWF0ZWRBdBIjCg1tZXNzYWdlX2luZGV4GAUgASgFUgxtZXNzYWdlSW5kZXgS",
+            "OAoJdGltZXN0YW1wGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFt",
+            "cFIJdGltZXN0YW1wElUKCmV4dGVuc2lvbnMYByADKAsyNS5rdXJyZW50LmFn",
+            "ZW50LnYyLlVzZXJNZXNzYWdlUmVjZWl2ZWQuRXh0ZW5zaW9uc0VudHJ5Ugpl",
+            "eHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tl",
+            "eRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZh",
+            "bHVlOgI4ASK+AwoWQXNzaXN0YW50VGV4dEdlbmVyYXRlZBIYCgdjb250ZW50",
+            "GAEgASgJUgdjb250ZW50Eh0KCm1lc3NhZ2VfaWQYAiABKAlSCW1lc3NhZ2VJ",
+            "ZBIfCgthdXRob3JfbmFtZRgDIAEoCVIKYXV0aG9yTmFtZRI5CgpjcmVhdGVk",
+            "X2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJY3JlYXRl",
+            "ZEF0EiMKDW1lc3NhZ2VfaW5kZXgYBSABKAVSDG1lc3NhZ2VJbmRleBI4Cgl0",
+            "aW1lc3RhbXAYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0",
+            "aW1lc3RhbXASWAoKZXh0ZW5zaW9ucxgHIAMoCzI4Lmt1cnJlbnQuYWdlbnQu",
+            "djIuQXNzaXN0YW50VGV4dEdlbmVyYXRlZC5FeHRlbnNpb25zRW50cnlSCmV4",
+            "dGVuc2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5",
+            "Ei0KBXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFs",
+            "dWU6AjgBIocEChtBc3Npc3RhbnRUb29sQ2FsbHNHZW5lcmF0ZWQSPQoKdG9v",
+            "bF9jYWxscxgBIAMoCzIeLmt1cnJlbnQuYWdlbnQudjIuVG9vbENhbGxJbmZv",
+            "Ugl0b29sQ2FsbHMSGAoHY29udGVudBgCIAEoCVIHY29udGVudBIdCgptZXNz",
+            "YWdlX2lkGAMgASgJUgltZXNzYWdlSWQSHwoLYXV0aG9yX25hbWUYBCABKAlS",
+            "CmF1dGhvck5hbWUSOQoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90",
+            "b2J1Zi5UaW1lc3RhbXBSCWNyZWF0ZWRBdBIjCg1tZXNzYWdlX2luZGV4GAYg",
+            "ASgFUgxtZXNzYWdlSW5kZXgSOAoJdGltZXN0YW1wGAcgASgLMhouZ29vZ2xl",
+            "LnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0YW1wEl0KCmV4dGVuc2lvbnMY",
+            "CCADKAsyPS5rdXJyZW50LmFnZW50LnYyLkFzc2lzdGFudFRvb2xDYWxsc0dl",
+            "bmVyYXRlZC5FeHRlbnNpb25zRW50cnlSCmV4dGVuc2lvbnMaVgoPRXh0ZW5z",
+            "aW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0KBXZhbHVlGAIgASgLMhcu",
+            "Z29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6AjgBIoIEChpBc3Npc3Rh",
+            "bnRUaGlua2luZ0dlbmVyYXRlZBIYCgdjb250ZW50GAEgASgJUgdjb250ZW50",
+            "EhwKCWVuY3J5cHRlZBgCIAEoCFIJZW5jcnlwdGVkEhwKCXNpZ25hdHVyZRgD",
+            "IAEoCVIJc2lnbmF0dXJlEh0KCm1lc3NhZ2VfaWQYBCABKAlSCW1lc3NhZ2VJ",
+            "ZBIfCgthdXRob3JfbmFtZRgFIAEoCVIKYXV0aG9yTmFtZRI5CgpjcmVhdGVk",
+            "X2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJY3JlYXRl",
+            "ZEF0EiMKDW1lc3NhZ2VfaW5kZXgYByABKAVSDG1lc3NhZ2VJbmRleBI4Cgl0",
+            "aW1lc3RhbXAYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0",
+            "aW1lc3RhbXASXAoKZXh0ZW5zaW9ucxgJIAMoCzI8Lmt1cnJlbnQuYWdlbnQu",
+            "djIuQXNzaXN0YW50VGhpbmtpbmdHZW5lcmF0ZWQuRXh0ZW5zaW9uc0VudHJ5",
+            "UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlS",
+            "A2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RS",
+            "BXZhbHVlOgI4ASLqAwoSVG9vbFJlc3VsdFJlY2VpdmVkEhcKB2NhbGxfaWQY",
+            "ASABKAlSBmNhbGxJZBIbCgl0b29sX25hbWUYAiABKAlSCHRvb2xOYW1lEhYK",
+            "BnJlc3VsdBgDIAEoCVIGcmVzdWx0Eh0KCm1lc3NhZ2VfaWQYBCABKAlSCW1l",
+            "c3NhZ2VJZBIfCgthdXRob3JfbmFtZRgFIAEoCVIKYXV0aG9yTmFtZRI5Cgpj",
+            "cmVhdGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJ",
+            "Y3JlYXRlZEF0EiMKDW1lc3NhZ2VfaW5kZXgYByABKAVSDG1lc3NhZ2VJbmRl",
+            "eBI4Cgl0aW1lc3RhbXAYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0",
+            "YW1wUgl0aW1lc3RhbXASVAoKZXh0ZW5zaW9ucxgJIAMoCzI0Lmt1cnJlbnQu",
+            "YWdlbnQudjIuVG9vbFJlc3VsdFJlY2VpdmVkLkV4dGVuc2lvbnNFbnRyeVIK",
             "ZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25zRW50cnkSEAoDa2V5GAEgASgJUgNr",
             "ZXkSLQoFdmFsdWUYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0UgV2",
-            "YWx1ZToCOAFCCwoJX3Jlc3BvbnNlQg0KC19tZXNzYWdlX2lkIrQDCg9TdWJh",
-            "Z2VudFN0YXJ0ZWQSGQoIYWdlbnRfaWQYASABKAlSB2FnZW50SWQSIgoKYWdl",
-            "bnRfdHlwZRgCIAEoCUgAUglhZ2VudFR5cGWIAQESGwoGcHJvbXB0GAMgASgJ",
-            "SAFSBnByb21wdIgBARIwChFzdWJzZXNzaW9uX3N0cmVhbRgEIAEoCUgCUhBz",
-            "dWJzZXNzaW9uU3RyZWFtiAEBEjgKCXRpbWVzdGFtcBgFIAEoCzIaLmdvb2ds",
-            "ZS5wcm90b2J1Zi5UaW1lc3RhbXBSCXRpbWVzdGFtcBJRCgpleHRlbnNpb25z",
-            "GAYgAygLMjEua3VycmVudC5hZ2VudC52Mi5TdWJhZ2VudFN0YXJ0ZWQuRXh0",
-            "ZW5zaW9uc0VudHJ5UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQ",
-            "CgNrZXkYASABKAlSA2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90",
-            "b2J1Zi5TdHJ1Y3RSBXZhbHVlOgI4AUINCgtfYWdlbnRfdHlwZUIJCgdfcHJv",
-            "bXB0QhQKEl9zdWJzZXNzaW9uX3N0cmVhbSLrAgoRU3ViYWdlbnRDb21wbGV0",
-            "ZWQSGQoIYWdlbnRfaWQYASABKAlSB2FnZW50SWQSHQoHb3V0Y29tZRgCIAEo",
-            "CUgAUgdvdXRjb21liAEBEh0KB3N1bW1hcnkYAyABKAlIAVIHc3VtbWFyeYgB",
-            "ARI4Cgl0aW1lc3RhbXAYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0",
-            "YW1wUgl0aW1lc3RhbXASUwoKZXh0ZW5zaW9ucxgFIAMoCzIzLmt1cnJlbnQu",
-            "YWdlbnQudjIuU3ViYWdlbnRDb21wbGV0ZWQuRXh0ZW5zaW9uc0VudHJ5Ugpl",
-            "eHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tl",
-            "eRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZh",
-            "bHVlOgI4AUIKCghfb3V0Y29tZUIKCghfc3VtbWFyeSKHAgoMRmFjdFJldGFp",
-            "bmVkEhIKBGZhY3QYASABKAlSBGZhY3QSOwoLcmV0YWluZWRfYXQYAiABKAsy",
-            "Gi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgpyZXRhaW5lZEF0Ek4KCmV4",
-            "dGVuc2lvbnMYAyADKAsyLi5rdXJyZW50LmFnZW50LnYyLkZhY3RSZXRhaW5l",
-            "ZC5FeHRlbnNpb25zRW50cnlSCmV4dGVuc2lvbnMaVgoPRXh0ZW5zaW9uc0Vu",
-            "dHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0KBXZhbHVlGAIgASgLMhcuZ29vZ2xl",
-            "LnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6AjgBIoYEChZBcnRpZmFjdFZlcnNp",
-            "b25DcmVhdGVkEhgKB3ZlcnNpb24YASABKAVSB3ZlcnNpb24SIAoJbWltZV90",
-            "eXBlGAIgASgJSABSCG1pbWVUeXBliAEBEiYKDGlubGluZV9ieXRlcxgDIAEo",
-            "DEgBUgtpbmxpbmVCeXRlc4gBARIoCg1jYW5vbmljYWxfdXJpGAQgASgJSAJS",
-            "DGNhbm9uaWNhbFVyaYgBARJACg9jdXN0b21fbWV0YWRhdGEYBSABKAsyFy5n",
-            "b29nbGUucHJvdG9idWYuU3RydWN0Ug5jdXN0b21NZXRhZGF0YRI5CgpjcmVh",
-            "dGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJY3Jl",
-            "YXRlZEF0ElgKCmV4dGVuc2lvbnMYByADKAsyOC5rdXJyZW50LmFnZW50LnYy",
-            "LkFydGlmYWN0VmVyc2lvbkNyZWF0ZWQuRXh0ZW5zaW9uc0VudHJ5UgpleHRl",
-            "bnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tleRIt",
-            "CgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZhbHVl",
-            "OgI4AUIMCgpfbWltZV90eXBlQg8KDV9pbmxpbmVfYnl0ZXNCEAoOX2Nhbm9u",
-            "aWNhbF91cmkixwIKDkV2YWxSdW5TdGFydGVkEh0KCnNlc3Npb25faWQYASAB",
-            "KAlSCXNlc3Npb25JZBIWCgZzY29yZXIYAiABKAlSBnNjb3JlchIaCghjcml0",
-            "ZXJpYRgDIAEoCVIIY3JpdGVyaWESOAoJdGltZXN0YW1wGAQgASgLMhouZ29v",
-            "Z2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0YW1wElAKCmV4dGVuc2lv",
-            "bnMYBSADKAsyMC5rdXJyZW50LmFnZW50LnYyLkV2YWxSdW5TdGFydGVkLkV4",
+            "YWx1ZToCOAEi/QIKD0ludGVycnVwdElzc3VlZBIdCgpyZXF1ZXN0X2lkGAEg",
+            "ASgJUglyZXF1ZXN0SWQSEgoEa2luZBgCIAEoCVIEa2luZBIbCgl0b29sX25h",
+            "bWUYAyABKAlSCHRvb2xOYW1lEhYKBnByb21wdBgEIAEoCVIGcHJvbXB0Eh0K",
+            "Cm1lc3NhZ2VfaWQYBSABKAlSCW1lc3NhZ2VJZBI4Cgl0aW1lc3RhbXAYBiAB",
+            "KAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUgl0aW1lc3RhbXASUQoK",
+            "ZXh0ZW5zaW9ucxgHIAMoCzIxLmt1cnJlbnQuYWdlbnQudjIuSW50ZXJydXB0",
+            "SXNzdWVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNp",
+            "b25zRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5n",
+            "b29nbGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAEi7gIKEUludGVycnVw",
+            "dFJlc29sdmVkEh0KCnJlcXVlc3RfaWQYASABKAlSCXJlcXVlc3RJZBIYCgdv",
+            "dXRjb21lGAIgASgJUgdvdXRjb21lEhoKCHJlc3BvbnNlGAMgASgJUghyZXNw",
+            "b25zZRIdCgptZXNzYWdlX2lkGAQgASgJUgltZXNzYWdlSWQSOAoJdGltZXN0",
+            "YW1wGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0",
+            "YW1wElMKCmV4dGVuc2lvbnMYBiADKAsyMy5rdXJyZW50LmFnZW50LnYyLklu",
+            "dGVycnVwdFJlc29sdmVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpW",
+            "Cg9FeHRlbnNpb25zRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUY",
+            "AiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAEi9QIK",
+            "D1N1YmFnZW50U3RhcnRlZBIZCghhZ2VudF9pZBgBIAEoCVIHYWdlbnRJZBId",
+            "CgphZ2VudF90eXBlGAIgASgJUglhZ2VudFR5cGUSFgoGcHJvbXB0GAMgASgJ",
+            "UgZwcm9tcHQSKwoRc3Vic2Vzc2lvbl9zdHJlYW0YBCABKAlSEHN1YnNlc3Np",
+            "b25TdHJlYW0SOAoJdGltZXN0YW1wGAUgASgLMhouZ29vZ2xlLnByb3RvYnVm",
+            "LlRpbWVzdGFtcFIJdGltZXN0YW1wElEKCmV4dGVuc2lvbnMYBiADKAsyMS5r",
+            "dXJyZW50LmFnZW50LnYyLlN1YmFnZW50U3RhcnRlZC5FeHRlbnNpb25zRW50",
+            "cnlSCmV4dGVuc2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEo",
+            "CVIDa2V5Ei0KBXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVj",
+            "dFIFdmFsdWU6AjgBIskCChFTdWJhZ2VudENvbXBsZXRlZBIZCghhZ2VudF9p",
+            "ZBgBIAEoCVIHYWdlbnRJZBIYCgdvdXRjb21lGAIgASgJUgdvdXRjb21lEhgK",
+            "B3N1bW1hcnkYAyABKAlSB3N1bW1hcnkSOAoJdGltZXN0YW1wGAQgASgLMhou",
+            "Z29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0YW1wElMKCmV4dGVu",
+            "c2lvbnMYBSADKAsyMy5rdXJyZW50LmFnZW50LnYyLlN1YmFnZW50Q29tcGxl",
+            "dGVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25z",
+            "RW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5nb29n",
+            "bGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAEihwIKDEZhY3RSZXRhaW5l",
+            "ZBISCgRmYWN0GAEgASgJUgRmYWN0EjsKC3JldGFpbmVkX2F0GAIgASgLMhou",
+            "Z29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIKcmV0YWluZWRBdBJOCgpleHRl",
+            "bnNpb25zGAMgAygLMi4ua3VycmVudC5hZ2VudC52Mi5GYWN0UmV0YWluZWQu",
+            "RXh0ZW5zaW9uc0VudHJ5UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRy",
+            "eRIQCgNrZXkYASABKAlSA2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5w",
+            "cm90b2J1Zi5TdHJ1Y3RSBXZhbHVlOgI4ASLGAwoWQXJ0aWZhY3RWZXJzaW9u",
+            "Q3JlYXRlZBIYCgd2ZXJzaW9uGAEgASgFUgd2ZXJzaW9uEhsKCW1pbWVfdHlw",
+            "ZRgCIAEoCVIIbWltZVR5cGUSIQoMaW5saW5lX2J5dGVzGAMgASgMUgtpbmxp",
+            "bmVCeXRlcxIjCg1jYW5vbmljYWxfdXJpGAQgASgJUgxjYW5vbmljYWxVcmkS",
+            "QAoPY3VzdG9tX21ldGFkYXRhGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0",
+            "cnVjdFIOY3VzdG9tTWV0YWRhdGESOQoKY3JlYXRlZF9hdBgGIAEoCzIaLmdv",
+            "b2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBSCWNyZWF0ZWRBdBJYCgpleHRlbnNp",
+            "b25zGAcgAygLMjgua3VycmVudC5hZ2VudC52Mi5BcnRpZmFjdFZlcnNpb25D",
+            "cmVhdGVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNp",
+            "b25zRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5n",
+            "b29nbGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToCOAEixwIKDkV2YWxSdW5T",
+            "dGFydGVkEh0KCnNlc3Npb25faWQYASABKAlSCXNlc3Npb25JZBIWCgZzY29y",
+            "ZXIYAiABKAlSBnNjb3JlchIaCghjcml0ZXJpYRgDIAEoCVIIY3JpdGVyaWES",
+            "OAoJdGltZXN0YW1wGAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFt",
+            "cFIJdGltZXN0YW1wElAKCmV4dGVuc2lvbnMYBSADKAsyMC5rdXJyZW50LmFn",
+            "ZW50LnYyLkV2YWxSdW5TdGFydGVkLkV4dGVuc2lvbnNFbnRyeVIKZXh0ZW5z",
+            "aW9ucxpWCg9FeHRlbnNpb25zRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSLQoF",
+            "dmFsdWUYAiABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0UgV2YWx1ZToC",
+            "OAEipwMKClR1cm5TY29yZWQSHQoKc2Vzc2lvbl9pZBgBIAEoCVIJc2Vzc2lv",
+            "bklkEh0KCnR1cm5faW5kZXgYAiABKAVSCXR1cm5JbmRleBIUCgVpbnB1dBgD",
+            "IAEoCVIFaW5wdXQSFgoGb3V0cHV0GAQgASgJUgZvdXRwdXQSFAoFc2NvcmUY",
+            "BSABKAFSBXNjb3JlEh8KC3Njb3JlX2xhYmVsGAYgASgJUgpzY29yZUxhYmVs",
+            "EhYKBnJlYXNvbhgHIAEoCVIGcmVhc29uEjgKCXRpbWVzdGFtcBgIIAEoCzIa",
+            "Lmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBSCXRpbWVzdGFtcBJMCgpleHRl",
+            "bnNpb25zGAkgAygLMiwua3VycmVudC5hZ2VudC52Mi5UdXJuU2NvcmVkLkV4",
             "dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25zRW50cnkS",
             "EAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5nb29nbGUucHJv",
-            "dG9idWYuU3RydWN0UgV2YWx1ZToCOAEi6wMKClR1cm5TY29yZWQSHQoKc2Vz",
-            "c2lvbl9pZBgBIAEoCVIJc2Vzc2lvbklkEh0KCnR1cm5faW5kZXgYAiABKAVS",
-            "CXR1cm5JbmRleBIZCgVpbnB1dBgDIAEoCUgAUgVpbnB1dIgBARIbCgZvdXRw",
-            "dXQYBCABKAlIAVIGb3V0cHV0iAEBEhQKBXNjb3JlGAUgASgBUgVzY29yZRIk",
-            "CgtzY29yZV9sYWJlbBgGIAEoCUgCUgpzY29yZUxhYmVsiAEBEhsKBnJlYXNv",
-            "bhgHIAEoCUgDUgZyZWFzb26IAQESOAoJdGltZXN0YW1wGAggASgLMhouZ29v",
-            "Z2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGltZXN0YW1wEkwKCmV4dGVuc2lv",
-            "bnMYCSADKAsyLC5rdXJyZW50LmFnZW50LnYyLlR1cm5TY29yZWQuRXh0ZW5z",
-            "aW9uc0VudHJ5UgpleHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNr",
-            "ZXkYASABKAlSA2tleRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1",
-            "Zi5TdHJ1Y3RSBXZhbHVlOgI4AUIICgZfaW5wdXRCCQoHX291dHB1dEIOCgxf",
-            "c2NvcmVfbGFiZWxCCQoHX3JlYXNvbiKSAwoQRXZhbFJ1bkNvbXBsZXRlZBId",
-            "CgpzZXNzaW9uX2lkGAEgASgJUglzZXNzaW9uSWQSIQoMdHVybnNfc2NvcmVk",
-            "GAIgASgFUgt0dXJuc1Njb3JlZBIjCg1hdmVyYWdlX3Njb3JlGAMgASgBUgxh",
-            "dmVyYWdlU2NvcmUSIgoKdG90YWxfY29zdBgEIAEoAUgAUgl0b3RhbENvc3SI",
-            "AQESOAoJdGltZXN0YW1wGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcFIJdGltZXN0YW1wElIKCmV4dGVuc2lvbnMYBiADKAsyMi5rdXJyZW50",
-            "LmFnZW50LnYyLkV2YWxSdW5Db21wbGV0ZWQuRXh0ZW5zaW9uc0VudHJ5Ugpl",
-            "eHRlbnNpb25zGlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tl",
-            "eRItCgV2YWx1ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZh",
-            "bHVlOgI4AUINCgtfdG90YWxfY29zdEIeqgIbS3VycmVudC5BZ2VudC5TY2hl",
-            "bWEuRXZlbnRzYgZwcm90bzM="));
+            "dG9idWYuU3RydWN0UgV2YWx1ZToCOAEi/gIKEEV2YWxSdW5Db21wbGV0ZWQS",
+            "HQoKc2Vzc2lvbl9pZBgBIAEoCVIJc2Vzc2lvbklkEiEKDHR1cm5zX3Njb3Jl",
+            "ZBgCIAEoBVILdHVybnNTY29yZWQSIwoNYXZlcmFnZV9zY29yZRgDIAEoAVIM",
+            "YXZlcmFnZVNjb3JlEh0KCnRvdGFsX2Nvc3QYBCABKAFSCXRvdGFsQ29zdBI4",
+            "Cgl0aW1lc3RhbXAYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1w",
+            "Ugl0aW1lc3RhbXASUgoKZXh0ZW5zaW9ucxgGIAMoCzIyLmt1cnJlbnQuYWdl",
+            "bnQudjIuRXZhbFJ1bkNvbXBsZXRlZC5FeHRlbnNpb25zRW50cnlSCmV4dGVu",
+            "c2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0K",
+            "BXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6",
+            "AjgBQh6qAhtLdXJyZW50LkFnZW50LlNjaGVtYS5FdmVudHNiCGVkaXRpb25z",
+            "cOkH"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Kurrent.Agent.Schema.Events.ValueTypesReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionStarted), global::Kurrent.Agent.Schema.Events.SessionStarted.Parser, new[]{ "AppName", "AgentName", "Model", "TenantId", "UserId", "AgentConfig", "PreviousSessionId", "Timestamp", "Extensions" }, new[]{ "AppName", "AgentName", "Model", "TenantId", "UserId", "PreviousSessionId" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionEnded), global::Kurrent.Agent.Schema.Events.SessionEnded.Parser, new[]{ "Reason", "Timestamp", "Extensions" }, new[]{ "Reason" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionContinuedAs), global::Kurrent.Agent.Schema.Events.SessionContinuedAs.Parser, new[]{ "NextSessionId", "Reason", "Timestamp", "Extensions" }, new[]{ "Reason" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.UserMessageReceived), global::Kurrent.Agent.Schema.Events.UserMessageReceived.Parser, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantTextGenerated), global::Kurrent.Agent.Schema.Events.AssistantTextGenerated.Parser, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantToolCallsGenerated), global::Kurrent.Agent.Schema.Events.AssistantToolCallsGenerated.Parser, new[]{ "ToolCalls", "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantThinkingGenerated), global::Kurrent.Agent.Schema.Events.AssistantThinkingGenerated.Parser, new[]{ "Content", "Encrypted", "Signature", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, new[]{ "Content", "Signature", "MessageId", "AuthorName", "CreatedAt" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolResultReceived), global::Kurrent.Agent.Schema.Events.ToolResultReceived.Parser, new[]{ "CallId", "ToolName", "Result", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, new[]{ "ToolName", "Result", "MessageId", "AuthorName", "CreatedAt" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.InterruptIssued), global::Kurrent.Agent.Schema.Events.InterruptIssued.Parser, new[]{ "RequestId", "Kind", "ToolName", "Prompt", "MessageId", "Timestamp", "Extensions" }, new[]{ "ToolName", "Prompt", "MessageId" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.InterruptResolved), global::Kurrent.Agent.Schema.Events.InterruptResolved.Parser, new[]{ "RequestId", "Outcome", "Response", "MessageId", "Timestamp", "Extensions" }, new[]{ "Response", "MessageId" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SubagentStarted), global::Kurrent.Agent.Schema.Events.SubagentStarted.Parser, new[]{ "AgentId", "AgentType", "Prompt", "SubsessionStream", "Timestamp", "Extensions" }, new[]{ "AgentType", "Prompt", "SubsessionStream" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SubagentCompleted), global::Kurrent.Agent.Schema.Events.SubagentCompleted.Parser, new[]{ "AgentId", "Outcome", "Summary", "Timestamp", "Extensions" }, new[]{ "Outcome", "Summary" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionStarted), global::Kurrent.Agent.Schema.Events.SessionStarted.Parser, new[]{ "AppName", "AgentName", "Model", "TenantId", "UserId", "AgentConfig", "PreviousSessionId", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionEnded), global::Kurrent.Agent.Schema.Events.SessionEnded.Parser, new[]{ "Reason", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionContinuedAs), global::Kurrent.Agent.Schema.Events.SessionContinuedAs.Parser, new[]{ "NextSessionId", "Reason", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.UserMessageReceived), global::Kurrent.Agent.Schema.Events.UserMessageReceived.Parser, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantTextGenerated), global::Kurrent.Agent.Schema.Events.AssistantTextGenerated.Parser, new[]{ "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantToolCallsGenerated), global::Kurrent.Agent.Schema.Events.AssistantToolCallsGenerated.Parser, new[]{ "ToolCalls", "Content", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AssistantThinkingGenerated), global::Kurrent.Agent.Schema.Events.AssistantThinkingGenerated.Parser, new[]{ "Content", "Encrypted", "Signature", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolResultReceived), global::Kurrent.Agent.Schema.Events.ToolResultReceived.Parser, new[]{ "CallId", "ToolName", "Result", "MessageId", "AuthorName", "CreatedAt", "MessageIndex", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.InterruptIssued), global::Kurrent.Agent.Schema.Events.InterruptIssued.Parser, new[]{ "RequestId", "Kind", "ToolName", "Prompt", "MessageId", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.InterruptResolved), global::Kurrent.Agent.Schema.Events.InterruptResolved.Parser, new[]{ "RequestId", "Outcome", "Response", "MessageId", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SubagentStarted), global::Kurrent.Agent.Schema.Events.SubagentStarted.Parser, new[]{ "AgentId", "AgentType", "Prompt", "SubsessionStream", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SubagentCompleted), global::Kurrent.Agent.Schema.Events.SubagentCompleted.Parser, new[]{ "AgentId", "Outcome", "Summary", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.FactRetained), global::Kurrent.Agent.Schema.Events.FactRetained.Parser, new[]{ "Fact", "RetainedAt", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated), global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated.Parser, new[]{ "Version", "MimeType", "InlineBytes", "CanonicalUri", "CustomMetadata", "CreatedAt", "Extensions" }, new[]{ "MimeType", "InlineBytes", "CanonicalUri" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated), global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated.Parser, new[]{ "Version", "MimeType", "InlineBytes", "CanonicalUri", "CustomMetadata", "CreatedAt", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.EvalRunStarted), global::Kurrent.Agent.Schema.Events.EvalRunStarted.Parser, new[]{ "SessionId", "Scorer", "Criteria", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.TurnScored), global::Kurrent.Agent.Schema.Events.TurnScored.Parser, new[]{ "SessionId", "TurnIndex", "Input", "Output", "Score", "ScoreLabel", "Reason", "Timestamp", "Extensions" }, new[]{ "Input", "Output", "ScoreLabel", "Reason" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.EvalRunCompleted), global::Kurrent.Agent.Schema.Events.EvalRunCompleted.Parser, new[]{ "SessionId", "TurnsScored", "AverageScore", "TotalCost", "Timestamp", "Extensions" }, new[]{ "TotalCost" }, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.TurnScored), global::Kurrent.Agent.Schema.Events.TurnScored.Parser, new[]{ "SessionId", "TurnIndex", "Input", "Output", "Score", "ScoreLabel", "Reason", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.EvalRunCompleted), global::Kurrent.Agent.Schema.Events.EvalRunCompleted.Parser, new[]{ "SessionId", "TurnsScored", "AverageScore", "TotalCost", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
           }));
     }
     #endregion
@@ -1150,14 +1130,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "next_session_id" field.</summary>
     public const int NextSessionIdFieldNumber = 1;
-    private string nextSessionId_ = "";
+    private readonly static string NextSessionIdDefaultValue = "";
+
+    private string nextSessionId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string NextSessionId {
-      get { return nextSessionId_; }
+      get { return nextSessionId_ ?? NextSessionIdDefaultValue; }
       set {
         nextSessionId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "next_session_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasNextSessionId {
+      get { return nextSessionId_ != null; }
+    }
+    /// <summary>Clears the value of the "next_session_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearNextSessionId() {
+      nextSessionId_ = null;
     }
 
     /// <summary>Field number for the "reason" field.</summary>
@@ -1235,7 +1229,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (NextSessionId.Length != 0) hash ^= NextSessionId.GetHashCode();
+      if (HasNextSessionId) hash ^= NextSessionId.GetHashCode();
       if (HasReason) hash ^= Reason.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
@@ -1257,7 +1251,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (NextSessionId.Length != 0) {
+      if (HasNextSessionId) {
         output.WriteRawTag(10);
         output.WriteString(NextSessionId);
       }
@@ -1280,7 +1274,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (NextSessionId.Length != 0) {
+      if (HasNextSessionId) {
         output.WriteRawTag(10);
         output.WriteString(NextSessionId);
       }
@@ -1303,7 +1297,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (NextSessionId.Length != 0) {
+      if (HasNextSessionId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(NextSessionId);
       }
       if (HasReason) {
@@ -1325,7 +1319,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.NextSessionId.Length != 0) {
+      if (other.HasNextSessionId) {
         NextSessionId = other.NextSessionId;
       }
       if (other.HasReason) {
@@ -1429,6 +1423,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<UserMessageReceived> _parser = new pb::MessageParser<UserMessageReceived>(() => new UserMessageReceived());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<UserMessageReceived> Parser { get { return _parser; } }
@@ -1456,6 +1451,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public UserMessageReceived(UserMessageReceived other) : this() {
+      _hasBits0 = other._hasBits0;
       content_ = other.content_;
       messageId_ = other.messageId_;
       authorName_ = other.authorName_;
@@ -1564,14 +1560,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "message_index" field.</summary>
     public const int MessageIndexFieldNumber = 5;
+    private readonly static int MessageIndexDefaultValue = 0;
+
     private int messageIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int MessageIndex {
-      get { return messageIndex_; }
+      get { if ((_hasBits0 & 1) != 0) { return messageIndex_; } else { return MessageIndexDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         messageIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "message_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMessageIndex {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "message_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMessageIndex() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -1630,7 +1641,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (HasAuthorName) hash ^= AuthorName.GetHashCode();
       if (createdAt_ != null) hash ^= CreatedAt.GetHashCode();
-      if (MessageIndex != 0) hash ^= MessageIndex.GetHashCode();
+      if (HasMessageIndex) hash ^= MessageIndex.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -1667,7 +1678,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(40);
         output.WriteInt32(MessageIndex);
       }
@@ -1702,7 +1713,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(40);
         output.WriteInt32(MessageIndex);
       }
@@ -1733,7 +1744,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (createdAt_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(MessageIndex);
       }
       if (timestamp_ != null) {
@@ -1767,7 +1778,7 @@ namespace Kurrent.Agent.Schema.Events {
         }
         CreatedAt.MergeFrom(other.CreatedAt);
       }
-      if (other.MessageIndex != 0) {
+      if (other.HasMessageIndex) {
         MessageIndex = other.MessageIndex;
       }
       if (other.timestamp_ != null) {
@@ -1898,6 +1909,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<AssistantTextGenerated> _parser = new pb::MessageParser<AssistantTextGenerated>(() => new AssistantTextGenerated());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<AssistantTextGenerated> Parser { get { return _parser; } }
@@ -1925,6 +1937,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AssistantTextGenerated(AssistantTextGenerated other) : this() {
+      _hasBits0 = other._hasBits0;
       content_ = other.content_;
       messageId_ = other.messageId_;
       authorName_ = other.authorName_;
@@ -2033,14 +2046,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "message_index" field.</summary>
     public const int MessageIndexFieldNumber = 5;
+    private readonly static int MessageIndexDefaultValue = 0;
+
     private int messageIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int MessageIndex {
-      get { return messageIndex_; }
+      get { if ((_hasBits0 & 1) != 0) { return messageIndex_; } else { return MessageIndexDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         messageIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "message_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMessageIndex {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "message_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMessageIndex() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -2099,7 +2127,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (HasAuthorName) hash ^= AuthorName.GetHashCode();
       if (createdAt_ != null) hash ^= CreatedAt.GetHashCode();
-      if (MessageIndex != 0) hash ^= MessageIndex.GetHashCode();
+      if (HasMessageIndex) hash ^= MessageIndex.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -2136,7 +2164,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(40);
         output.WriteInt32(MessageIndex);
       }
@@ -2171,7 +2199,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(40);
         output.WriteInt32(MessageIndex);
       }
@@ -2202,7 +2230,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (createdAt_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(MessageIndex);
       }
       if (timestamp_ != null) {
@@ -2236,7 +2264,7 @@ namespace Kurrent.Agent.Schema.Events {
         }
         CreatedAt.MergeFrom(other.CreatedAt);
       }
-      if (other.MessageIndex != 0) {
+      if (other.HasMessageIndex) {
         MessageIndex = other.MessageIndex;
       }
       if (other.timestamp_ != null) {
@@ -2367,6 +2395,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<AssistantToolCallsGenerated> _parser = new pb::MessageParser<AssistantToolCallsGenerated>(() => new AssistantToolCallsGenerated());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<AssistantToolCallsGenerated> Parser { get { return _parser; } }
@@ -2394,6 +2423,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AssistantToolCallsGenerated(AssistantToolCallsGenerated other) : this() {
+      _hasBits0 = other._hasBits0;
       toolCalls_ = other.toolCalls_.Clone();
       content_ = other.content_;
       messageId_ = other.messageId_;
@@ -2514,14 +2544,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "message_index" field.</summary>
     public const int MessageIndexFieldNumber = 6;
+    private readonly static int MessageIndexDefaultValue = 0;
+
     private int messageIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int MessageIndex {
-      get { return messageIndex_; }
+      get { if ((_hasBits0 & 1) != 0) { return messageIndex_; } else { return MessageIndexDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         messageIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "message_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMessageIndex {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "message_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMessageIndex() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -2582,7 +2627,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (HasAuthorName) hash ^= AuthorName.GetHashCode();
       if (createdAt_ != null) hash ^= CreatedAt.GetHashCode();
-      if (MessageIndex != 0) hash ^= MessageIndex.GetHashCode();
+      if (HasMessageIndex) hash ^= MessageIndex.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -2620,7 +2665,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(42);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(48);
         output.WriteInt32(MessageIndex);
       }
@@ -2656,7 +2701,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(42);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(48);
         output.WriteInt32(MessageIndex);
       }
@@ -2688,7 +2733,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (createdAt_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(MessageIndex);
       }
       if (timestamp_ != null) {
@@ -2723,7 +2768,7 @@ namespace Kurrent.Agent.Schema.Events {
         }
         CreatedAt.MergeFrom(other.CreatedAt);
       }
-      if (other.MessageIndex != 0) {
+      if (other.HasMessageIndex) {
         MessageIndex = other.MessageIndex;
       }
       if (other.timestamp_ != null) {
@@ -2862,6 +2907,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<AssistantThinkingGenerated> _parser = new pb::MessageParser<AssistantThinkingGenerated>(() => new AssistantThinkingGenerated());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<AssistantThinkingGenerated> Parser { get { return _parser; } }
@@ -2889,6 +2935,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AssistantThinkingGenerated(AssistantThinkingGenerated other) : this() {
+      _hasBits0 = other._hasBits0;
       content_ = other.content_;
       encrypted_ = other.encrypted_;
       signature_ = other.signature_;
@@ -2935,6 +2982,8 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "encrypted" field.</summary>
     public const int EncryptedFieldNumber = 2;
+    private readonly static bool EncryptedDefaultValue = false;
+
     private bool encrypted_;
     /// <summary>
     /// Provider returned an opaque blob instead of plaintext (OpenAI o-series).
@@ -2943,10 +2992,23 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Encrypted {
-      get { return encrypted_; }
+      get { if ((_hasBits0 & 1) != 0) { return encrypted_; } else { return EncryptedDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         encrypted_ = value;
       }
+    }
+    /// <summary>Gets whether the "encrypted" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasEncrypted {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "encrypted" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearEncrypted() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "signature" field.</summary>
@@ -3041,14 +3103,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "message_index" field.</summary>
     public const int MessageIndexFieldNumber = 7;
+    private readonly static int MessageIndexDefaultValue = 0;
+
     private int messageIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int MessageIndex {
-      get { return messageIndex_; }
+      get { if ((_hasBits0 & 2) != 0) { return messageIndex_; } else { return MessageIndexDefaultValue; } }
       set {
+        _hasBits0 |= 2;
         messageIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "message_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMessageIndex {
+      get { return (_hasBits0 & 2) != 0; }
+    }
+    /// <summary>Clears the value of the "message_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMessageIndex() {
+      _hasBits0 &= ~2;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -3106,12 +3183,12 @@ namespace Kurrent.Agent.Schema.Events {
     public override int GetHashCode() {
       int hash = 1;
       if (HasContent) hash ^= Content.GetHashCode();
-      if (Encrypted != false) hash ^= Encrypted.GetHashCode();
+      if (HasEncrypted) hash ^= Encrypted.GetHashCode();
       if (HasSignature) hash ^= Signature.GetHashCode();
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (HasAuthorName) hash ^= AuthorName.GetHashCode();
       if (createdAt_ != null) hash ^= CreatedAt.GetHashCode();
-      if (MessageIndex != 0) hash ^= MessageIndex.GetHashCode();
+      if (HasMessageIndex) hash ^= MessageIndex.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -3136,7 +3213,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(10);
         output.WriteString(Content);
       }
-      if (Encrypted != false) {
+      if (HasEncrypted) {
         output.WriteRawTag(16);
         output.WriteBool(Encrypted);
       }
@@ -3156,7 +3233,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(50);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(56);
         output.WriteInt32(MessageIndex);
       }
@@ -3179,7 +3256,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(10);
         output.WriteString(Content);
       }
-      if (Encrypted != false) {
+      if (HasEncrypted) {
         output.WriteRawTag(16);
         output.WriteBool(Encrypted);
       }
@@ -3199,7 +3276,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(50);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(56);
         output.WriteInt32(MessageIndex);
       }
@@ -3221,7 +3298,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasContent) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Content);
       }
-      if (Encrypted != false) {
+      if (HasEncrypted) {
         size += 1 + 1;
       }
       if (HasSignature) {
@@ -3236,7 +3313,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (createdAt_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(MessageIndex);
       }
       if (timestamp_ != null) {
@@ -3258,7 +3335,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other.HasContent) {
         Content = other.Content;
       }
-      if (other.Encrypted != false) {
+      if (other.HasEncrypted) {
         Encrypted = other.Encrypted;
       }
       if (other.HasSignature) {
@@ -3276,7 +3353,7 @@ namespace Kurrent.Agent.Schema.Events {
         }
         CreatedAt.MergeFrom(other.CreatedAt);
       }
-      if (other.MessageIndex != 0) {
+      if (other.HasMessageIndex) {
         MessageIndex = other.MessageIndex;
       }
       if (other.timestamp_ != null) {
@@ -3423,6 +3500,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<ToolResultReceived> _parser = new pb::MessageParser<ToolResultReceived>(() => new ToolResultReceived());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<ToolResultReceived> Parser { get { return _parser; } }
@@ -3450,6 +3528,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ToolResultReceived(ToolResultReceived other) : this() {
+      _hasBits0 = other._hasBits0;
       callId_ = other.callId_;
       toolName_ = other.toolName_;
       result_ = other.result_;
@@ -3470,14 +3549,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "call_id" field.</summary>
     public const int CallIdFieldNumber = 1;
-    private string callId_ = "";
+    private readonly static string CallIdDefaultValue = "";
+
+    private string callId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string CallId {
-      get { return callId_; }
+      get { return callId_ ?? CallIdDefaultValue; }
       set {
         callId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "call_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCallId {
+      get { return callId_ != null; }
+    }
+    /// <summary>Clears the value of the "call_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCallId() {
+      callId_ = null;
     }
 
     /// <summary>Field number for the "tool_name" field.</summary>
@@ -3598,14 +3691,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "message_index" field.</summary>
     public const int MessageIndexFieldNumber = 7;
+    private readonly static int MessageIndexDefaultValue = 0;
+
     private int messageIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int MessageIndex {
-      get { return messageIndex_; }
+      get { if ((_hasBits0 & 1) != 0) { return messageIndex_; } else { return MessageIndexDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         messageIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "message_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMessageIndex {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "message_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMessageIndex() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -3662,13 +3770,13 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (CallId.Length != 0) hash ^= CallId.GetHashCode();
+      if (HasCallId) hash ^= CallId.GetHashCode();
       if (HasToolName) hash ^= ToolName.GetHashCode();
       if (HasResult) hash ^= Result.GetHashCode();
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (HasAuthorName) hash ^= AuthorName.GetHashCode();
       if (createdAt_ != null) hash ^= CreatedAt.GetHashCode();
-      if (MessageIndex != 0) hash ^= MessageIndex.GetHashCode();
+      if (HasMessageIndex) hash ^= MessageIndex.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -3689,7 +3797,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         output.WriteRawTag(10);
         output.WriteString(CallId);
       }
@@ -3713,7 +3821,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(50);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(56);
         output.WriteInt32(MessageIndex);
       }
@@ -3732,7 +3840,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         output.WriteRawTag(10);
         output.WriteString(CallId);
       }
@@ -3756,7 +3864,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(50);
         output.WriteMessage(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         output.WriteRawTag(56);
         output.WriteInt32(MessageIndex);
       }
@@ -3775,7 +3883,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(CallId);
       }
       if (HasToolName) {
@@ -3793,7 +3901,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (createdAt_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(CreatedAt);
       }
-      if (MessageIndex != 0) {
+      if (HasMessageIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(MessageIndex);
       }
       if (timestamp_ != null) {
@@ -3812,7 +3920,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.CallId.Length != 0) {
+      if (other.HasCallId) {
         CallId = other.CallId;
       }
       if (other.HasToolName) {
@@ -3833,7 +3941,7 @@ namespace Kurrent.Agent.Schema.Events {
         }
         CreatedAt.MergeFrom(other.CreatedAt);
       }
-      if (other.MessageIndex != 0) {
+      if (other.HasMessageIndex) {
         MessageIndex = other.MessageIndex;
       }
       if (other.timestamp_ != null) {
@@ -4025,29 +4133,57 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "request_id" field.</summary>
     public const int RequestIdFieldNumber = 1;
-    private string requestId_ = "";
+    private readonly static string RequestIdDefaultValue = "";
+
+    private string requestId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string RequestId {
-      get { return requestId_; }
+      get { return requestId_ ?? RequestIdDefaultValue; }
       set {
         requestId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "request_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasRequestId {
+      get { return requestId_ != null; }
+    }
+    /// <summary>Clears the value of the "request_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearRequestId() {
+      requestId_ = null;
+    }
 
     /// <summary>Field number for the "kind" field.</summary>
     public const int KindFieldNumber = 2;
-    private string kind_ = "";
+    private readonly static string KindDefaultValue = "";
+
+    private string kind_;
     /// <summary>
     /// Open string. Documented set: permission | approval | input | auth.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Kind {
-      get { return kind_; }
+      get { return kind_ ?? KindDefaultValue; }
       set {
         kind_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "kind" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasKind {
+      get { return kind_ != null; }
+    }
+    /// <summary>Clears the value of the "kind" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearKind() {
+      kind_ = null;
     }
 
     /// <summary>Field number for the "tool_name" field.</summary>
@@ -4180,8 +4316,8 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (RequestId.Length != 0) hash ^= RequestId.GetHashCode();
-      if (Kind.Length != 0) hash ^= Kind.GetHashCode();
+      if (HasRequestId) hash ^= RequestId.GetHashCode();
+      if (HasKind) hash ^= Kind.GetHashCode();
       if (HasToolName) hash ^= ToolName.GetHashCode();
       if (HasPrompt) hash ^= Prompt.GetHashCode();
       if (HasMessageId) hash ^= MessageId.GetHashCode();
@@ -4205,11 +4341,11 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         output.WriteRawTag(10);
         output.WriteString(RequestId);
       }
-      if (Kind.Length != 0) {
+      if (HasKind) {
         output.WriteRawTag(18);
         output.WriteString(Kind);
       }
@@ -4240,11 +4376,11 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         output.WriteRawTag(10);
         output.WriteString(RequestId);
       }
-      if (Kind.Length != 0) {
+      if (HasKind) {
         output.WriteRawTag(18);
         output.WriteString(Kind);
       }
@@ -4275,10 +4411,10 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(RequestId);
       }
-      if (Kind.Length != 0) {
+      if (HasKind) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Kind);
       }
       if (HasToolName) {
@@ -4306,10 +4442,10 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.RequestId.Length != 0) {
+      if (other.HasRequestId) {
         RequestId = other.RequestId;
       }
-      if (other.Kind.Length != 0) {
+      if (other.HasKind) {
         Kind = other.Kind;
       }
       if (other.HasToolName) {
@@ -4487,19 +4623,35 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "request_id" field.</summary>
     public const int RequestIdFieldNumber = 1;
-    private string requestId_ = "";
+    private readonly static string RequestIdDefaultValue = "";
+
+    private string requestId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string RequestId {
-      get { return requestId_; }
+      get { return requestId_ ?? RequestIdDefaultValue; }
       set {
         requestId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "request_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasRequestId {
+      get { return requestId_ != null; }
+    }
+    /// <summary>Clears the value of the "request_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearRequestId() {
+      requestId_ = null;
+    }
 
     /// <summary>Field number for the "outcome" field.</summary>
     public const int OutcomeFieldNumber = 2;
-    private string outcome_ = "";
+    private readonly static string OutcomeDefaultValue = "";
+
+    private string outcome_;
     /// <summary>
     /// Open string. Documented set: allow | allow_once | allow_always |
     /// deny | cancel | answered | timeout.
@@ -4507,10 +4659,22 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Outcome {
-      get { return outcome_; }
+      get { return outcome_ ?? OutcomeDefaultValue; }
       set {
         outcome_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "outcome" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasOutcome {
+      get { return outcome_ != null; }
+    }
+    /// <summary>Clears the value of the "outcome" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearOutcome() {
+      outcome_ = null;
     }
 
     /// <summary>Field number for the "response" field.</summary>
@@ -4616,8 +4780,8 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (RequestId.Length != 0) hash ^= RequestId.GetHashCode();
-      if (Outcome.Length != 0) hash ^= Outcome.GetHashCode();
+      if (HasRequestId) hash ^= RequestId.GetHashCode();
+      if (HasOutcome) hash ^= Outcome.GetHashCode();
       if (HasResponse) hash ^= Response.GetHashCode();
       if (HasMessageId) hash ^= MessageId.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
@@ -4640,11 +4804,11 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         output.WriteRawTag(10);
         output.WriteString(RequestId);
       }
-      if (Outcome.Length != 0) {
+      if (HasOutcome) {
         output.WriteRawTag(18);
         output.WriteString(Outcome);
       }
@@ -4671,11 +4835,11 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         output.WriteRawTag(10);
         output.WriteString(RequestId);
       }
-      if (Outcome.Length != 0) {
+      if (HasOutcome) {
         output.WriteRawTag(18);
         output.WriteString(Outcome);
       }
@@ -4702,10 +4866,10 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (RequestId.Length != 0) {
+      if (HasRequestId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(RequestId);
       }
-      if (Outcome.Length != 0) {
+      if (HasOutcome) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Outcome);
       }
       if (HasResponse) {
@@ -4730,10 +4894,10 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.RequestId.Length != 0) {
+      if (other.HasRequestId) {
         RequestId = other.RequestId;
       }
-      if (other.Outcome.Length != 0) {
+      if (other.HasOutcome) {
         Outcome = other.Outcome;
       }
       if (other.HasResponse) {
@@ -4900,14 +5064,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "agent_id" field.</summary>
     public const int AgentIdFieldNumber = 1;
-    private string agentId_ = "";
+    private readonly static string AgentIdDefaultValue = "";
+
+    private string agentId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string AgentId {
-      get { return agentId_; }
+      get { return agentId_ ?? AgentIdDefaultValue; }
       set {
         agentId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "agent_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAgentId {
+      get { return agentId_ != null; }
+    }
+    /// <summary>Clears the value of the "agent_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAgentId() {
+      agentId_ = null;
     }
 
     /// <summary>Field number for the "agent_type" field.</summary>
@@ -5039,7 +5217,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (AgentId.Length != 0) hash ^= AgentId.GetHashCode();
+      if (HasAgentId) hash ^= AgentId.GetHashCode();
       if (HasAgentType) hash ^= AgentType.GetHashCode();
       if (HasPrompt) hash ^= Prompt.GetHashCode();
       if (HasSubsessionStream) hash ^= SubsessionStream.GetHashCode();
@@ -5063,7 +5241,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         output.WriteRawTag(10);
         output.WriteString(AgentId);
       }
@@ -5094,7 +5272,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         output.WriteRawTag(10);
         output.WriteString(AgentId);
       }
@@ -5125,7 +5303,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(AgentId);
       }
       if (HasAgentType) {
@@ -5153,7 +5331,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.AgentId.Length != 0) {
+      if (other.HasAgentId) {
         AgentId = other.AgentId;
       }
       if (other.HasAgentType) {
@@ -5322,14 +5500,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "agent_id" field.</summary>
     public const int AgentIdFieldNumber = 1;
-    private string agentId_ = "";
+    private readonly static string AgentIdDefaultValue = "";
+
+    private string agentId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string AgentId {
-      get { return agentId_; }
+      get { return agentId_ ?? AgentIdDefaultValue; }
       set {
         agentId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "agent_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAgentId {
+      get { return agentId_ != null; }
+    }
+    /// <summary>Clears the value of the "agent_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAgentId() {
+      agentId_ = null;
     }
 
     /// <summary>Field number for the "outcome" field.</summary>
@@ -5434,7 +5626,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (AgentId.Length != 0) hash ^= AgentId.GetHashCode();
+      if (HasAgentId) hash ^= AgentId.GetHashCode();
       if (HasOutcome) hash ^= Outcome.GetHashCode();
       if (HasSummary) hash ^= Summary.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
@@ -5457,7 +5649,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         output.WriteRawTag(10);
         output.WriteString(AgentId);
       }
@@ -5484,7 +5676,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         output.WriteRawTag(10);
         output.WriteString(AgentId);
       }
@@ -5511,7 +5703,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (AgentId.Length != 0) {
+      if (HasAgentId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(AgentId);
       }
       if (HasOutcome) {
@@ -5536,7 +5728,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.AgentId.Length != 0) {
+      if (other.HasAgentId) {
         AgentId = other.AgentId;
       }
       if (other.HasOutcome) {
@@ -5692,14 +5884,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "fact" field.</summary>
     public const int FactFieldNumber = 1;
-    private string fact_ = "";
+    private readonly static string FactDefaultValue = "";
+
+    private string fact_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Fact {
-      get { return fact_; }
+      get { return fact_ ?? FactDefaultValue; }
       set {
         fact_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "fact" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasFact {
+      get { return fact_ != null; }
+    }
+    /// <summary>Clears the value of the "fact" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearFact() {
+      fact_ = null;
     }
 
     /// <summary>Field number for the "retained_at" field.</summary>
@@ -5750,7 +5956,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (Fact.Length != 0) hash ^= Fact.GetHashCode();
+      if (HasFact) hash ^= Fact.GetHashCode();
       if (retainedAt_ != null) hash ^= RetainedAt.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -5771,7 +5977,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (Fact.Length != 0) {
+      if (HasFact) {
         output.WriteRawTag(10);
         output.WriteString(Fact);
       }
@@ -5790,7 +5996,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Fact.Length != 0) {
+      if (HasFact) {
         output.WriteRawTag(10);
         output.WriteString(Fact);
       }
@@ -5809,7 +6015,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (Fact.Length != 0) {
+      if (HasFact) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Fact);
       }
       if (retainedAt_ != null) {
@@ -5828,7 +6034,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.Fact.Length != 0) {
+      if (other.HasFact) {
         Fact = other.Fact;
       }
       if (other.retainedAt_ != null) {
@@ -5921,6 +6127,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<ArtifactVersionCreated> _parser = new pb::MessageParser<ArtifactVersionCreated>(() => new ArtifactVersionCreated());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<ArtifactVersionCreated> Parser { get { return _parser; } }
@@ -5948,6 +6155,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ArtifactVersionCreated(ArtifactVersionCreated other) : this() {
+      _hasBits0 = other._hasBits0;
       version_ = other.version_;
       mimeType_ = other.mimeType_;
       inlineBytes_ = other.inlineBytes_;
@@ -5966,14 +6174,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "version" field.</summary>
     public const int VersionFieldNumber = 1;
+    private readonly static int VersionDefaultValue = 0;
+
     private int version_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int Version {
-      get { return version_; }
+      get { if ((_hasBits0 & 1) != 0) { return version_; } else { return VersionDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         version_ = value;
       }
+    }
+    /// <summary>Gets whether the "version" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasVersion {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "version" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearVersion() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "mime_type" field.</summary>
@@ -6008,7 +6231,7 @@ namespace Kurrent.Agent.Schema.Events {
 
     private pb::ByteString inlineBytes_;
     /// <summary>
-    /// base64 in JSON; absent when null
+    /// base64 in JSON; omitted when not set
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -6121,7 +6344,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (Version != 0) hash ^= Version.GetHashCode();
+      if (HasVersion) hash ^= Version.GetHashCode();
       if (HasMimeType) hash ^= MimeType.GetHashCode();
       if (HasInlineBytes) hash ^= InlineBytes.GetHashCode();
       if (HasCanonicalUri) hash ^= CanonicalUri.GetHashCode();
@@ -6146,7 +6369,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (Version != 0) {
+      if (HasVersion) {
         output.WriteRawTag(8);
         output.WriteInt32(Version);
       }
@@ -6181,7 +6404,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Version != 0) {
+      if (HasVersion) {
         output.WriteRawTag(8);
         output.WriteInt32(Version);
       }
@@ -6216,7 +6439,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (Version != 0) {
+      if (HasVersion) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(Version);
       }
       if (HasMimeType) {
@@ -6247,7 +6470,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.Version != 0) {
+      if (other.HasVersion) {
         Version = other.Version;
       }
       if (other.HasMimeType) {
@@ -6436,38 +6659,80 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "session_id" field.</summary>
     public const int SessionIdFieldNumber = 1;
-    private string sessionId_ = "";
+    private readonly static string SessionIdDefaultValue = "";
+
+    private string sessionId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string SessionId {
-      get { return sessionId_; }
+      get { return sessionId_ ?? SessionIdDefaultValue; }
       set {
         sessionId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "session_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSessionId {
+      get { return sessionId_ != null; }
+    }
+    /// <summary>Clears the value of the "session_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSessionId() {
+      sessionId_ = null;
+    }
 
     /// <summary>Field number for the "scorer" field.</summary>
     public const int ScorerFieldNumber = 2;
-    private string scorer_ = "";
+    private readonly static string ScorerDefaultValue = "";
+
+    private string scorer_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Scorer {
-      get { return scorer_; }
+      get { return scorer_ ?? ScorerDefaultValue; }
       set {
         scorer_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "scorer" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasScorer {
+      get { return scorer_ != null; }
+    }
+    /// <summary>Clears the value of the "scorer" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearScorer() {
+      scorer_ = null;
+    }
 
     /// <summary>Field number for the "criteria" field.</summary>
     public const int CriteriaFieldNumber = 3;
-    private string criteria_ = "";
+    private readonly static string CriteriaDefaultValue = "";
+
+    private string criteria_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Criteria {
-      get { return criteria_; }
+      get { return criteria_ ?? CriteriaDefaultValue; }
       set {
         criteria_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "criteria" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCriteria {
+      get { return criteria_ != null; }
+    }
+    /// <summary>Clears the value of the "criteria" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCriteria() {
+      criteria_ = null;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -6520,9 +6785,9 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (SessionId.Length != 0) hash ^= SessionId.GetHashCode();
-      if (Scorer.Length != 0) hash ^= Scorer.GetHashCode();
-      if (Criteria.Length != 0) hash ^= Criteria.GetHashCode();
+      if (HasSessionId) hash ^= SessionId.GetHashCode();
+      if (HasScorer) hash ^= Scorer.GetHashCode();
+      if (HasCriteria) hash ^= Criteria.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
       if (_unknownFields != null) {
@@ -6543,15 +6808,15 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (Scorer.Length != 0) {
+      if (HasScorer) {
         output.WriteRawTag(18);
         output.WriteString(Scorer);
       }
-      if (Criteria.Length != 0) {
+      if (HasCriteria) {
         output.WriteRawTag(26);
         output.WriteString(Criteria);
       }
@@ -6570,15 +6835,15 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (Scorer.Length != 0) {
+      if (HasScorer) {
         output.WriteRawTag(18);
         output.WriteString(Scorer);
       }
-      if (Criteria.Length != 0) {
+      if (HasCriteria) {
         output.WriteRawTag(26);
         output.WriteString(Criteria);
       }
@@ -6597,13 +6862,13 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(SessionId);
       }
-      if (Scorer.Length != 0) {
+      if (HasScorer) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Scorer);
       }
-      if (Criteria.Length != 0) {
+      if (HasCriteria) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Criteria);
       }
       if (timestamp_ != null) {
@@ -6622,13 +6887,13 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.SessionId.Length != 0) {
+      if (other.HasSessionId) {
         SessionId = other.SessionId;
       }
-      if (other.Scorer.Length != 0) {
+      if (other.HasScorer) {
         Scorer = other.Scorer;
       }
-      if (other.Criteria.Length != 0) {
+      if (other.HasCriteria) {
         Criteria = other.Criteria;
       }
       if (other.timestamp_ != null) {
@@ -6737,6 +7002,7 @@ namespace Kurrent.Agent.Schema.Events {
   {
     private static readonly pb::MessageParser<TurnScored> _parser = new pb::MessageParser<TurnScored>(() => new TurnScored());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TurnScored> Parser { get { return _parser; } }
@@ -6764,6 +7030,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TurnScored(TurnScored other) : this() {
+      _hasBits0 = other._hasBits0;
       sessionId_ = other.sessionId_;
       turnIndex_ = other.turnIndex_;
       input_ = other.input_;
@@ -6784,26 +7051,55 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "session_id" field.</summary>
     public const int SessionIdFieldNumber = 1;
-    private string sessionId_ = "";
+    private readonly static string SessionIdDefaultValue = "";
+
+    private string sessionId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string SessionId {
-      get { return sessionId_; }
+      get { return sessionId_ ?? SessionIdDefaultValue; }
       set {
         sessionId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "session_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSessionId {
+      get { return sessionId_ != null; }
+    }
+    /// <summary>Clears the value of the "session_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSessionId() {
+      sessionId_ = null;
+    }
 
     /// <summary>Field number for the "turn_index" field.</summary>
     public const int TurnIndexFieldNumber = 2;
+    private readonly static int TurnIndexDefaultValue = 0;
+
     private int turnIndex_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int TurnIndex {
-      get { return turnIndex_; }
+      get { if ((_hasBits0 & 1) != 0) { return turnIndex_; } else { return TurnIndexDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         turnIndex_ = value;
       }
+    }
+    /// <summary>Gets whether the "turn_index" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasTurnIndex {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "turn_index" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearTurnIndex() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "input" field.</summary>
@@ -6860,14 +7156,29 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "score" field.</summary>
     public const int ScoreFieldNumber = 5;
+    private readonly static double ScoreDefaultValue = 0D;
+
     private double score_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public double Score {
-      get { return score_; }
+      get { if ((_hasBits0 & 2) != 0) { return score_; } else { return ScoreDefaultValue; } }
       set {
+        _hasBits0 |= 2;
         score_ = value;
       }
+    }
+    /// <summary>Gets whether the "score" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasScore {
+      get { return (_hasBits0 & 2) != 0; }
+    }
+    /// <summary>Clears the value of the "score" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearScore() {
+      _hasBits0 &= ~2;
     }
 
     /// <summary>Field number for the "score_label" field.</summary>
@@ -6976,11 +7287,11 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (SessionId.Length != 0) hash ^= SessionId.GetHashCode();
-      if (TurnIndex != 0) hash ^= TurnIndex.GetHashCode();
+      if (HasSessionId) hash ^= SessionId.GetHashCode();
+      if (HasTurnIndex) hash ^= TurnIndex.GetHashCode();
       if (HasInput) hash ^= Input.GetHashCode();
       if (HasOutput) hash ^= Output.GetHashCode();
-      if (Score != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Score);
+      if (HasScore) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Score);
       if (HasScoreLabel) hash ^= ScoreLabel.GetHashCode();
       if (HasReason) hash ^= Reason.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
@@ -7003,11 +7314,11 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (TurnIndex != 0) {
+      if (HasTurnIndex) {
         output.WriteRawTag(16);
         output.WriteInt32(TurnIndex);
       }
@@ -7019,7 +7330,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteString(Output);
       }
-      if (Score != 0D) {
+      if (HasScore) {
         output.WriteRawTag(41);
         output.WriteDouble(Score);
       }
@@ -7046,11 +7357,11 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (TurnIndex != 0) {
+      if (HasTurnIndex) {
         output.WriteRawTag(16);
         output.WriteInt32(TurnIndex);
       }
@@ -7062,7 +7373,7 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(34);
         output.WriteString(Output);
       }
-      if (Score != 0D) {
+      if (HasScore) {
         output.WriteRawTag(41);
         output.WriteDouble(Score);
       }
@@ -7089,10 +7400,10 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(SessionId);
       }
-      if (TurnIndex != 0) {
+      if (HasTurnIndex) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(TurnIndex);
       }
       if (HasInput) {
@@ -7101,7 +7412,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasOutput) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Output);
       }
-      if (Score != 0D) {
+      if (HasScore) {
         size += 1 + 8;
       }
       if (HasScoreLabel) {
@@ -7126,10 +7437,10 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.SessionId.Length != 0) {
+      if (other.HasSessionId) {
         SessionId = other.SessionId;
       }
-      if (other.TurnIndex != 0) {
+      if (other.HasTurnIndex) {
         TurnIndex = other.TurnIndex;
       }
       if (other.HasInput) {
@@ -7138,7 +7449,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other.HasOutput) {
         Output = other.Output;
       }
-      if (other.Score != 0D) {
+      if (other.HasScore) {
         Score = other.Score;
       }
       if (other.HasScoreLabel) {
@@ -7331,38 +7642,82 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "session_id" field.</summary>
     public const int SessionIdFieldNumber = 1;
-    private string sessionId_ = "";
+    private readonly static string SessionIdDefaultValue = "";
+
+    private string sessionId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string SessionId {
-      get { return sessionId_; }
+      get { return sessionId_ ?? SessionIdDefaultValue; }
       set {
         sessionId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "session_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSessionId {
+      get { return sessionId_ != null; }
+    }
+    /// <summary>Clears the value of the "session_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSessionId() {
+      sessionId_ = null;
+    }
 
     /// <summary>Field number for the "turns_scored" field.</summary>
     public const int TurnsScoredFieldNumber = 2;
+    private readonly static int TurnsScoredDefaultValue = 0;
+
     private int turnsScored_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int TurnsScored {
-      get { return turnsScored_; }
+      get { if ((_hasBits0 & 1) != 0) { return turnsScored_; } else { return TurnsScoredDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         turnsScored_ = value;
       }
+    }
+    /// <summary>Gets whether the "turns_scored" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasTurnsScored {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "turns_scored" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearTurnsScored() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "average_score" field.</summary>
     public const int AverageScoreFieldNumber = 3;
+    private readonly static double AverageScoreDefaultValue = 0D;
+
     private double averageScore_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public double AverageScore {
-      get { return averageScore_; }
+      get { if ((_hasBits0 & 2) != 0) { return averageScore_; } else { return AverageScoreDefaultValue; } }
       set {
+        _hasBits0 |= 2;
         averageScore_ = value;
       }
+    }
+    /// <summary>Gets whether the "average_score" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAverageScore {
+      get { return (_hasBits0 & 2) != 0; }
+    }
+    /// <summary>Clears the value of the "average_score" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAverageScore() {
+      _hasBits0 &= ~2;
     }
 
     /// <summary>Field number for the "total_cost" field.</summary>
@@ -7373,9 +7728,9 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public double TotalCost {
-      get { if ((_hasBits0 & 1) != 0) { return totalCost_; } else { return TotalCostDefaultValue; } }
+      get { if ((_hasBits0 & 4) != 0) { return totalCost_; } else { return TotalCostDefaultValue; } }
       set {
-        _hasBits0 |= 1;
+        _hasBits0 |= 4;
         totalCost_ = value;
       }
     }
@@ -7383,13 +7738,13 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool HasTotalCost {
-      get { return (_hasBits0 & 1) != 0; }
+      get { return (_hasBits0 & 4) != 0; }
     }
     /// <summary>Clears the value of the "total_cost" field</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void ClearTotalCost() {
-      _hasBits0 &= ~1;
+      _hasBits0 &= ~4;
     }
 
     /// <summary>Field number for the "timestamp" field.</summary>
@@ -7443,9 +7798,9 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (SessionId.Length != 0) hash ^= SessionId.GetHashCode();
-      if (TurnsScored != 0) hash ^= TurnsScored.GetHashCode();
-      if (AverageScore != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AverageScore);
+      if (HasSessionId) hash ^= SessionId.GetHashCode();
+      if (HasTurnsScored) hash ^= TurnsScored.GetHashCode();
+      if (HasAverageScore) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AverageScore);
       if (HasTotalCost) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TotalCost);
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
       hash ^= Extensions.GetHashCode();
@@ -7467,15 +7822,15 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (TurnsScored != 0) {
+      if (HasTurnsScored) {
         output.WriteRawTag(16);
         output.WriteInt32(TurnsScored);
       }
-      if (AverageScore != 0D) {
+      if (HasAverageScore) {
         output.WriteRawTag(25);
         output.WriteDouble(AverageScore);
       }
@@ -7498,15 +7853,15 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         output.WriteRawTag(10);
         output.WriteString(SessionId);
       }
-      if (TurnsScored != 0) {
+      if (HasTurnsScored) {
         output.WriteRawTag(16);
         output.WriteInt32(TurnsScored);
       }
-      if (AverageScore != 0D) {
+      if (HasAverageScore) {
         output.WriteRawTag(25);
         output.WriteDouble(AverageScore);
       }
@@ -7529,13 +7884,13 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (SessionId.Length != 0) {
+      if (HasSessionId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(SessionId);
       }
-      if (TurnsScored != 0) {
+      if (HasTurnsScored) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(TurnsScored);
       }
-      if (AverageScore != 0D) {
+      if (HasAverageScore) {
         size += 1 + 8;
       }
       if (HasTotalCost) {
@@ -7557,13 +7912,13 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.SessionId.Length != 0) {
+      if (other.HasSessionId) {
         SessionId = other.SessionId;
       }
-      if (other.TurnsScored != 0) {
+      if (other.HasTurnsScored) {
         TurnsScored = other.TurnsScored;
       }
-      if (other.AverageScore != 0D) {
+      if (other.HasAverageScore) {
         AverageScore = other.AverageScore;
       }
       if (other.HasTotalCost) {

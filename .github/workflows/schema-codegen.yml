@@ -21,6 +21,9 @@ concurrency:
   group: schema-codegen-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  BUF_VERSION: '1.68.4'
+
 jobs:
   drift:
     name: Drift gate
@@ -30,7 +33,7 @@ jobs:
 
       - uses: bufbuild/buf-setup-action@v1
         with:
-          version: '1.68.4'
+          version: ${{ env.BUF_VERSION }}
 
       - name: Lint
         working-directory: schema
@@ -54,7 +57,7 @@ jobs:
 
       - uses: bufbuild/buf-setup-action@v1
         with:
-          version: '1.68.4'
+          version: ${{ env.BUF_VERSION }}
 
       - name: Check if schema baseline exists on main
         id: baseline
