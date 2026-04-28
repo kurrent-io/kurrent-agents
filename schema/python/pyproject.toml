@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kurrent-agent-schema"
-version = "0.2.1"
+version = "0.3.0"
 description = "Canonical event schema for Kurrent agent integrations (schema v2)"
 readme = "README.md"
 requires-python = ">=3.11"

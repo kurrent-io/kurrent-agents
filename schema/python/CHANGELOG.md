@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+- Migrate v2 protos from `proto3` to `edition = "2024"`. Edition 2024
+  makes EXPLICIT field presence the default, so every scalar field —
+  including ones that previously had implicit presence (`message_index`,
+  `version`, `score`, `encrypted`, …) — now exposes a `HasField()` /
+  `WhichOneof()` distinction between unset and zero. Wire format is
+  unchanged; field numbers, types, and names are identical.
+- Bump declared `protobuf` floor to `>= 6.32, < 8`. The previous
+  `>= 5.27` floor was a leftover from before the v32.1 codegen plugin
+  pin; the embedded `ValidateProtobufRuntimeVersion(6, 32, 1, ...)` call
+  has required `protobuf >= 6.32.1` at runtime since 0.2.1, so this just
+  makes the dependency declaration honest.
+
 ## 0.2.1
 
 - Regenerate Python gencode against the v32.1 buf plugin so the runtime

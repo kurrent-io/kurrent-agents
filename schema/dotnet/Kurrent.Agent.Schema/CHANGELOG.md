@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- Migrate v2 protos from `proto3` to `edition = "2024"`. Edition 2024
+  makes EXPLICIT field presence the default, so every scalar field —
+  including ones that previously had implicit presence (`MessageIndex`,
+  `Version`, `Score`, `Encrypted`, …) — now exposes `HasX` / `ClearX`
+  accessors. Wire format is unchanged; field numbers, types, and names
+  are identical, and existing consumer code keeps compiling against the
+  same property names.
+- Bump `Google.Protobuf` runtime floor to `3.34.1` (was `3.28.3`). This
+  is the runtime that pairs with protoc 34 / Edition 2024 generated
+  code. Consumers must update accordingly.
+
 ## 0.2.0
 
 **Breaking** (pre-1.0):
