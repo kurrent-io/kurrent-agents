@@ -25,24 +25,24 @@ namespace Kurrent.Agent.Schema.Events {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CiJrdXJyZW50L2FnZW50L3YyL3ZhbHVlX3R5cGVzLnByb3RvEhBrdXJyZW50",
-            "LmFnZW50LnYyGhxnb29nbGUvcHJvdG9idWYvc3RydWN0LnByb3RvIrkBCghU",
-            "b29sU3BlYxISCgRuYW1lGAEgASgJUgRuYW1lEiUKC2Rlc2NyaXB0aW9uGAIg",
-            "ASgJSABSC2Rlc2NyaXB0aW9uiAEBEjoKDGlucHV0X3NjaGVtYRgDIAEoCzIX",
-            "Lmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSC2lucHV0U2NoZW1hEhsKBnNvdXJj",
-            "ZRgEIAEoCUgBUgZzb3VyY2WIAQFCDgoMX2Rlc2NyaXB0aW9uQgkKB19zb3Vy",
-            "Y2Ui6QEKC0FnZW50Q29uZmlnEjAKBXRvb2xzGAEgAygLMhoua3VycmVudC5h",
-            "Z2VudC52Mi5Ub29sU3BlY1IFdG9vbHMSGAoHcGx1Z2lucxgCIAMoCVIHcGx1",
-            "Z2lucxJKChRjb252ZXJzYXRpb25fbWFuYWdlchgDIAEoCzIXLmdvb2dsZS5w",
-            "cm90b2J1Zi5TdHJ1Y3RSE2NvbnZlcnNhdGlvbk1hbmFnZXISQgoQbW9kZWxf",
-            "cGFyYW1ldGVycxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSD21v",
-            "ZGVsUGFyYW1ldGVycyJ7CgxUb29sQ2FsbEluZm8SFwoHY2FsbF9pZBgBIAEo",
-            "CVIGY2FsbElkEhsKCXRvb2xfbmFtZRgCIAEoCVIIdG9vbE5hbWUSNQoJYXJn",
-            "dW1lbnRzGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIJYXJndW1l",
-            "bnRzQh6qAhtLdXJyZW50LkFnZW50LlNjaGVtYS5FdmVudHNiBnByb3RvMw=="));
+            "LmFnZW50LnYyGhxnb29nbGUvcHJvdG9idWYvc3RydWN0LnByb3RvIpQBCghU",
+            "b29sU3BlYxISCgRuYW1lGAEgASgJUgRuYW1lEiAKC2Rlc2NyaXB0aW9uGAIg",
+            "ASgJUgtkZXNjcmlwdGlvbhI6CgxpbnB1dF9zY2hlbWEYAyABKAsyFy5nb29n",
+            "bGUucHJvdG9idWYuU3RydWN0UgtpbnB1dFNjaGVtYRIWCgZzb3VyY2UYBCAB",
+            "KAlSBnNvdXJjZSLpAQoLQWdlbnRDb25maWcSMAoFdG9vbHMYASADKAsyGi5r",
+            "dXJyZW50LmFnZW50LnYyLlRvb2xTcGVjUgV0b29scxIYCgdwbHVnaW5zGAIg",
+            "AygJUgdwbHVnaW5zEkoKFGNvbnZlcnNhdGlvbl9tYW5hZ2VyGAMgASgLMhcu",
+            "Z29vZ2xlLnByb3RvYnVmLlN0cnVjdFITY29udmVyc2F0aW9uTWFuYWdlchJC",
+            "ChBtb2RlbF9wYXJhbWV0ZXJzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0",
+            "cnVjdFIPbW9kZWxQYXJhbWV0ZXJzInsKDFRvb2xDYWxsSW5mbxIXCgdjYWxs",
+            "X2lkGAEgASgJUgZjYWxsSWQSGwoJdG9vbF9uYW1lGAIgASgJUgh0b29sTmFt",
+            "ZRI1Cglhcmd1bWVudHMYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0",
+            "Uglhcmd1bWVudHNCHqoCG0t1cnJlbnQuQWdlbnQuU2NoZW1hLkV2ZW50c2II",
+            "ZWRpdGlvbnNw6Qc="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolSpec), global::Kurrent.Agent.Schema.Events.ToolSpec.Parser, new[]{ "Name", "Description", "InputSchema", "Source" }, new[]{ "Description", "Source" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolSpec), global::Kurrent.Agent.Schema.Events.ToolSpec.Parser, new[]{ "Name", "Description", "InputSchema", "Source" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AgentConfig), global::Kurrent.Agent.Schema.Events.AgentConfig.Parser, new[]{ "Tools", "Plugins", "ConversationManager", "ModelParameters" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolCallInfo), global::Kurrent.Agent.Schema.Events.ToolCallInfo.Parser, new[]{ "CallId", "ToolName", "Arguments" }, null, null, null, null)
           }));
@@ -104,14 +104,28 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "name" field.</summary>
     public const int NameFieldNumber = 1;
-    private string name_ = "";
+    private readonly static string NameDefaultValue = "";
+
+    private string name_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
-      get { return name_; }
+      get { return name_ ?? NameDefaultValue; }
       set {
         name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "name" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasName {
+      get { return name_ != null; }
+    }
+    /// <summary>Clears the value of the "name" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearName() {
+      name_ = null;
     }
 
     /// <summary>Field number for the "description" field.</summary>
@@ -208,7 +222,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (HasName) hash ^= Name.GetHashCode();
       if (HasDescription) hash ^= Description.GetHashCode();
       if (inputSchema_ != null) hash ^= InputSchema.GetHashCode();
       if (HasSource) hash ^= Source.GetHashCode();
@@ -230,7 +244,7 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (Name.Length != 0) {
+      if (HasName) {
         output.WriteRawTag(10);
         output.WriteString(Name);
       }
@@ -256,7 +270,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Name.Length != 0) {
+      if (HasName) {
         output.WriteRawTag(10);
         output.WriteString(Name);
       }
@@ -282,7 +296,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (Name.Length != 0) {
+      if (HasName) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
       }
       if (HasDescription) {
@@ -306,7 +320,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.Name.Length != 0) {
+      if (other.HasName) {
         Name = other.Name;
       }
       if (other.HasDescription) {
@@ -770,26 +784,54 @@ namespace Kurrent.Agent.Schema.Events {
 
     /// <summary>Field number for the "call_id" field.</summary>
     public const int CallIdFieldNumber = 1;
-    private string callId_ = "";
+    private readonly static string CallIdDefaultValue = "";
+
+    private string callId_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string CallId {
-      get { return callId_; }
+      get { return callId_ ?? CallIdDefaultValue; }
       set {
         callId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
+    /// <summary>Gets whether the "call_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCallId {
+      get { return callId_ != null; }
+    }
+    /// <summary>Clears the value of the "call_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCallId() {
+      callId_ = null;
+    }
 
     /// <summary>Field number for the "tool_name" field.</summary>
     public const int ToolNameFieldNumber = 2;
-    private string toolName_ = "";
+    private readonly static string ToolNameDefaultValue = "";
+
+    private string toolName_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string ToolName {
-      get { return toolName_; }
+      get { return toolName_ ?? ToolNameDefaultValue; }
       set {
         toolName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
+    }
+    /// <summary>Gets whether the "tool_name" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasToolName {
+      get { return toolName_ != null; }
+    }
+    /// <summary>Clears the value of the "tool_name" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearToolName() {
+      toolName_ = null;
     }
 
     /// <summary>Field number for the "arguments" field.</summary>
@@ -833,8 +875,8 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (CallId.Length != 0) hash ^= CallId.GetHashCode();
-      if (ToolName.Length != 0) hash ^= ToolName.GetHashCode();
+      if (HasCallId) hash ^= CallId.GetHashCode();
+      if (HasToolName) hash ^= ToolName.GetHashCode();
       if (arguments_ != null) hash ^= Arguments.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -854,11 +896,11 @@ namespace Kurrent.Agent.Schema.Events {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         output.WriteRawTag(10);
         output.WriteString(CallId);
       }
-      if (ToolName.Length != 0) {
+      if (HasToolName) {
         output.WriteRawTag(18);
         output.WriteString(ToolName);
       }
@@ -876,11 +918,11 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         output.WriteRawTag(10);
         output.WriteString(CallId);
       }
-      if (ToolName.Length != 0) {
+      if (HasToolName) {
         output.WriteRawTag(18);
         output.WriteString(ToolName);
       }
@@ -898,10 +940,10 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (CallId.Length != 0) {
+      if (HasCallId) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(CallId);
       }
-      if (ToolName.Length != 0) {
+      if (HasToolName) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(ToolName);
       }
       if (arguments_ != null) {
@@ -919,10 +961,10 @@ namespace Kurrent.Agent.Schema.Events {
       if (other == null) {
         return;
       }
-      if (other.CallId.Length != 0) {
+      if (other.HasCallId) {
         CallId = other.CallId;
       }
-      if (other.ToolName.Length != 0) {
+      if (other.HasToolName) {
         ToolName = other.ToolName;
       }
       if (other.arguments_ != null) {
