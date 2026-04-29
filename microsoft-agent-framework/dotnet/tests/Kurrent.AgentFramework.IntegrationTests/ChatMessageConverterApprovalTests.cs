@@ -6,8 +6,8 @@ using Microsoft.Extensions.AI;
 namespace Kurrent.AgentFramework.IntegrationTests;
 
 public class ChatMessageConverterApprovalTests {
-    static readonly DateTimeOffset Ts  = new(2026, 4, 29, 12, 0, 0, TimeSpan.Zero);
-    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
+    static readonly DateTimeOffset Ts = new(2026, 4, 29, 12, 0, 0, TimeSpan.Zero);
+
     [Test]
     public async Task BuildApprovalPrompt_SimpleArgs_RendersArgpacked() {
         var fc = new FunctionCallContent("call-1", "send_email",
