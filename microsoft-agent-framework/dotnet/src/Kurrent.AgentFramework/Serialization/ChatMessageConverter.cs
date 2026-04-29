@@ -14,68 +14,101 @@ public static class ChatMessageConverter {
     /// Decompose a ChatMessage into one or more typed domain events.
     /// </summary>
     public static IEnumerable<object> ToEvents(ChatMessage message, int messageIndex, DateTimeOffset timestamp) {
+        if (message.Role == ChatRole.User)      return ToUserEvents(message, messageIndex, timestamp);
+        if (message.Role == ChatRole.Assistant) return ToAssistantEvents(message, messageIndex, timestamp);
+        if (message.Role == ChatRole.Tool)      return ToToolEvents(message, messageIndex, timestamp);
+        return [];
+    }
+
+    static IEnumerable<object> ToUserEvents(ChatMessage message, int messageIndex, DateTimeOffset timestamp) {
         var msgId   = message.MessageId;
         var author  = message.AuthorName;
         var created = message.CreatedAt;
 
-        if (message.Role == ChatRole.User) {
+        if (message.Text is { Length: > 0 } text) {
             var evt = new UserMessageReceived {
+                Content      = text,
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (message.Text is { } text) evt.Content    = text;
-            if (msgId       is not null)  evt.MessageId  = msgId;
-            if (author      is not null)  evt.AuthorName = author;
-            if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (msgId   is not null) evt.MessageId  = msgId;
+            if (author  is not null) evt.AuthorName = author;
+            if (created is { } c)    evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
             yield return evt;
-            yield break;
+        }
+    }
+
+    static IEnumerable<object> ToAssistantEvents(ChatMessage message, int messageIndex, DateTimeOffset timestamp) {
+        var msgId   = message.MessageId;
+        var author  = message.AuthorName;
+        var created = message.CreatedAt;
+        var text    = message.Text;
+
+        var functionCalls = message.Contents.OfType<FunctionCallContent>().ToList();
+        var approvals     = message.Contents.OfType<ToolApprovalRequestContent>().ToList();
+
+        if (functionCalls.Count > 0) {
+            var evt = new AssistantToolCallsGenerated {
+                MessageIndex = messageIndex,
+                Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+            };
+            evt.ToolCalls.AddRange(functionCalls.Select(BuildToolCallInfo));
+            if (text    is { Length: > 0 } t) evt.Content    = t;
+            if (msgId   is not null)          evt.MessageId  = msgId;
+            if (author  is not null)          evt.AuthorName = author;
+            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            yield return evt;
+        } else if (text is { Length: > 0 } t) {
+            var evt = new AssistantTextGenerated {
+                Content      = t,
+                MessageIndex = messageIndex,
+                Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+            };
+            if (msgId   is not null) evt.MessageId  = msgId;
+            if (author  is not null) evt.AuthorName = author;
+            if (created is { } c)    evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            yield return evt;
         }
 
-        if (message.Role == ChatRole.Assistant) {
-            var functionCalls = message.Contents
-                .OfType<FunctionCallContent>()
-                .ToList();
-
-            if (functionCalls.Count > 0) {
-                var evt = new AssistantToolCallsGenerated {
-                    MessageIndex = messageIndex,
-                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
-                };
-                evt.ToolCalls.AddRange(functionCalls.Select(BuildToolCallInfo));
-                if (message.Text is { } text) evt.Content    = text;
-                if (msgId       is not null)  evt.MessageId  = msgId;
-                if (author      is not null)  evt.AuthorName = author;
-                if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
-                yield return evt;
-            } else {
-                var evt = new AssistantTextGenerated {
-                    MessageIndex = messageIndex,
-                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
-                };
-                if (message.Text is { } text) evt.Content    = text;
-                if (msgId       is not null)  evt.MessageId  = msgId;
-                if (author      is not null)  evt.AuthorName = author;
-                if (created     is { } c)     evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
-                yield return evt;
-            }
-
-            yield break;
+        foreach (var approval in approvals) {
+            yield return BuildInterruptIssued(approval, message, timestamp);
         }
+    }
 
-        if (message.Role == ChatRole.Tool) {
-            foreach (var result in message.Contents.OfType<FunctionResultContent>()) {
-                var evt = new ToolResultReceived {
-                    CallId       = result.CallId ?? "",
-                    MessageIndex = messageIndex,
-                    Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
-                };
-                if (result.Result?.ToString() is { } r) evt.Result     = r;
-                if (msgId   is not null)                evt.MessageId  = msgId;
-                if (author  is not null)                evt.AuthorName = author;
-                if (created is { } c)                   evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
-                yield return evt;
-            }
+    static IEnumerable<object> ToToolEvents(ChatMessage message, int messageIndex, DateTimeOffset timestamp) {
+        var msgId   = message.MessageId;
+        var author  = message.AuthorName;
+        var created = message.CreatedAt;
+
+        foreach (var result in message.Contents.OfType<FunctionResultContent>()) {
+            var evt = new ToolResultReceived {
+                CallId       = result.CallId ?? "",
+                MessageIndex = messageIndex,
+                Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
+            };
+            if (result.Result?.ToString() is { } r) evt.Result     = r;
+            if (msgId   is not null)                evt.MessageId  = msgId;
+            if (author  is not null)                evt.AuthorName = author;
+            if (created is { } c)                   evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            yield return evt;
         }
+    }
+
+    static InterruptIssued BuildInterruptIssued(ToolApprovalRequestContent ta, ChatMessage carrier, DateTimeOffset ts) {
+        var tc  = ta.ToolCall;
+        var fc  = tc as FunctionCallContent;
+        var evt = new InterruptIssued {
+            RequestId = tc.CallId ?? "",
+            Kind      = "approval",
+            Prompt    = fc is not null ? BuildApprovalPrompt(fc) : $"Approve calling {tc.CallId}?",
+            Timestamp = Timestamp.FromDateTimeOffset(ts),
+        };
+        if (fc is not null && !string.IsNullOrEmpty(fc.Name)) evt.ToolName  = fc.Name;
+        if (carrier.MessageId is { } mid)                     evt.MessageId = mid;
+        evt.Extensions["afw"] = fc is not null
+            ? BuildAfwInterruptExtension(fc, ta.RequestId)
+            : new Struct();
+        return evt;
     }
 
     /// <summary>

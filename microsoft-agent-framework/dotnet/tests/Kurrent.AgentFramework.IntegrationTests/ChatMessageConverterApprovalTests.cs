@@ -1,10 +1,13 @@
 using Google.Protobuf.WellKnownTypes;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using Microsoft.Extensions.AI;
 
 namespace Kurrent.AgentFramework.IntegrationTests;
 
 public class ChatMessageConverterApprovalTests {
+    static readonly DateTimeOffset Ts  = new(2026, 4, 29, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
     [Test]
     public async Task BuildApprovalPrompt_SimpleArgs_RendersArgpacked() {
         var fc = new FunctionCallContent("call-1", "send_email",
@@ -77,5 +80,81 @@ public class ChatMessageConverterApprovalTests {
         await Assert.That(proposed.Fields["id"].StringValue).IsEqualTo("call-1");
         await Assert.That(proposed.Fields["name"].StringValue).IsEqualTo("ping");
         await Assert.That(proposed.Fields["arguments"].StructValue.Fields.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ToEvents_AssistantTextAndApproval_EmitsTextAndInterrupt() {
+        var fc = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var msg = new ChatMessage(ChatRole.Assistant, [
+            new TextContent("Drafting an email — needs your approval."),
+            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+        ]) { MessageId = "asst-msg-1" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        await Assert.That(events.Count).IsEqualTo(2);
+
+        var text = await Assert.That(events[0]).IsTypeOf<AssistantTextGenerated>();
+        await Assert.That(text!.Content).IsEqualTo("Drafting an email — needs your approval.");
+        await Assert.That(text.MessageId).IsEqualTo("asst-msg-1");
+
+        var ii = await Assert.That(events[1]).IsTypeOf<InterruptIssued>();
+        await Assert.That(ii!.RequestId).IsEqualTo("call-1");
+        await Assert.That(ii.Kind).IsEqualTo("approval");
+        await Assert.That(ii.ToolName).IsEqualTo("send_email");
+        await Assert.That(ii.MessageId).IsEqualTo("asst-msg-1");
+        await Assert.That(ii.Prompt.StartsWith("Approve calling send_email(")).IsTrue();
+        await Assert.That(ii.Extensions["afw"].Fields["interrupt"].StructValue
+            .Fields["proposed_call"].StructValue.Fields["name"].StringValue).IsEqualTo("send_email");
+    }
+
+    [Test]
+    public async Task ToEvents_AssistantApprovalOnly_SuppressesTextEvent() {
+        var fc  = new FunctionCallContent("call-1", "ping", arguments: null);
+        var msg = new ChatMessage(ChatRole.Assistant, [
+            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+        ]) { MessageId = "asst-msg-2" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        await Assert.That(events).HasSingleItem();
+        await Assert.That(events[0]).IsTypeOf<InterruptIssued>();
+    }
+
+    [Test]
+    public async Task ToEvents_AssistantMixedToolsAndApprovals_BothEmitted() {
+        var fc       = new FunctionCallContent("call-1", "lookup", arguments: null);
+        var approval = new ToolApprovalRequestContent(requestId: "call-2",
+            toolCall: new FunctionCallContent("call-2", "delete", arguments: null));
+        var msg = new ChatMessage(ChatRole.Assistant, [
+            new TextContent("Looking up; will need approval to delete."),
+            fc,
+            approval,
+        ]) { MessageId = "asst-msg-3" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        await Assert.That(events.Count).IsEqualTo(2);
+        var tools = await Assert.That(events[0]).IsTypeOf<AssistantToolCallsGenerated>();
+        await Assert.That(tools!.ToolCalls.Count).IsEqualTo(1);
+        await Assert.That(tools.ToolCalls[0].CallId).IsEqualTo("call-1");
+
+        var ii = await Assert.That(events[1]).IsTypeOf<InterruptIssued>();
+        await Assert.That(ii!.RequestId).IsEqualTo("call-2");
+    }
+
+    [Test]
+    public async Task ToEvents_ApprovalPairIdDifferent_StashedInExtensions() {
+        var fc  = new FunctionCallContent("call-1", "ping", arguments: null);
+        var msg = new ChatMessage(ChatRole.Assistant, [
+            new ToolApprovalRequestContent(requestId: "approval-pair-9", toolCall: fc),
+        ]) { MessageId = "asst-msg-4" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        var ii = (InterruptIssued)events.Single();
+        var interrupt = ii.Extensions["afw"].Fields["interrupt"].StructValue;
+        await Assert.That(interrupt.Fields["approval_pair_id"].StringValue).IsEqualTo("approval-pair-9");
     }
 }
