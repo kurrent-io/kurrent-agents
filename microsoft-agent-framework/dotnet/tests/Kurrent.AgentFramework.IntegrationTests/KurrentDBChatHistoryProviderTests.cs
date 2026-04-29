@@ -4,6 +4,7 @@ using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.ChatHistory;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
+using Microsoft.Extensions.AI;
 
 namespace Kurrent.AgentFramework.IntegrationTests;
 
@@ -106,5 +107,42 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(client, sessionId);
 
         await Assert.That(next).IsEqualTo(6);
+    }
+
+    [Test]
+    public async Task ApprovalRequestRoundTripsThroughKurrentDB() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+        var streamName   = StreamNames.AgentSession(sessionId);
+        var now          = DateTimeOffset.UtcNow;
+
+        var fc       = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var approval = new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc);
+        var carrier  = new ChatMessage(ChatRole.Assistant, [
+            new TextContent("Drafting…"),
+            approval,
+        ]) { MessageId = "asst-msg-1" };
+
+        var events = ChatMessageConverter.ToEvents(carrier, messageIndex: 0, timestamp: now)
+            .Select(e => EventSerializer.Serialize(e))
+            .ToArray();
+        await client.AppendToStreamAsync(streamName, StreamState.NoStream, events);
+
+        // Read back via the converter path the provider uses internally — same grouping, same merge.
+        var resolved = new List<object>();
+        await foreach (var re in client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start)) {
+            if (EventSerializer.Deserialize(re) is { } e) resolved.Add(e);
+        }
+
+        var issued   = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+        var rebuilt  = ChatMessageConverter.MergeIntoChatMessage(resolved, issued);
+
+        await Assert.That(rebuilt).IsNotNull();
+        await Assert.That(rebuilt!.Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(rebuilt.MessageId).IsEqualTo("asst-msg-1");
+        await Assert.That(rebuilt.Contents.OfType<TextContent>().Single().Text).IsEqualTo("Drafting…");
+        await Assert.That(((FunctionCallContent)rebuilt.Contents.OfType<ToolApprovalRequestContent>().Single()
+            .ToolCall).Name).IsEqualTo("send_email");
     }
 }

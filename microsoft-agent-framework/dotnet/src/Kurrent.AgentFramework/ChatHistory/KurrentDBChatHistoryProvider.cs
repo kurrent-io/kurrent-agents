@@ -36,6 +36,8 @@ public sealed class KurrentDBChatHistoryProvider(
 
     /// <summary>
     /// Load conversation history from the KurrentDB stream.
+    /// Events that share a message_id are grouped and merged into a single ChatMessage,
+    /// allowing multi-block messages (e.g. text + approval request) to round-trip correctly.
     /// </summary>
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(
             InvokingContext   context,
@@ -47,6 +49,10 @@ public sealed class KurrentDBChatHistoryProvider(
         var messages = new List<ChatMessage>();
         var maxIndex = -1;
 
+        var groups        = new List<List<object>>();
+        var byMessageId   = new Dictionary<string, int>();
+        var issuedByReqId = new Dictionary<string, InterruptIssued>();
+
         try {
             var result = client.ReadStreamAsync(
                 Direction.Forwards,
@@ -56,23 +62,32 @@ public sealed class KurrentDBChatHistoryProvider(
             );
 
             await foreach (var resolvedEvent in result.ConfigureAwait(false)) {
-                _sessionStarted = true; // stream exists, session was already started
+                _sessionStarted = true;
 
                 var domainEvent = EventSerializer.Deserialize(resolvedEvent);
-
                 if (domainEvent is null) continue;
 
                 var idx = GetMessageIndex(domainEvent);
                 if (idx > maxIndex) maxIndex = idx;
 
-                var chatMessage = ChatMessageConverter.ToChatMessage(domainEvent);
+                if (domainEvent is InterruptIssued ii) issuedByReqId[ii.RequestId] = ii;
 
-                if (chatMessage is not null) {
-                    messages.Add(chatMessage);
+                var key = GetGroupingKey(domainEvent);
+                if (key is { } k && byMessageId.TryGetValue(k, out var gi)) {
+                    groups[gi].Add(domainEvent);
+                } else {
+                    groups.Add([domainEvent]);
+                    if (key is not null) byMessageId[key] = groups.Count - 1;
                 }
             }
         } catch (StreamNotFoundException) {
             // First interaction — no history yet
+        }
+
+        foreach (var group in groups) {
+            if (ChatMessageConverter.MergeIntoChatMessage(group, issuedByReqId) is { } chatMessage) {
+                messages.Add(chatMessage);
+            }
         }
 
         // Seed monotonic message_index for the next Store call (continues across
@@ -209,6 +224,17 @@ public sealed class KurrentDBChatHistoryProvider(
         AssistantThinkingGenerated x  => x.MessageIndex,
         ToolResultReceived x          => x.MessageIndex,
         _                             => -1,
+    };
+
+    static string? GetGroupingKey(object domainEvent) => domainEvent switch {
+        UserMessageReceived         x => x.HasMessageId ? x.MessageId : null,
+        AssistantTextGenerated      x => x.HasMessageId ? x.MessageId : null,
+        AssistantToolCallsGenerated x => x.HasMessageId ? x.MessageId : null,
+        AssistantThinkingGenerated  x => x.HasMessageId ? x.MessageId : null,
+        ToolResultReceived          x => x.HasMessageId ? x.MessageId : null,
+        InterruptIssued             x => x.HasMessageId ? x.MessageId : null,
+        InterruptResolved           x => x.HasMessageId ? x.MessageId : null,
+        _                             => null,
     };
 
     static Dictionary<string, object?>? ToMetadata(AdditionalPropertiesDictionary? props) =>
