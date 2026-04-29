@@ -22,6 +22,8 @@ from google.protobuf.struct_pb2 import Struct
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     AssistantToolCallsGenerated,
+    InterruptIssued,
+    InterruptResolved,
     SessionEnded,
     SessionStarted,
     ToolCallInfo,
@@ -209,40 +211,63 @@ def _message_to_events(
     message_index: int,
     timestamp: datetime,
 ) -> Iterable[ProtoMessage]:
-    """Decompose a ``Message`` into one or more canonical events."""
+    """Decompose a ``Message`` into one or more canonical events.
+
+    Approval content blocks (``function_approval_request`` /
+    ``function_approval_response``) are decomposed into ``InterruptIssued`` /
+    ``InterruptResolved`` events that share ``message_id`` with the carrier
+    message. Approval-only turns still emit a content-less
+    ``AssistantTextGenerated`` / ``UserMessageReceived`` marker so
+    ``message_index`` continuity is preserved across stream rehydration; the
+    read path filters empty content and the rebuilt ``Message`` carries only
+    the approval content blocks. See SCHEMA_v2 §3.3 and
+    ``docs/superpowers/specs/2026-04-29-maf-tool-approval-interrupts-design.md``.
+    """
     msg_id = message.message_id
     author = message.author_name
     role = message.role
 
     if role == "user":
-        yield UserMessageReceived(
-            content=message.text,
-            message_id=msg_id,
-            author_name=author,
-            message_index=message_index,
-            timestamp=timestamp,
-        )
+        responses = [c for c in message.contents if c.type == "function_approval_response"]
+
+        if message.text or responses:
+            evt = UserMessageReceived(
+                content=message.text or None,
+                message_id=msg_id,
+                author_name=author,
+                message_index=message_index,
+                timestamp=timestamp,
+            )
+            yield evt
+
+        for response in responses:
+            yield _build_interrupt_resolved(response, message, timestamp)
         return
 
     if role == "assistant":
         tool_calls = [_build_tool_call_info(c) for c in message.contents if c.type == "function_call"]
+        approvals = [c for c in message.contents if c.type == "function_approval_request"]
+
         if tool_calls:
             yield AssistantToolCallsGenerated(
                 tool_calls=tool_calls,
-                content=message.text,
+                content=message.text or None,
                 message_id=msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
             )
-        else:
+        elif message.text or approvals:
             yield AssistantTextGenerated(
-                content=message.text,
+                content=message.text or None,
                 message_id=msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
             )
+
+        for approval in approvals:
+            yield _build_interrupt_issued(approval, message, timestamp)
         return
 
     if role == "tool":
@@ -324,6 +349,55 @@ def _build_tool_call_info(content: Any) -> ToolCallInfo:
         # Empty dict is preserved by design — see schema commit ff1540d.
         info.arguments.update(args)
     return info
+
+
+def _build_interrupt_issued(approval: Any, carrier: Message, timestamp: datetime) -> InterruptIssued:
+    fc = approval.function_call
+    args = _coerce_arguments(fc.arguments)
+    event = InterruptIssued(
+        request_id=fc.call_id or "",
+        kind="approval",
+        tool_name=fc.name or None,
+        prompt=_build_approval_prompt(name=fc.name or "", arguments=args),
+        message_id=carrier.message_id,
+        timestamp=timestamp,
+    )
+    afw = _build_afw_interrupt_extension(
+        call_id=fc.call_id or "",
+        name=fc.name or "",
+        arguments=args,
+        approval_pair_id=approval.id,
+    )
+    _set_afw_extension(event, afw)
+    return event
+
+
+def _build_interrupt_resolved(response: Any, carrier: Message, timestamp: datetime) -> InterruptResolved:
+    fc = response.function_call
+    args = _coerce_arguments(fc.arguments)
+    event = InterruptResolved(
+        request_id=fc.call_id or "",
+        outcome="allow" if response.approved else "deny",
+        message_id=carrier.message_id,
+        timestamp=timestamp,
+    )
+    afw = _build_afw_interrupt_extension(
+        call_id=fc.call_id or "",
+        name=fc.name or "",
+        arguments=args,
+        approval_pair_id=response.id,
+    )
+    _set_afw_extension(event, afw)
+    return event
+
+
+def _set_afw_extension(event: ProtoMessage, payload: dict[str, Any]) -> None:
+    """Populate ``event.extensions["afw"]`` from a plain dict, going through
+    the protobuf JSON parser to coerce nested dicts/lists into ``Struct``."""
+    from google.protobuf.json_format import ParseDict
+    struct = Struct()
+    ParseDict(payload, struct)
+    event.extensions["afw"].CopyFrom(struct)
 
 
 def _coerce_arguments(arguments: Any) -> dict[str, Any] | None:

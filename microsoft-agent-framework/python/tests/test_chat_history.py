@@ -291,3 +291,139 @@ def test_build_afw_interrupt_extension_differing_pair_id_includes_pair_id():
     assert proposed["id"] == "call-1"
     assert proposed["name"] == "ping"
     assert proposed["arguments"] == {}
+
+
+# --- Approval decomposition helpers ---
+
+
+def _make_function_call(call_id: str, name: str, arguments: dict[str, Any] | None = None):
+    from agent_framework import Content
+
+    return Content(type="function_call", call_id=call_id, name=name, arguments=arguments)
+
+
+def _make_approval_request(call_id: str, name: str, arguments: dict[str, Any] | None = None,
+                           pair_id: str | None = None):
+    from agent_framework import Content
+
+    return Content.from_function_approval_request(
+        id=pair_id or call_id,
+        function_call=_make_function_call(call_id, name, arguments),
+    )
+
+
+def _make_approval_response(call_id: str, approved: bool, name: str = "ping",
+                            arguments: dict[str, Any] | None = None,
+                            pair_id: str | None = None):
+    from agent_framework import Content
+
+    return Content.from_function_approval_response(
+        approved=approved,
+        id=pair_id or call_id,
+        function_call=_make_function_call(call_id, name, arguments),
+    )
+
+
+def test_message_to_events_assistant_text_and_approval_emits_text_and_interrupt():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting an email."),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    assert isinstance(events[0], AssistantTextGenerated)
+    assert events[0].content == "Drafting an email."
+    assert events[0].message_id == "asst-msg-1"
+
+    ii = events[1]
+    assert isinstance(ii, InterruptIssued)
+    assert ii.request_id == "call-1"
+    assert ii.kind == "approval"
+    assert ii.tool_name == "send_email"
+    assert ii.message_id == "asst-msg-1"
+    assert ii.prompt.startswith("Approve calling send_email(")
+
+    from google.protobuf.json_format import MessageToDict
+    afw = MessageToDict(ii.extensions["afw"], preserving_proto_field_name=True)
+    assert afw["interrupt"]["proposed_call"]["name"] == "send_email"
+
+
+def test_message_to_events_assistant_approval_only_emits_marker_and_interrupt():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "ping")],
+        message_id="asst-msg-2",
+    )
+
+    events = list(_message_to_events(msg, message_index=5, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    marker = events[0]
+    assert isinstance(marker, AssistantTextGenerated)
+    assert not marker.HasField("content")
+    assert marker.message_index == 5
+    assert marker.message_id == "asst-msg-2"
+    assert isinstance(events[1], InterruptIssued)
+
+
+def test_message_to_events_user_approval_response_emits_marker_and_resolved():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=True, name="send_email",
+                                          arguments={"to": "alice"})],
+        message_id="user-msg-1",
+    )
+
+    events = list(_message_to_events(msg, message_index=1, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    marker = events[0]
+    assert isinstance(marker, UserMessageReceived)
+    assert not marker.HasField("content")
+    assert marker.message_index == 1
+
+    ir = events[1]
+    assert isinstance(ir, InterruptResolved)
+    assert ir.request_id == "call-1"
+    assert ir.outcome == "allow"
+    assert ir.message_id == "user-msg-1"
+    from google.protobuf.json_format import MessageToDict
+    afw = MessageToDict(ir.extensions["afw"], preserving_proto_field_name=True)
+    assert afw["interrupt"]["proposed_call"]["name"] == "send_email"
+
+
+def test_message_to_events_user_approval_response_denied_emits_deny():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved
+
+    msg = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=False)],
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + resolved
+    assert len(events) == 2
+    ir = events[1]
+    assert isinstance(ir, InterruptResolved)
+    assert ir.outcome == "deny"
