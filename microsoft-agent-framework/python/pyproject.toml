@@ -19,7 +19,7 @@ dependencies = [
   "agent-framework-core >= 1.1.0",
   "kurrent-agent-schema >= 0.3.0",
   "kurrentdbclient >= 1.2.0",
-  "protobuf >= 6.32, < 8",
+  "protobuf >= 6.32.1, < 8",
   "pydantic >= 2.5",
 ]
 
