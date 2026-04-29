@@ -56,6 +56,9 @@ def test_session_started_wire_format() -> None:
 
 
 def test_user_message_wire_format() -> None:
+    # Edition 2024 makes EXPLICIT field presence the default, so an
+    # explicitly-set zero (message_index = 0) is emitted on the wire,
+    # while fields that are never assigned (author_name) stay absent.
     evt = UserMessageReceived(
         content="hello",
         message_id="m1",
@@ -65,10 +68,18 @@ def test_user_message_wire_format() -> None:
     payload = _payload(evt)
     assert payload["content"] == "hello"
     assert payload["message_id"] == "m1"
-    # message_index = 0 is the proto3 default for int32; canonical JSON
-    # omits default-valued non-optional scalars.
-    assert "message_index" not in payload
+    assert payload["message_index"] == 0
     assert "author_name" not in payload  # unset optional
+
+
+def test_user_message_unset_index_is_omitted() -> None:
+    # Counterpart to test_user_message_wire_format: a field that is never
+    # assigned has no presence and is omitted from canonical JSON.
+    evt = UserMessageReceived(
+        content="hi",
+        timestamp=datetime(2026, 4, 13, 12, 0, 0, tzinfo=UTC),
+    )
+    assert "message_index" not in _payload(evt)
 
 
 def test_user_message_non_default_index_is_emitted() -> None:
@@ -100,8 +111,6 @@ def test_assistant_tool_calls_wire_format() -> None:
 
 
 def test_turn_scored_wire_format() -> None:
-    # Use a non-default turn_index so we can assert it appears on the wire;
-    # proto3 JSON omits default-valued non-optional scalars (turn_index = 0).
     evt = TurnScored(
         session_id="s1",
         turn_index=2,

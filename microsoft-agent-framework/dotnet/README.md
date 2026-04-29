@@ -427,4 +427,4 @@ Stream names are built with the shared `Kurrent.Agent.Schema.StreamNames` helper
 - [KurrentDB.Client](https://www.nuget.org/packages/KurrentDB.Client) 1.3.1
 - [Microsoft.Agents.AI](https://www.nuget.org/packages/Microsoft.Agents.AI) 1.0.0
 - [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows) 1.0.0
-- [Kurrent.Agent.Schema](https://www.nuget.org/packages/Kurrent.Agent.Schema) 0.1.0 — canonical event records, `StreamNames`, `SchemaJsonOptions`, `EventTypeMap`, `TokenUsage`, `SchemaVersion` (schema v2). Source: [`schema/dotnet/`](../../schema/dotnet/).
+- [Kurrent.Agent.Schema](https://www.nuget.org/packages/Kurrent.Agent.Schema) 0.3.0 — canonical event records, `StreamNames`, `SchemaJsonOptions`, `EventTypeMap`, `TokenUsage`, `SchemaVersion` (schema v2, Edition 2024 protos). Source: [`schema/dotnet/`](../../schema/dotnet/).

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- Tighten declared `protobuf` floor from `>= 6.32` to `>= 6.32.1`. The
+  generated code's `ValidateProtobufRuntimeVersion(6, 32, 1, ...)` call
+  rejects 6.32.0 at import time, so the previous declaration could let
+  a resolver pick a runtime that the package itself refuses to load.
+  No code or wire-format changes.
+
 ## 0.3.0
 
 - Migrate v2 protos from `proto3` to `edition = "2024"`. Edition 2024

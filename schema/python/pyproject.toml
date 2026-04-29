@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kurrent-agent-schema"
-version = "0.3.0"
+version = "0.3.1"
 description = "Canonical event schema for Kurrent agent integrations (schema v2)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ keywords = ["kurrentdb", "eventsourcing", "agents", "llm", "schema"]
 dependencies = [
   # Floor matches the runtime version embedded by the pinned codegen plugin
   # (buf protocolbuffers/python:v32.1 emits ValidateProtobufRuntimeVersion(6, 32, 1, ...)).
-  "protobuf >= 6.32, < 8",
+  "protobuf >= 6.32.1, < 8",
 ]
 
 [project.optional-dependencies]

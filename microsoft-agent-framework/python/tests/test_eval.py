@@ -347,9 +347,6 @@ async def test_run_emits_event_sequence_to_eval_run_stream() -> None:
     assert started["criteria"] == "helpfulness"
     assert started["session_id"] == "s1"
 
-    # Proto3 JSON canonical form omits default-valued non-optional scalars
-    # (turn_index = 0, turns_scored = 0); treat missing as default per the
-    # proto3 contract.
     scored = json.loads(events[1].data)
     assert scored.get("turn_index", 0) == 0
     assert scored["score"] == 0.9
