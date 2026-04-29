@@ -28,15 +28,19 @@ public static class ChatMessageConverter {
 
         var responses = message.Contents.OfType<ToolApprovalResponseContent>().ToList();
 
-        if (text is { Length: > 0 } t) {
+        if (text is { Length: > 0 } || responses.Count > 0) {
+            // Emit UserMessageReceived as the message_index carrier, even when text is empty
+            // and only approval responses are present — InterruptResolved has no message_index
+            // field, so we still need a chat-shaped event to anchor the index for stream
+            // rehydration.
             var evt = new UserMessageReceived {
-                Content      = t,
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (msgId   is not null) evt.MessageId  = msgId;
-            if (author  is not null) evt.AuthorName = author;
-            if (created is { } c)    evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (text    is { Length: > 0 } t) evt.Content    = t;
+            if (msgId   is not null)          evt.MessageId  = msgId;
+            if (author  is not null)          evt.AuthorName = author;
+            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
             yield return evt;
         }
 
@@ -65,15 +69,18 @@ public static class ChatMessageConverter {
             if (author  is not null)          evt.AuthorName = author;
             if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
             yield return evt;
-        } else if (text is { Length: > 0 } t) {
+        } else if (text is { Length: > 0 } || approvals.Count > 0) {
+            // Emit AssistantTextGenerated as the message_index carrier, even when text is empty
+            // and only approvals are present — InterruptIssued has no message_index field, so we
+            // still need a chat-shaped event to anchor the index for stream rehydration.
             var evt = new AssistantTextGenerated {
-                Content      = t,
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (msgId   is not null) evt.MessageId  = msgId;
-            if (author  is not null) evt.AuthorName = author;
-            if (created is { } c)    evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (text    is { Length: > 0 } t) evt.Content    = t;
+            if (msgId   is not null)          evt.MessageId  = msgId;
+            if (author  is not null)          evt.AuthorName = author;
+            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
             yield return evt;
         }
 

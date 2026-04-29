@@ -110,7 +110,7 @@ public class ChatMessageConverterApprovalTests {
     }
 
     [Test]
-    public async Task ToEvents_AssistantApprovalOnly_SuppressesTextEvent() {
+    public async Task ToEvents_AssistantApprovalOnly_EmitsMarkerAndInterrupt() {
         var fc  = new FunctionCallContent("call-1", "ping", arguments: null);
         var msg = new ChatMessage(ChatRole.Assistant, [
             new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
@@ -118,8 +118,11 @@ public class ChatMessageConverterApprovalTests {
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
-        await Assert.That(events).HasSingleItem();
-        await Assert.That(events[0]).IsTypeOf<InterruptIssued>();
+        await Assert.That(events.Count).IsEqualTo(2);
+        var marker = await Assert.That(events[0]).IsTypeOf<AssistantTextGenerated>();
+        await Assert.That(marker!.HasContent).IsFalse();
+        await Assert.That(marker.MessageId).IsEqualTo("asst-msg-2");
+        await Assert.That(events[1]).IsTypeOf<InterruptIssued>();
     }
 
     [Test]
@@ -153,13 +156,13 @@ public class ChatMessageConverterApprovalTests {
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
-        var ii = (InterruptIssued)events.Single();
+        var ii = (InterruptIssued)events.Last();
         var interrupt = ii.Extensions["afw"].Fields["interrupt"].StructValue;
         await Assert.That(interrupt.Fields["approval_pair_id"].StringValue).IsEqualTo("approval-pair-9");
     }
 
     [Test]
-    public async Task ToEvents_UserApprovalResponse_EmitsInterruptResolved() {
+    public async Task ToEvents_UserApprovalResponse_EmitsMarkerAndResolved() {
         var fc       = new FunctionCallContent("call-1", "send_email",
             new Dictionary<string, object?> { ["to"] = "alice" });
         var response = new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) {
@@ -169,8 +172,10 @@ public class ChatMessageConverterApprovalTests {
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 1, timestamp: Ts).ToList();
 
-        await Assert.That(events).HasSingleItem();
-        var ir = await Assert.That(events[0]).IsTypeOf<InterruptResolved>();
+        await Assert.That(events.Count).IsEqualTo(2);
+        var marker = await Assert.That(events[0]).IsTypeOf<UserMessageReceived>();
+        await Assert.That(marker!.HasContent).IsFalse();
+        var ir = await Assert.That(events[1]).IsTypeOf<InterruptResolved>();
         await Assert.That(ir!.RequestId).IsEqualTo("call-1");
         await Assert.That(ir.Outcome).IsEqualTo("allow");
         await Assert.That(ir.Response).IsEqualTo("Looks good.");
@@ -187,7 +192,7 @@ public class ChatMessageConverterApprovalTests {
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
-        var ir = (InterruptResolved)events.Single();
+        var ir = (InterruptResolved)events.Last();
         await Assert.That(ir.Outcome).IsEqualTo("deny");
         await Assert.That(ir.HasResponse).IsFalse();
     }
