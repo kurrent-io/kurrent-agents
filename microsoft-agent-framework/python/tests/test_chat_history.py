@@ -264,3 +264,30 @@ def test_build_approval_prompt_name_longer_than_cap_hard_caps_fallback():
 
     assert len(prompt) == _APPROVAL_PROMPT_MAX_LENGTH
     assert prompt.startswith("Approve calling n")
+
+
+def test_build_afw_interrupt_extension_call_id_equals_pair_id_omits_pair_id():
+    from kurrent_agent_framework.chat_history import _build_afw_interrupt_extension
+
+    ext = _build_afw_interrupt_extension(
+        call_id="call-1", name="ping", arguments={"x": 1}, approval_pair_id="call-1",
+    )
+
+    interrupt = ext["interrupt"]
+    assert "approval_pair_id" not in interrupt
+    proposed = interrupt["proposed_call"]
+    assert proposed == {"id": "call-1", "name": "ping", "arguments": {"x": 1}}
+
+
+def test_build_afw_interrupt_extension_differing_pair_id_includes_pair_id():
+    from kurrent_agent_framework.chat_history import _build_afw_interrupt_extension
+
+    ext = _build_afw_interrupt_extension(
+        call_id="call-1", name="ping", arguments=None, approval_pair_id="approval-pair-9",
+    )
+
+    assert ext["interrupt"]["approval_pair_id"] == "approval-pair-9"
+    proposed = ext["interrupt"]["proposed_call"]
+    assert proposed["id"] == "call-1"
+    assert proposed["name"] == "ping"
+    assert proposed["arguments"] == {}

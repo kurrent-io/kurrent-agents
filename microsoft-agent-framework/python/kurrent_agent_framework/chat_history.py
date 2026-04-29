@@ -431,6 +431,33 @@ def _hard_cap(value: str) -> str:
     return value if len(value) <= _APPROVAL_PROMPT_MAX_LENGTH else value[:_APPROVAL_PROMPT_MAX_LENGTH]
 
 
+def _build_afw_interrupt_extension(
+    *,
+    call_id: str,
+    name: str,
+    arguments: dict[str, Any] | None,
+    approval_pair_id: str | None,
+) -> dict[str, Any]:
+    """Build the ``extensions["afw"]`` block for InterruptIssued/Resolved events.
+
+    Mirrors :py:func:`Kurrent.AgentFramework.Serialization.ChatMessageConverter.BuildAfwInterruptExtension`
+    on the .NET side. ``approval_pair_id`` is omitted when it equals ``call_id``
+    (the common case in MAF where the wrapper threads the call id through unchanged).
+
+    The returned dict gets converted to a ``google.protobuf.Struct`` later via
+    ``ParseDict`` when stamped on the event's ``extensions`` map.
+    """
+    proposed: dict[str, Any] = {
+        "id": call_id,
+        "name": name,
+        "arguments": arguments if arguments is not None else {},
+    }
+    interrupt: dict[str, Any] = {"proposed_call": proposed}
+    if approval_pair_id and approval_pair_id != call_id:
+        interrupt["approval_pair_id"] = approval_pair_id
+    return {"interrupt": interrupt}
+
+
 def _coerce_result(result: Any) -> str | None:
     if result is None:
         return None
