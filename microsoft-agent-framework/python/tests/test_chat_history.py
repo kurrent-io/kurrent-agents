@@ -446,9 +446,9 @@ def test_merge_events_assistant_text_and_interrupt_rebuilds_contents():
         message_id="asst-msg-1",
     )
     events = list(_message_to_events(original, message_index=0, timestamp=datetime.now(UTC)))
+    from kurrent_agent_schema import InterruptIssued as _InterruptIssued
     issued_by_request_id = {
-        e.request_id: e for e in events
-        if e.__class__.__name__ == "InterruptIssued"
+        e.request_id: e for e in events if isinstance(e, _InterruptIssued)
     }
 
     rebuilt = _merge_events_into_message(events, issued_by_request_id)
@@ -534,3 +534,113 @@ async def test_approval_response_round_trips_through_kurrentdb(kurrentdb_client:
     assert responses[0].approved is True
     assert responses[0].function_call.name == "send_email"
     assert responses[0].function_call.call_id == "call-1"
+
+
+# --- Decomposition matrix: missing rows (Test A–D) ---
+
+
+def test_message_to_events_assistant_mixed_tools_and_approvals_both_emitted():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantToolCallsGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Looking up; will need approval to delete."),
+            _make_function_call("call-1", "lookup"),
+            _make_approval_request("call-2", "delete"),
+        ],
+        message_id="asst-msg-3",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    tools = events[0]
+    assert isinstance(tools, AssistantToolCallsGenerated)
+    assert tools.content == "Looking up; will need approval to delete."
+    assert len(tools.tool_calls) == 1
+    assert tools.tool_calls[0].call_id == "call-1"
+    assert tools.tool_calls[0].tool_name == "lookup"
+
+    ii = events[1]
+    assert isinstance(ii, InterruptIssued)
+    assert ii.request_id == "call-2"
+    assert ii.tool_name == "delete"
+
+
+def test_message_to_events_user_text_and_approval_response_emits_both():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[
+            Content(type="text", text="OK go ahead."),
+            _make_approval_response("call-1", approved=True),
+        ],
+        message_id="user-msg-3",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    user = events[0]
+    assert isinstance(user, UserMessageReceived)
+    assert user.content == "OK go ahead."
+    assert user.message_id == "user-msg-3"
+    assert isinstance(events[1], InterruptResolved)
+
+
+def test_message_to_events_assistant_multiple_approvals_emit_one_interrupt_per():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            _make_approval_request("call-1", "delete_a"),
+            _make_approval_request("call-2", "delete_b"),
+        ],
+        message_id="asst-msg-multi",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + 2 InterruptIssued
+    assert len(events) == 3
+    assert isinstance(events[0], AssistantTextGenerated)
+    assert isinstance(events[1], InterruptIssued)
+    assert events[1].request_id == "call-1"
+    assert isinstance(events[2], InterruptIssued)
+    assert events[2].request_id == "call-2"
+
+
+def test_message_to_events_user_multiple_responses_emit_one_resolved_per():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[
+            _make_approval_response("call-1", approved=True),
+            _make_approval_response("call-2", approved=False),
+        ],
+        message_id="user-msg-multi",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + 2 InterruptResolved
+    assert len(events) == 3
+    assert isinstance(events[0], UserMessageReceived)
+    assert isinstance(events[1], InterruptResolved)
+    assert events[1].request_id == "call-1"
+    assert events[1].outcome == "allow"
+    assert isinstance(events[2], InterruptResolved)
+    assert events[2].request_id == "call-2"
+    assert events[2].outcome == "deny"

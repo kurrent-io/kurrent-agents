@@ -300,57 +300,6 @@ def _message_to_events(
             )
 
 
-def _event_to_message(event: ProtoMessage) -> Message | None:
-    """Reconstruct a ``Message`` from a canonical event, or ``None`` for lifecycle events."""
-    if isinstance(event, UserMessageReceived):
-        return Message(
-            role="user",
-            contents=[Content(type="text", text=event.content)],
-            message_id=_opt(event, "message_id"),
-            author_name=_opt(event, "author_name"),
-        )
-    if isinstance(event, AssistantTextGenerated):
-        return Message(
-            role="assistant",
-            contents=[Content(type="text", text=event.content)],
-            message_id=_opt(event, "message_id"),
-            author_name=_opt(event, "author_name"),
-        )
-    if isinstance(event, AssistantToolCallsGenerated):
-        contents: list[Content] = []
-        if event.content:
-            contents.append(Content(type="text", text=event.content))
-        contents.extend(
-            Content(
-                type="function_call",
-                call_id=tc.call_id,
-                name=tc.tool_name,
-                arguments=_struct_to_dict(tc.arguments) if tc.HasField("arguments") else None,
-            )
-            for tc in event.tool_calls
-        )
-        return Message(
-            role="assistant",
-            contents=contents,
-            message_id=_opt(event, "message_id"),
-            author_name=_opt(event, "author_name"),
-        )
-    if isinstance(event, ToolResultReceived):
-        return Message(
-            role="tool",
-            contents=[
-                Content(
-                    type="function_result",
-                    call_id=event.call_id,
-                    result=_opt(event, "result"),
-                )
-            ],
-            message_id=_opt(event, "message_id"),
-            author_name=_opt(event, "author_name"),
-        )
-    return None
-
-
 def _grouping_key(event: ProtoMessage) -> str | None:
     """Return the ``message_id`` if the event carries one, else ``None``.
 
