@@ -134,6 +134,177 @@ public static class ChatMessageConverter {
     }
 
     /// <summary>
+    /// Build a single <see cref="ChatMessage"/> from a group of events that share a <c>message_id</c>.
+    /// Returns null when the group contains no chat-shaped events.
+    /// </summary>
+    public static ChatMessage? MergeIntoChatMessage(
+        IReadOnlyList<object> events,
+        IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId) {
+
+        if (events.Count == 0) return null;
+
+        var role = DetermineRole(events);
+        if (role is null) return null;
+
+        var contents   = new List<AIContent>();
+        string? msgId  = null;
+        string? author = null;
+        DateTimeOffset? created = null;
+
+        foreach (var ev in events) {
+            switch (ev) {
+                case UserMessageReceived u:
+                    if (u.HasContent && !string.IsNullOrEmpty(u.Content)) contents.Add(new TextContent(u.Content));
+                    msgId   ??= u.HasMessageId  ? u.MessageId  : null;
+                    author  ??= u.HasAuthorName ? u.AuthorName : null;
+                    created ??= u.CreatedAt?.ToDateTimeOffset();
+                    break;
+
+                case AssistantTextGenerated at:
+                    if (at.HasContent && !string.IsNullOrEmpty(at.Content)) contents.Add(new TextContent(at.Content));
+                    msgId   ??= at.HasMessageId  ? at.MessageId  : null;
+                    author  ??= at.HasAuthorName ? at.AuthorName : null;
+                    created ??= at.CreatedAt?.ToDateTimeOffset();
+                    break;
+
+                case AssistantToolCallsGenerated ac:
+                    if (ac.HasContent && !string.IsNullOrEmpty(ac.Content)) contents.Add(new TextContent(ac.Content));
+                    contents.AddRange(
+                        from tc in ac.ToolCalls
+                        let args = StructToArguments(tc.Arguments)
+                        select new FunctionCallContent(tc.CallId, tc.ToolName, args)
+                    );
+                    msgId   ??= ac.HasMessageId  ? ac.MessageId  : null;
+                    author  ??= ac.HasAuthorName ? ac.AuthorName : null;
+                    created ??= ac.CreatedAt?.ToDateTimeOffset();
+                    break;
+
+                case ToolResultReceived tr:
+                    contents.Add(new FunctionResultContent(tr.CallId, tr.HasResult ? tr.Result : null));
+                    msgId   ??= tr.HasMessageId  ? tr.MessageId  : null;
+                    author  ??= tr.HasAuthorName ? tr.AuthorName : null;
+                    created ??= tr.CreatedAt?.ToDateTimeOffset();
+                    break;
+
+                case InterruptIssued ii:
+                    contents.Add(BuildApprovalRequestContent(ii));
+                    msgId ??= ii.HasMessageId ? ii.MessageId : null;
+                    break;
+
+                case InterruptResolved ir:
+                    if (BuildApprovalResponseContent(ir, issuedByRequestId) is { } far) contents.Add(far);
+                    msgId ??= ir.HasMessageId ? ir.MessageId : null;
+                    break;
+            }
+        }
+
+        if (contents.Count == 0) return null;
+
+        return new ChatMessage(role.Value, contents) {
+            MessageId  = msgId,
+            AuthorName = author,
+            CreatedAt  = created,
+        };
+    }
+
+    static ChatRole? DetermineRole(IReadOnlyList<object> events) {
+        foreach (var ev in events) {
+            switch (ev) {
+                case UserMessageReceived:
+                case InterruptResolved:
+                    return ChatRole.User;
+                case AssistantTextGenerated:
+                case AssistantToolCallsGenerated:
+                case InterruptIssued:
+                    return ChatRole.Assistant;
+                case ToolResultReceived:
+                    return ChatRole.Tool;
+            }
+        }
+        return null;
+    }
+
+    static ToolApprovalRequestContent BuildApprovalRequestContent(InterruptIssued ii) {
+        var (fcCallId, fcName, fcArgs) = ReadProposedCall(ii.Extensions, ii.RequestId, ii.HasToolName ? ii.ToolName : null);
+        var fc                          = new FunctionCallContent(fcCallId, fcName ?? "", fcArgs);
+        var pairId                      = ReadApprovalPairId(ii.Extensions) ?? ii.RequestId;
+        return new ToolApprovalRequestContent(pairId, fc);
+    }
+
+    static ToolApprovalResponseContent? BuildApprovalResponseContent(
+        InterruptResolved ir,
+        IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId) {
+
+        string? toolName;
+        string callId;
+        IDictionary<string, object?>? args;
+
+        if (issuedByRequestId.TryGetValue(ir.RequestId, out var ii)) {
+            (callId, toolName, args) = ReadProposedCall(ii.Extensions, ii.RequestId, ii.HasToolName ? ii.ToolName : null);
+        } else if (TryReadProposedCall(ir.Extensions, ir.RequestId, out var c, out var n, out var a)) {
+            callId   = c;
+            toolName = n;
+            args     = a;
+        } else {
+            // Pathological — no Issued, no proposed_call on the Resolved either. Skip.
+            return null;
+        }
+
+        var fc     = new FunctionCallContent(callId, toolName ?? "", args);
+        var pairId = ReadApprovalPairId(ir.Extensions) ?? ir.RequestId;
+        var resp   = new ToolApprovalResponseContent(pairId, ir.Outcome == "allow", fc);
+        if (ir.HasResponse) resp.Reason = ir.Response;
+        return resp;
+    }
+
+    static (string CallId, string? Name, IDictionary<string, object?>? Args) ReadProposedCall(
+        Google.Protobuf.Collections.MapField<string, Struct> extensions,
+        string fallbackCallId,
+        string? fallbackName) {
+        return TryReadProposedCall(extensions, fallbackCallId, out var c, out var n, out var a)
+            ? (c, n, a)
+            : (fallbackCallId, fallbackName, null);
+    }
+
+    static bool TryReadProposedCall(
+        Google.Protobuf.Collections.MapField<string, Struct> extensions,
+        string fallbackCallId,
+        out string callId,
+        out string? toolName,
+        out IDictionary<string, object?>? arguments) {
+
+        callId    = fallbackCallId;
+        toolName  = null;
+        arguments = null;
+
+        if (!extensions.TryGetValue("afw", out var afw)) return false;
+        if (!afw.Fields.TryGetValue("interrupt", out var interruptValue)
+            || interruptValue.KindCase != Value.KindOneofCase.StructValue) return false;
+        var interrupt = interruptValue.StructValue;
+        if (!interrupt.Fields.TryGetValue("proposed_call", out var proposedValue)
+            || proposedValue.KindCase != Value.KindOneofCase.StructValue) return false;
+        var proposed = proposedValue.StructValue;
+
+        if (proposed.Fields.TryGetValue("id",   out var idVal)   && idVal.KindCase   == Value.KindOneofCase.StringValue) callId   = idVal.StringValue;
+        if (proposed.Fields.TryGetValue("name", out var nameVal) && nameVal.KindCase == Value.KindOneofCase.StringValue) toolName = nameVal.StringValue;
+        if (proposed.Fields.TryGetValue("arguments", out var argsVal) && argsVal.KindCase == Value.KindOneofCase.StructValue) {
+            arguments = StructToArguments(argsVal.StructValue);
+        }
+        return true;
+    }
+
+    static string? ReadApprovalPairId(Google.Protobuf.Collections.MapField<string, Struct> extensions) {
+        if (!extensions.TryGetValue("afw", out var afw)) return null;
+        if (!afw.Fields.TryGetValue("interrupt", out var interruptValue)
+            || interruptValue.KindCase != Value.KindOneofCase.StructValue) return null;
+        var interrupt = interruptValue.StructValue;
+        return interrupt.Fields.TryGetValue("approval_pair_id", out var v)
+            && v.KindCase == Value.KindOneofCase.StringValue
+                ? v.StringValue
+                : null;
+    }
+
+    /// <summary>
     /// Reconstruct a ChatMessage from a domain event.
     /// Returns null for events that don't map to a ChatMessage (e.g. session lifecycle).
     /// </summary>

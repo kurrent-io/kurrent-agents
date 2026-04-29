@@ -207,4 +207,75 @@ public class ChatMessageConverterApprovalTests {
         await Assert.That(events[0]).IsTypeOf<UserMessageReceived>();
         await Assert.That(events[1]).IsTypeOf<InterruptResolved>();
     }
+
+    [Test]
+    public async Task MergeIntoChatMessage_AssistantTextAndInterrupt_RebuildsContents() {
+        var fc       = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var original = new ChatMessage(ChatRole.Assistant, [
+            new TextContent("Drafting…"),
+            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+        ]) { MessageId = "asst-msg-1" };
+
+        var events = ChatMessageConverter.ToEvents(original, messageIndex: 0, timestamp: Ts).ToList();
+        var issued = events.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+
+        var rebuilt = ChatMessageConverter.MergeIntoChatMessage(events, issued);
+
+        await Assert.That(rebuilt).IsNotNull();
+        await Assert.That(rebuilt!.Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(rebuilt.MessageId).IsEqualTo("asst-msg-1");
+        await Assert.That(rebuilt.Contents.OfType<TextContent>().Single().Text).IsEqualTo("Drafting…");
+        var fa = rebuilt.Contents.OfType<ToolApprovalRequestContent>().Single();
+        await Assert.That(fa.RequestId).IsEqualTo("call-1");
+        var rebuiltFc = (FunctionCallContent)fa.ToolCall;
+        await Assert.That(rebuiltFc.CallId).IsEqualTo("call-1");
+        await Assert.That(rebuiltFc.Name).IsEqualTo("send_email");
+        await Assert.That(rebuiltFc.Arguments!["to"]?.ToString()).IsEqualTo("alice");
+    }
+
+    [Test]
+    public async Task MergeIntoChatMessage_UserResponse_RebuildsContentsViaCrossEventLookup() {
+        var fc           = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var assistantMsg = new ChatMessage(ChatRole.Assistant, [
+            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+        ]) { MessageId = "asst-msg-1" };
+        var userMsg = new ChatMessage(ChatRole.User, [
+            new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc),
+        ]) { MessageId = "user-msg-2" };
+
+        var assistantEvents = ChatMessageConverter.ToEvents(assistantMsg, 0, Ts).ToList();
+        var userEvents      = ChatMessageConverter.ToEvents(userMsg, 1, Ts).ToList();
+        var issued          = assistantEvents.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+
+        var rebuilt = ChatMessageConverter.MergeIntoChatMessage(userEvents, issued);
+
+        await Assert.That(rebuilt).IsNotNull();
+        await Assert.That(rebuilt!.Role).IsEqualTo(ChatRole.User);
+        var resp = rebuilt.Contents.OfType<ToolApprovalResponseContent>().Single();
+        await Assert.That(resp.Approved).IsTrue();
+        var rebuiltFc = (FunctionCallContent)resp.ToolCall;
+        await Assert.That(rebuiltFc.Name).IsEqualTo("send_email");
+        await Assert.That(rebuiltFc.Arguments!["to"]?.ToString()).IsEqualTo("alice");
+    }
+
+    [Test]
+    public async Task MergeIntoChatMessage_ResolvedWithoutIssued_FallsBackToOwnProposedCall() {
+        var fc       = new FunctionCallContent("call-1", "send_email", arguments: null);
+        var response = new ToolApprovalResponseContent(requestId: "call-1", approved: false, toolCall: fc);
+        var userMsg  = new ChatMessage(ChatRole.User, [response]) { MessageId = "user-msg-2" };
+
+        var userEvents = ChatMessageConverter.ToEvents(userMsg, 0, Ts).ToList();
+        var emptyIndex = new Dictionary<string, InterruptIssued>();
+
+        var rebuilt = ChatMessageConverter.MergeIntoChatMessage(userEvents, emptyIndex);
+
+        await Assert.That(rebuilt).IsNotNull();
+        var resp = rebuilt!.Contents.OfType<ToolApprovalResponseContent>().Single();
+        await Assert.That(resp.Approved).IsFalse();
+        var rebuiltFc = (FunctionCallContent)resp.ToolCall;
+        await Assert.That(rebuiltFc.CallId).IsEqualTo("call-1");
+        await Assert.That(rebuiltFc.Name).IsEqualTo("send_email");
+    }
 }
