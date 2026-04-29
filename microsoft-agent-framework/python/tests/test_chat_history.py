@@ -1,15 +1,19 @@
 """Unit tests for ``KurrentDBHistoryProvider``.
 
 Uses an in-memory fake client (same pattern as ``test_memory.py``) so these
-tests don't need a running KurrentDB.
+tests don't need a running KurrentDB. The round-trip tests at the bottom
+require a live KurrentDB instance via the ``kurrentdb_client`` fixture.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, cast
+
+import pytest
 
 from agent_framework import ChatContext, ChatResponse, Content, Message, UsageDetails
 from kurrentdbclient import NewEvent, RecordedEvent
@@ -427,3 +431,106 @@ def test_message_to_events_user_approval_response_denied_emits_deny():
     ir = events[1]
     assert isinstance(ir, InterruptResolved)
     assert ir.outcome == "deny"
+
+
+def test_merge_events_assistant_text_and_interrupt_rebuilds_contents():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+
+    original = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+    events = list(_message_to_events(original, message_index=0, timestamp=datetime.now(UTC)))
+    issued_by_request_id = {
+        e.request_id: e for e in events
+        if e.__class__.__name__ == "InterruptIssued"
+    }
+
+    rebuilt = _merge_events_into_message(events, issued_by_request_id)
+
+    assert rebuilt is not None
+    assert rebuilt.role == "assistant"
+    assert rebuilt.message_id == "asst-msg-1"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+    assert approvals[0].function_call.name == "send_email"
+    assert approvals[0].function_call.call_id == "call-1"
+
+
+@pytest.mark.asyncio
+async def test_approval_request_round_trips_through_kurrentdb(kurrentdb_client: Any):
+    """End-to-end: write an assistant [Text, ApprovalRequest] message and read
+    it back through the provider; the rebuilt Message must contain both blocks."""
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import KurrentDBHistoryProvider
+
+    session_id = uuid.uuid4().hex
+    provider = KurrentDBHistoryProvider(kurrentdb_client)
+    carrier = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+    await provider.save_messages(session_id, [carrier])
+
+    # Fresh provider over same stream
+    reader = KurrentDBHistoryProvider(kurrentdb_client)
+    rebuilt_messages = await reader.get_messages(session_id)
+
+    assert len(rebuilt_messages) == 1
+    rebuilt = rebuilt_messages[0]
+    assert rebuilt.role == "assistant"
+    assert rebuilt.message_id == "asst-msg-1"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+    assert approvals[0].function_call.name == "send_email"
+
+
+@pytest.mark.asyncio
+async def test_approval_response_round_trips_through_kurrentdb(kurrentdb_client: Any):
+    """End-to-end: assistant approval request + user approval response.
+    Both events serialize/deserialize through KurrentDB and reconstruct
+    via the provider's grouping pass + cross-event lookup."""
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import KurrentDBHistoryProvider
+
+    session_id = uuid.uuid4().hex
+    provider = KurrentDBHistoryProvider(kurrentdb_client)
+    assistant = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "send_email", {"to": "alice"})],
+        message_id="asst-msg-1",
+    )
+    user_response = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=True, name="send_email",
+                                          arguments={"to": "alice"})],
+        message_id="user-msg-2",
+    )
+    await provider.save_messages(session_id, [assistant, user_response])
+
+    reader = KurrentDBHistoryProvider(kurrentdb_client)
+    rebuilt_messages = await reader.get_messages(session_id)
+
+    assert len(rebuilt_messages) == 2
+    rebuilt_user = rebuilt_messages[-1]
+    assert rebuilt_user.role == "user"
+    assert rebuilt_user.message_id == "user-msg-2"
+
+    responses = [c for c in rebuilt_user.contents if c.type == "function_approval_response"]
+    assert len(responses) == 1
+    assert responses[0].approved is True
+    assert responses[0].function_call.name == "send_email"
+    assert responses[0].function_call.call_id == "call-1"

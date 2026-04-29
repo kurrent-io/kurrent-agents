@@ -94,6 +94,9 @@ class KurrentDBHistoryProvider(HistoryProvider):
 
         stream = agent_session_stream(session_id)
         messages: list[Message] = []
+        groups: list[list[ProtoMessage]] = []
+        by_message_id: dict[str, int] = {}
+        issued_by_request_id: dict[str, InterruptIssued] = {}
 
         try:
             response = await self._client.read_stream(stream)
@@ -118,12 +121,25 @@ class KurrentDBHistoryProvider(HistoryProvider):
                     continue
                 if event is None:
                     continue
-                msg = _event_to_message(event)
-                if msg is not None:
-                    messages.append(msg)
+
+                if isinstance(event, InterruptIssued):
+                    issued_by_request_id[event.request_id] = event
+
+                key = _grouping_key(event)
+                if key and key in by_message_id:
+                    groups[by_message_id[key]].append(event)
+                else:
+                    groups.append([event])
+                    if key:
+                        by_message_id[key] = len(groups) - 1
         except NotFoundError:
             # First interaction — no history yet.
             pass
+
+        for group in groups:
+            msg = _merge_events_into_message(group, issued_by_request_id)
+            if msg is not None:
+                messages.append(msg)
 
         return messages
 
@@ -333,6 +349,195 @@ def _event_to_message(event: ProtoMessage) -> Message | None:
             author_name=_opt(event, "author_name"),
         )
     return None
+
+
+def _grouping_key(event: ProtoMessage) -> str | None:
+    """Return the ``message_id`` if the event carries one, else ``None``.
+
+    ``SessionStarted`` / ``SessionEnded`` and other lifecycle events lack the
+    field entirely; ``HasField`` raises ``ValueError`` for unknown field names,
+    so we guard with a try/except.
+    """
+    if not hasattr(event, "HasField"):
+        return None
+    try:
+        if event.HasField("message_id"):
+            return event.message_id
+    except ValueError:
+        pass
+    return None
+
+
+def _determine_role(events: Sequence[ProtoMessage]) -> str | None:
+    """Infer message role from the first role-bearing event in the group."""
+    for ev in events:
+        if isinstance(ev, (UserMessageReceived, InterruptResolved)):
+            return "user"
+        if isinstance(ev, (AssistantTextGenerated, AssistantToolCallsGenerated, InterruptIssued)):
+            return "assistant"
+        if isinstance(ev, ToolResultReceived):
+            return "tool"
+    return None
+
+
+def _merge_events_into_message(
+    events: Sequence[ProtoMessage],
+    issued_by_request_id: dict[str, InterruptIssued],
+) -> Message | None:
+    """Build a single ``Message`` from a group of canonical events sharing
+    a ``message_id``. Returns None when the group has no chat-shaped events.
+
+    Mirrors :py:func:`Kurrent.AgentFramework.Serialization.ChatMessageConverter.MergeIntoChatMessage`
+    on the .NET side. Empty-content markers (e.g. an ``AssistantTextGenerated``
+    with ``HasField('content') == False``, used to anchor ``message_index`` for
+    approval-only turns) contribute their ``message_id`` but no ``Content``.
+    """
+    if not events:
+        return None
+
+    role = _determine_role(events)
+    if role is None:
+        return None
+
+    contents: list[Content] = []
+    msg_id: str | None = None
+    author: str | None = None
+
+    for ev in events:
+        if isinstance(ev, UserMessageReceived):
+            if ev.HasField("content") and ev.content:
+                contents.append(Content(type="text", text=ev.content))
+            msg_id = msg_id or _opt(ev, "message_id")
+            author = author or _opt(ev, "author_name")
+        elif isinstance(ev, AssistantTextGenerated):
+            if ev.HasField("content") and ev.content:
+                contents.append(Content(type="text", text=ev.content))
+            msg_id = msg_id or _opt(ev, "message_id")
+            author = author or _opt(ev, "author_name")
+        elif isinstance(ev, AssistantToolCallsGenerated):
+            if ev.HasField("content") and ev.content:
+                contents.append(Content(type="text", text=ev.content))
+            for tc in ev.tool_calls:
+                contents.append(Content(
+                    type="function_call",
+                    call_id=tc.call_id,
+                    name=tc.tool_name,
+                    arguments=_struct_to_dict(tc.arguments) if tc.HasField("arguments") else None,
+                ))
+            msg_id = msg_id or _opt(ev, "message_id")
+            author = author or _opt(ev, "author_name")
+        elif isinstance(ev, ToolResultReceived):
+            contents.append(Content(
+                type="function_result",
+                call_id=ev.call_id,
+                result=_opt(ev, "result"),
+            ))
+            msg_id = msg_id or _opt(ev, "message_id")
+            author = author or _opt(ev, "author_name")
+        elif isinstance(ev, InterruptIssued):
+            contents.append(_build_approval_request_content(ev))
+            msg_id = msg_id or _opt(ev, "message_id")
+        elif isinstance(ev, InterruptResolved):
+            built = _build_approval_response_content(ev, issued_by_request_id)
+            if built is not None:
+                contents.append(built)
+            msg_id = msg_id or _opt(ev, "message_id")
+
+    if not contents:
+        return None
+
+    return Message(role=role, contents=contents, message_id=msg_id, author_name=author)
+
+
+def _build_approval_request_content(ii: InterruptIssued) -> Content:
+    """Reconstruct a ``function_approval_request`` Content block from an
+    ``InterruptIssued`` event."""
+    call_id, name, arguments = _read_proposed_call(
+        ii.extensions, fallback_call_id=ii.request_id,
+        fallback_name=ii.tool_name if ii.HasField("tool_name") else None,
+    )
+    pair_id = _read_approval_pair_id(ii.extensions) or ii.request_id
+    return Content.from_function_approval_request(
+        id=pair_id,
+        function_call=Content(type="function_call", call_id=call_id, name=name or "", arguments=arguments),
+    )
+
+
+def _build_approval_response_content(
+    ir: InterruptResolved,
+    issued_by_request_id: dict[str, InterruptIssued],
+) -> Content | None:
+    """Reconstruct a ``function_approval_response`` Content block from an
+    ``InterruptResolved`` event, looking up the matching ``InterruptIssued``
+    for proposed-call details when available."""
+    matched = issued_by_request_id.get(ir.request_id)
+    if matched is not None:
+        call_id, name, arguments = _read_proposed_call(
+            matched.extensions, fallback_call_id=matched.request_id,
+            fallback_name=matched.tool_name if matched.HasField("tool_name") else None,
+        )
+    else:
+        call_id, name, arguments, found = _read_proposed_call_explicit(
+            ir.extensions, fallback_call_id=ir.request_id, fallback_name=None,
+        )
+        if not found:
+            # Pathological — no Issued, no proposed_call on the Resolved either.
+            logger.debug(
+                "Skipping InterruptResolved %s with no matching Issued and no proposed_call.",
+                ir.request_id,
+            )
+            return None
+
+    pair_id = _read_approval_pair_id(ir.extensions) or ir.request_id
+    return Content.from_function_approval_response(
+        approved=ir.outcome == "allow",
+        id=pair_id,
+        function_call=Content(type="function_call", call_id=call_id, name=name or "", arguments=arguments),
+    )
+
+
+def _read_proposed_call(
+    extensions: Any,
+    *,
+    fallback_call_id: str,
+    fallback_name: str | None,
+) -> tuple[str, str | None, dict[str, Any] | None]:
+    """Read the proposed_call sub-struct, returning fallbacks when absent."""
+    call_id, name, arguments, _found = _read_proposed_call_explicit(
+        extensions, fallback_call_id=fallback_call_id, fallback_name=fallback_name,
+    )
+    return call_id, name, arguments
+
+
+def _read_proposed_call_explicit(
+    extensions: Any,
+    *,
+    fallback_call_id: str,
+    fallback_name: str | None,
+) -> tuple[str, str | None, dict[str, Any] | None, bool]:
+    """Like ``_read_proposed_call`` but also returns whether the proposed_call
+    was actually found in the extensions block. Used by the response-side
+    reconstruction to distinguish "fallback used" from "proposed_call present"."""
+    if "afw" not in extensions:
+        return fallback_call_id, fallback_name, None, False
+    afw = MessageToDict(extensions["afw"], preserving_proto_field_name=True)
+    proposed = afw.get("interrupt", {}).get("proposed_call")
+    if not isinstance(proposed, dict):
+        return fallback_call_id, fallback_name, None, False
+    return (
+        proposed.get("id", fallback_call_id),
+        proposed.get("name", fallback_name),
+        proposed.get("arguments") or None,
+        True,
+    )
+
+
+def _read_approval_pair_id(extensions: Any) -> str | None:
+    """Extract ``interrupt.approval_pair_id`` from the ``afw`` extension block."""
+    if "afw" not in extensions:
+        return None
+    afw = MessageToDict(extensions["afw"], preserving_proto_field_name=True)
+    return afw.get("interrupt", {}).get("approval_pair_id")
 
 
 def _opt(message: ProtoMessage, field: str) -> str | None:
