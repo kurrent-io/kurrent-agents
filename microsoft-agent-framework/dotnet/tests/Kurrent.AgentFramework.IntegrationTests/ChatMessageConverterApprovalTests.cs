@@ -157,4 +157,54 @@ public class ChatMessageConverterApprovalTests {
         var interrupt = ii.Extensions["afw"].Fields["interrupt"].StructValue;
         await Assert.That(interrupt.Fields["approval_pair_id"].StringValue).IsEqualTo("approval-pair-9");
     }
+
+    [Test]
+    public async Task ToEvents_UserApprovalResponse_EmitsInterruptResolved() {
+        var fc       = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var response = new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) {
+            Reason = "Looks good.",
+        };
+        var msg = new ChatMessage(ChatRole.User, [response]) { MessageId = "user-msg-1" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 1, timestamp: Ts).ToList();
+
+        await Assert.That(events).HasSingleItem();
+        var ir = await Assert.That(events[0]).IsTypeOf<InterruptResolved>();
+        await Assert.That(ir!.RequestId).IsEqualTo("call-1");
+        await Assert.That(ir.Outcome).IsEqualTo("allow");
+        await Assert.That(ir.Response).IsEqualTo("Looks good.");
+        await Assert.That(ir.MessageId).IsEqualTo("user-msg-1");
+        await Assert.That(ir.Extensions["afw"].Fields["interrupt"].StructValue
+            .Fields["proposed_call"].StructValue.Fields["name"].StringValue).IsEqualTo("send_email");
+    }
+
+    [Test]
+    public async Task ToEvents_UserApprovalResponseDenied_EmitsDenyOutcome() {
+        var fc       = new FunctionCallContent("call-1", "send_email", arguments: null);
+        var response = new ToolApprovalResponseContent(requestId: "call-1", approved: false, toolCall: fc);
+        var msg      = new ChatMessage(ChatRole.User, [response]);
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        var ir = (InterruptResolved)events.Single();
+        await Assert.That(ir.Outcome).IsEqualTo("deny");
+        await Assert.That(ir.HasResponse).IsFalse();
+    }
+
+    [Test]
+    public async Task ToEvents_UserApprovalResponseWithText_EmitsBothEvents() {
+        var fc       = new FunctionCallContent("call-1", "ping", arguments: null);
+        var response = new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc);
+        var msg      = new ChatMessage(ChatRole.User, [
+            new TextContent("OK go ahead."),
+            response,
+        ]) { MessageId = "user-msg-2" };
+
+        var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
+
+        await Assert.That(events.Count).IsEqualTo(2);
+        await Assert.That(events[0]).IsTypeOf<UserMessageReceived>();
+        await Assert.That(events[1]).IsTypeOf<InterruptResolved>();
+    }
 }

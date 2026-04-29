@@ -24,10 +24,13 @@ public static class ChatMessageConverter {
         var msgId   = message.MessageId;
         var author  = message.AuthorName;
         var created = message.CreatedAt;
+        var text    = message.Text;
 
-        if (message.Text is { Length: > 0 } text) {
+        var responses = message.Contents.OfType<ToolApprovalResponseContent>().ToList();
+
+        if (text is { Length: > 0 } t) {
             var evt = new UserMessageReceived {
-                Content      = text,
+                Content      = t,
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
@@ -35,6 +38,10 @@ public static class ChatMessageConverter {
             if (author  is not null) evt.AuthorName = author;
             if (created is { } c)    evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
             yield return evt;
+        }
+
+        foreach (var response in responses) {
+            yield return BuildInterruptResolved(response, message, timestamp);
         }
     }
 
@@ -95,19 +102,34 @@ public static class ChatMessageConverter {
     }
 
     static InterruptIssued BuildInterruptIssued(ToolApprovalRequestContent ta, ChatMessage carrier, DateTimeOffset ts) {
-        var tc  = ta.ToolCall;
-        var fc  = tc as FunctionCallContent;
+        // MAF's approval flow only fires for ApprovalRequiredAIFunction, which always
+        // wraps a FunctionCallContent. If a future MAF version emits a different
+        // ToolCallContent subtype here, fail loudly rather than silently emit a
+        // schema-invalid event with an empty extensions.afw struct.
+        var fc  = (FunctionCallContent)ta.ToolCall;
         var evt = new InterruptIssued {
-            RequestId = tc.CallId ?? "",
+            RequestId = fc.CallId ?? "",
             Kind      = "approval",
-            Prompt    = fc is not null ? BuildApprovalPrompt(fc) : $"Approve calling {tc.CallId}?",
+            Prompt    = BuildApprovalPrompt(fc),
             Timestamp = Timestamp.FromDateTimeOffset(ts),
         };
-        if (fc is not null && !string.IsNullOrEmpty(fc.Name)) evt.ToolName  = fc.Name;
-        if (carrier.MessageId is { } mid)                     evt.MessageId = mid;
-        evt.Extensions["afw"] = fc is not null
-            ? BuildAfwInterruptExtension(fc, ta.RequestId)
-            : new Struct();
+        if (!string.IsNullOrEmpty(fc.Name))  evt.ToolName  = fc.Name;
+        if (carrier.MessageId is { } mid)    evt.MessageId = mid;
+        evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, ta.RequestId);
+        return evt;
+    }
+
+    static InterruptResolved BuildInterruptResolved(ToolApprovalResponseContent tr, ChatMessage carrier, DateTimeOffset ts) {
+        // Hard cast: MAF's approval flow always wraps a FunctionCallContent here. See BuildInterruptIssued for rationale.
+        var fc  = (FunctionCallContent)tr.ToolCall;
+        var evt = new InterruptResolved {
+            RequestId = fc.CallId ?? "",
+            Outcome   = tr.Approved ? "allow" : "deny",
+            Timestamp = Timestamp.FromDateTimeOffset(ts),
+        };
+        if (carrier.MessageId is { } mid) evt.MessageId = mid;
+        if (tr.Reason         is { } r)   evt.Response  = r;
+        evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, tr.RequestId);
         return evt;
     }
 
