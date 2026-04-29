@@ -1,3 +1,4 @@
+using Google.Protobuf.WellKnownTypes;
 using Kurrent.AgentFramework.Serialization;
 using Microsoft.Extensions.AI;
 
@@ -45,5 +46,36 @@ public class ChatMessageConverterApprovalTests {
 
         await Assert.That(prompt.Length).IsEqualTo(ChatMessageConverter.ApprovalPromptMaxLength);
         await Assert.That(prompt.StartsWith("Approve calling n")).IsTrue();
+    }
+
+    [Test]
+    public async Task BuildAfwInterruptExtension_CallIdEqualsPairId_OmitsPairId() {
+        var fc = new FunctionCallContent("call-1", "ping",
+            new Dictionary<string, object?> { ["x"] = 1 });
+
+        var ext = ChatMessageConverter.BuildAfwInterruptExtension(fc, approvalPairId: "call-1");
+
+        var interrupt = ext.Fields["interrupt"].StructValue;
+        await Assert.That(interrupt.Fields.ContainsKey("approval_pair_id")).IsFalse();
+
+        var proposed = interrupt.Fields["proposed_call"].StructValue;
+        await Assert.That(proposed.Fields["id"].StringValue).IsEqualTo("call-1");
+        await Assert.That(proposed.Fields["name"].StringValue).IsEqualTo("ping");
+        await Assert.That(proposed.Fields["arguments"].StructValue.Fields["x"].NumberValue).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task BuildAfwInterruptExtension_DifferingPairId_IncludesPairId() {
+        var fc = new FunctionCallContent("call-1", "ping", arguments: null);
+
+        var ext = ChatMessageConverter.BuildAfwInterruptExtension(fc, approvalPairId: "approval-pair-9");
+
+        var interrupt = ext.Fields["interrupt"].StructValue;
+        await Assert.That(interrupt.Fields["approval_pair_id"].StringValue).IsEqualTo("approval-pair-9");
+
+        var proposed = interrupt.Fields["proposed_call"].StructValue;
+        await Assert.That(proposed.Fields["id"].StringValue).IsEqualTo("call-1");
+        await Assert.That(proposed.Fields["name"].StringValue).IsEqualTo("ping");
+        await Assert.That(proposed.Fields["arguments"].StructValue.Fields.Count).IsEqualTo(0);
     }
 }

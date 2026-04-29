@@ -185,6 +185,27 @@ public static class ChatMessageConverter {
         _                    => Value.ForNull(),
     };
 
+    internal static Struct BuildAfwInterruptExtension(FunctionCallContent fc, string? approvalPairId) {
+        var proposed = new Struct();
+        proposed.Fields["id"]   = Value.ForString(fc.CallId ?? "");
+        proposed.Fields["name"] = Value.ForString(fc.Name   ?? "");
+        if (fc.Arguments is { Count: > 0 }) {
+            proposed.Fields["arguments"] = Value.ForStruct(JsonElementToStruct(JsonSerializer.SerializeToElement(fc.Arguments)));
+        } else {
+            proposed.Fields["arguments"] = Value.ForStruct(new Struct());
+        }
+
+        var interrupt = new Struct();
+        interrupt.Fields["proposed_call"] = Value.ForStruct(proposed);
+        if (!string.IsNullOrEmpty(approvalPairId) && approvalPairId != fc.CallId) {
+            interrupt.Fields["approval_pair_id"] = Value.ForString(approvalPairId);
+        }
+
+        var afw = new Struct();
+        afw.Fields["interrupt"] = Value.ForStruct(interrupt);
+        return afw;
+    }
+
     internal const int ApprovalPromptMaxLength = 200;
 
     internal static string BuildApprovalPrompt(FunctionCallContent fc) {
