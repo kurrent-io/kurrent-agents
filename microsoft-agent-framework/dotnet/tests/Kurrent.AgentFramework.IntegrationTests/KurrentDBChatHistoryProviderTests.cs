@@ -145,4 +145,69 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         await Assert.That(((FunctionCallContent)rebuilt.Contents.OfType<ToolApprovalRequestContent>().Single()
             .ToolCall).Name).IsEqualTo("send_email");
     }
+
+    [Test]
+    public async Task ApprovalResponseRoundTripsThroughKurrentDB() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+        var streamName   = StreamNames.AgentSession(sessionId);
+        var now          = DateTimeOffset.UtcNow;
+
+        var fc       = new FunctionCallContent("call-1", "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" });
+        var assistant = new ChatMessage(ChatRole.Assistant, [
+            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+        ]) { MessageId = "asst-msg-1" };
+        var userMsg = new ChatMessage(ChatRole.User, [
+            new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) { Reason = "Looks good." },
+        ]) { MessageId = "user-msg-2" };
+
+        var events = ChatMessageConverter.ToEvents(assistant, messageIndex: 0, timestamp: now)
+            .Concat(ChatMessageConverter.ToEvents(userMsg, messageIndex: 1, timestamp: now))
+            .Select(e => EventSerializer.Serialize(e))
+            .ToArray();
+        await client.AppendToStreamAsync(streamName, StreamState.NoStream, events);
+
+        // Read back via the same converter path the provider uses internally.
+        var resolved = new List<object>();
+        await foreach (var re in client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start)) {
+            if (EventSerializer.Deserialize(re) is { } e) resolved.Add(e);
+        }
+
+        // Group by message_id and merge per-group, mirroring ProvideChatHistoryAsync.
+        var groups        = new List<List<object>>();
+        var byMessageId   = new Dictionary<string, int>();
+        var issuedByReqId = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+        foreach (var ev in resolved) {
+            string? key = ev switch {
+                InterruptIssued   x => x.HasMessageId ? x.MessageId : null,
+                InterruptResolved x => x.HasMessageId ? x.MessageId : null,
+                _                   => null,
+            };
+            if (key is { } k && byMessageId.TryGetValue(k, out var gi)) groups[gi].Add(ev);
+            else {
+                groups.Add([ev]);
+                if (key is not null) byMessageId[key] = groups.Count - 1;
+            }
+        }
+
+        var rebuiltMessages = groups
+            .Select(g => ChatMessageConverter.MergeIntoChatMessage(g, issuedByReqId))
+            .Where(m => m is not null)
+            .ToList();
+
+        await Assert.That(rebuiltMessages.Count).IsEqualTo(2);
+
+        var rebuiltUser = rebuiltMessages.Last()!;
+        await Assert.That(rebuiltUser.Role).IsEqualTo(ChatRole.User);
+        await Assert.That(rebuiltUser.MessageId).IsEqualTo("user-msg-2");
+
+        var resp = rebuiltUser.Contents.OfType<ToolApprovalResponseContent>().Single();
+        await Assert.That(resp.Approved).IsTrue();
+        await Assert.That(resp.Reason).IsEqualTo("Looks good.");
+        var rebuiltFc = (FunctionCallContent)resp.ToolCall;
+        await Assert.That(rebuiltFc.CallId).IsEqualTo("call-1");
+        await Assert.That(rebuiltFc.Name).IsEqualTo("send_email");
+        await Assert.That(rebuiltFc.Arguments!["to"]?.ToString()).IsEqualTo("alice");
+    }
 }
