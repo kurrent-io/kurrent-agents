@@ -1,18 +1,21 @@
 {
-  "request_id": "req-perm-001",
-  "kind": "permission",
-  "tool_name": "Bash",
-  "prompt": "Allow running: rm -rf ./build ?",
-  "timestamp": "2026-04-21T10:00:10Z",
+  "request_id": "call_send_email_001",
+  "kind": "approval",
+  "tool_name": "send_email",
+  "prompt": "Approve calling send_email(to=\"alice@example.com\", subject=\"Project update\")?",
+  "message_id": "asst_msg_42",
+  "timestamp": "2026-04-29T10:00:10Z",
   "extensions": {
-    "claude_code": {
-      "permission": {
-        "rule_id": "bash:rm",
-        "tool_input": {
-          "timeout_ms": 5000.0,
-          "command": "rm -rf ./build"
-        },
-        "suggestion_type": "once"
+    "afw": {
+      "interrupt": {
+        "proposed_call": {
+          "id": "call_send_email_001",
+          "name": "send_email",
+          "arguments": {
+            "to": "alice@example.com",
+            "subject": "Project update"
+          }
+        }
       }
     }
   }
