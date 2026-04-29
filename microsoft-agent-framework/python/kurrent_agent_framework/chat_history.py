@@ -395,6 +395,42 @@ def _usage_to_metadata(usage: UsageDetails) -> dict[str, Any]:
     return result
 
 
+_APPROVAL_PROMPT_MAX_LENGTH: int = 200
+
+
+def _build_approval_prompt(*, name: str, arguments: dict[str, Any] | None) -> str:
+    """Synthesize a display-only approval prompt. Display-only — no code parses it.
+
+    Mirrors :py:func:`Kurrent.AgentFramework.Serialization.ChatMessageConverter.BuildApprovalPrompt`
+    on the .NET side. Truncates at 200 chars; falls back to ``"Approve calling {name}?"``
+    when the args render past the cap, and hard-caps the fallback when the name alone
+    exceeds the cap.
+    """
+    head = f"Approve calling {name}"
+
+    if not arguments:
+        return _hard_cap(f"{head}?")
+
+    parts = [f"{key}={json.dumps(value)}" for key, value in arguments.items()]
+    full = f"{head}({', '.join(parts)})?"
+    if len(full) <= _APPROVAL_PROMPT_MAX_LENGTH:
+        return full
+
+    without_args = f"{head}?"
+    if len(without_args) >= _APPROVAL_PROMPT_MAX_LENGTH:
+        return _hard_cap(without_args)
+
+    available = _APPROVAL_PROMPT_MAX_LENGTH - len(f"{head}(…)?")
+    if available <= 0:
+        return _hard_cap(without_args)
+    return f"{head}({', '.join(parts)[:available]}…)?"
+
+
+def _hard_cap(value: str) -> str:
+    """Cap a string at the max prompt length."""
+    return value if len(value) <= _APPROVAL_PROMPT_MAX_LENGTH else value[:_APPROVAL_PROMPT_MAX_LENGTH]
+
+
 def _coerce_result(result: Any) -> str | None:
     if result is None:
         return None

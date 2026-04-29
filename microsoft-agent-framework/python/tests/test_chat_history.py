@@ -231,3 +231,36 @@ async def test_save_messages_without_capture_omits_usage_metadata() -> None:
     assert assistant_event.type == "AssistantTextGenerated"
     metadata = json.loads(assistant_event.metadata)
     assert "$usage" not in metadata
+
+
+def test_build_approval_prompt_simple_args():
+    from kurrent_agent_framework.chat_history import _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="send_email", arguments={"to": "alice@x.com", "subject": "hi"})
+
+    assert prompt == 'Approve calling send_email(to="alice@x.com", subject="hi")?'
+
+
+def test_build_approval_prompt_no_args():
+    from kurrent_agent_framework.chat_history import _build_approval_prompt
+
+    assert _build_approval_prompt(name="ping", arguments=None) == "Approve calling ping?"
+
+
+def test_build_approval_prompt_truncates_long_args():
+    from kurrent_agent_framework.chat_history import _APPROVAL_PROMPT_MAX_LENGTH, _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="huge", arguments={"payload": "x" * 500})
+
+    assert len(prompt) == _APPROVAL_PROMPT_MAX_LENGTH
+    assert prompt.endswith("…)?")
+    assert prompt.startswith('Approve calling huge(payload="')
+
+
+def test_build_approval_prompt_name_longer_than_cap_hard_caps_fallback():
+    from kurrent_agent_framework.chat_history import _APPROVAL_PROMPT_MAX_LENGTH, _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="n" * 250, arguments=None)
+
+    assert len(prompt) == _APPROVAL_PROMPT_MAX_LENGTH
+    assert prompt.startswith("Approve calling n")
