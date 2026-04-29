@@ -17,9 +17,9 @@ dependencies = [
   # stub that ships a 0-byte `agent_framework/__init__.py` and clobbers the
   # real re-exports from agent-framework-core. See DEV-1495.
   "agent-framework-core >= 1.1.0",
-  "kurrent-agent-schema >= 0.2.1",
+  "kurrent-agent-schema >= 0.3.0",
   "kurrentdbclient >= 1.2.0",
-  "protobuf >= 5.27, < 8",
+  "protobuf >= 6.32, < 8",
   "pydantic >= 2.5",
 ]
 

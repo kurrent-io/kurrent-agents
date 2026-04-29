@@ -168,8 +168,6 @@ public class EvalRunnerTests(KurrentDbFixture db) {
             await Assert.That(started.GetProperty("scorer").GetString()).IsEqualTo("my-scorer");
             await Assert.That(started.GetProperty("criteria").GetString()).IsEqualTo("helpfulness");
 
-            // Proto3 JSON canonical form omits default-valued fields (turn_index = 0,
-            // turns_scored = 0). Treat missing as default per the proto3 contract.
             var scored = evts[1].Payload.RootElement;
             await Assert.That(GetIntOrDefault(scored, "turn_index")).IsEqualTo(0);
             await Assert.That(scored.GetProperty("score").GetDouble()).IsEqualTo(0.9);
