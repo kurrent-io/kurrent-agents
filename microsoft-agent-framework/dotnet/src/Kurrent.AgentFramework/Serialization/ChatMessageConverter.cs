@@ -184,4 +184,30 @@ public static class ChatMessageConverter {
         JsonValueKind.False  => Value.ForBool(false),
         _                    => Value.ForNull(),
     };
+
+    internal const int ApprovalPromptMaxLength = 200;
+
+    internal static string BuildApprovalPrompt(FunctionCallContent fc) {
+        var name = fc.Name ?? "";
+        var head = $"Approve calling {name}";
+
+        var withoutArgs = $"{head}?";
+        if (fc.Arguments is not { Count: > 0 }) {
+            if (withoutArgs.Length > ApprovalPromptMaxLength) return withoutArgs[..ApprovalPromptMaxLength];
+            return withoutArgs;
+        }
+
+        var argsRendered = string.Join(", ", fc.Arguments.Select(kv =>
+            $"{kv.Key}={JsonSerializer.Serialize(kv.Value)}"));
+
+        var full = $"{head}({argsRendered})?";
+        if (full.Length <= ApprovalPromptMaxLength) return full;
+
+        if (withoutArgs.Length >= ApprovalPromptMaxLength) return withoutArgs[..ApprovalPromptMaxLength];
+
+        // Truncate args, append … then close.
+        var available = ApprovalPromptMaxLength - $"{head}(…)?".Length;
+        if (available <= 0) return withoutArgs;
+        return $"{head}({argsRendered[..available]}…)?";
+    }
 }
