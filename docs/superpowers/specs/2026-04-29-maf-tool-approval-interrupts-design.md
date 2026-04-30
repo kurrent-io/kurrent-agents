@@ -45,7 +45,7 @@ Both runtimes produce the same canonical shape:
 
 | Field | Source |
 |---|---|
-| `request_id` | `FunctionApprovalRequestContent.FunctionCall.CallId` (.NET) / `request.function_call.call_id` (Python) |
+| `request_id` | `ToolApprovalRequestContent.ToolCall` (cast to `FunctionCallContent`).`CallId` (.NET) / `request.function_call.call_id` (Python) |
 | `kind` | `"approval"` (constant) |
 | `tool_name` | `FunctionCall.Name` when non-empty; otherwise omitted |
 | `prompt` | Synthesized argpacked string `"Approve calling {Name}({arg=value, ...})?"`, truncated at 200 chars. Display-only — no code parses it. |
@@ -56,7 +56,7 @@ Both runtimes produce the same canonical shape:
 
 | Field | Source |
 |---|---|
-| `request_id` | `FunctionApprovalResponseContent.FunctionCall.CallId` |
+| `request_id` | `ToolApprovalResponseContent.ToolCall` (cast to `FunctionCallContent`).`CallId` |
 | `outcome` | `"allow"` if `Approved == true`, else `"deny"` |
 | `response` | `Reason` when set |
 | `message_id` | Carrier user `ChatMessage.MessageId` |
@@ -71,13 +71,15 @@ Both runtimes produce the same canonical shape:
     "name":      "<FunctionCall.Name>",
     "arguments": { ... }
   },
-  "approval_pair_id": "<FunctionApprovalRequestContent.Id, only when != CallId>"
+  "approval_pair_id": "<ToolApprovalRequestContent.RequestId, only when != CallId>"
 }
 ```
 
 `proposed_call` is set on **both** `InterruptIssued` and `InterruptResolved` to enable independent reconstruction of either side. (Read-side reconstruction prefers the Issued event's `proposed_call` when both are present in the stream; falls back to the Resolved event's copy if only the Resolved is read in isolation. See "Read-side" below.)
 
-`approval_pair_id` is omitted when it equals `request_id` (the common case in MAF). Preserved when distinct, so reconstructed `FunctionApprovalRequestContent`/`FunctionApprovalResponseContent` keep their original pair id and MAF's `ProcessFunctionApprovalResponses` can resume.
+`approval_pair_id` is omitted when it equals `request_id` (the common case in MAF). Preserved when distinct, so reconstructed `ToolApprovalRequestContent`/`ToolApprovalResponseContent` keep their original pair id and MAF's `ProcessFunctionApprovalResponses` can resume.
+
+> **Note:** `ToolApprovalRequestContent` and `ToolApprovalResponseContent` are the names introduced in `Microsoft.Extensions.AI.Abstractions 10.4.0`. Earlier drafts of this spec used the pre-rename names `FunctionApprovalRequestContent` / `FunctionApprovalResponseContent`; the types are identical except for the name and the property `Id` → `RequestId`, `FunctionCall` → `ToolCall` (typed `ToolCallContent`; cast to `FunctionCallContent` for MAF's approval flow).
 
 ### Post-hoc correlation rule
 
@@ -94,22 +96,22 @@ Both write paths apply per-content-block decomposition.
 | `[Text]` | `AssistantTextGenerated` |
 | `[Text, FCC]` | `AssistantToolCallsGenerated{content=Text, tool_calls=[FCC]}` *(today's behavior)* |
 | `[Text, ApprovalRequest]` | `AssistantTextGenerated{content=Text}` + `InterruptIssued` |
-| `[ApprovalRequest]` (no text, no FCC) | `InterruptIssued` only — empty `AssistantTextGenerated` is suppressed |
+| `[ApprovalRequest]` (no text, no FCC) | empty `AssistantTextGenerated` marker + `InterruptIssued` *(marker carries `message_index`)* |
 | `[Text, FCC, ApprovalRequest]` | `AssistantToolCallsGenerated{content=Text, tool_calls=[FCC]}` + `InterruptIssued` |
-| `[ApprovalRequest1, ApprovalRequest2]` | two `InterruptIssued`, one per |
+| `[ApprovalRequest1, ApprovalRequest2]` | empty `AssistantTextGenerated` marker + two `InterruptIssued`, one per |
 
 **User role:**
 
 | Content blocks | Emitted events |
 |---|---|
 | `[Text]` | `UserMessageReceived` *(today)* |
-| `[ApprovalResponse]` | `InterruptResolved` only — empty `UserMessageReceived` is suppressed |
+| `[ApprovalResponse]` | empty `UserMessageReceived` marker + `InterruptResolved` *(marker carries `message_index`)* |
 | `[Text, ApprovalResponse]` | `UserMessageReceived` + `InterruptResolved` |
-| `[ApprovalResponse1, ApprovalResponse2]` | two `InterruptResolved` |
+| `[ApprovalResponse1, ApprovalResponse2]` | empty `UserMessageReceived` marker + two `InterruptResolved` |
 
 **Tool role:** unchanged.
 
-Text content rides on the "primary" event for the message: `AssistantToolCallsGenerated` if any `FunctionCallContent` exists, otherwise `AssistantTextGenerated`. Approval blocks are always emitted as separate events and never absorb text.
+Text content rides on the "primary" event for the message: `AssistantToolCallsGenerated` if any `FunctionCallContent` exists, otherwise `AssistantTextGenerated`. Approval blocks are always emitted as separate canonical events and never absorb text; for approval-only turns, the runtime still emits the otherwise-empty primary event as a marker so `message_index` is preserved across stream rehydration. The read path's reconstruction filters empty content, so the marker contributes no `Content` block to the rebuilt `ChatMessage`.
 
 ## .NET implementation
 
@@ -129,7 +131,7 @@ public static IEnumerable<object> ToEvents(ChatMessage message, int messageIndex
 `ToAssistantEvents`:
 1. Collect text from `TextContent` blocks (joined).
 2. `fcs = message.Contents.OfType<FunctionCallContent>().ToList()`.
-3. `approvals = message.Contents.OfType<FunctionApprovalRequestContent>().ToList()`.
+3. `approvals = message.Contents.OfType<ToolApprovalRequestContent>().ToList()`.
 4. Emit primary event:
    - If `fcs.Any()` → `AssistantToolCallsGenerated{ content=text, tool_calls=fcs.Select(BuildToolCallInfo) }`.
    - Else if non-empty text → `AssistantTextGenerated{ content=text }`.
@@ -138,7 +140,7 @@ public static IEnumerable<object> ToEvents(ChatMessage message, int messageIndex
 
 `ToUserEvents`:
 1. Collect text.
-2. `responses = message.Contents.OfType<FunctionApprovalResponseContent>().ToList()`.
+2. `responses = message.Contents.OfType<ToolApprovalResponseContent>().ToList()`.
 3. If non-empty text → `UserMessageReceived`. Else suppress.
 4. For each response → `BuildInterruptResolved(response, message, timestamp)`.
 
@@ -147,8 +149,8 @@ public static IEnumerable<object> ToEvents(ChatMessage message, int messageIndex
 ### Helpers
 
 ```csharp
-static InterruptIssued BuildInterruptIssued(FunctionApprovalRequestContent fa, ChatMessage carrier, DateTimeOffset ts) {
-    var fc  = fa.FunctionCall;
+static InterruptIssued BuildInterruptIssued(ToolApprovalRequestContent ta, ChatMessage carrier, DateTimeOffset ts) {
+    var fc  = (FunctionCallContent)ta.ToolCall;
     var evt = new InterruptIssued {
         RequestId = fc.CallId,
         Kind      = "approval",
@@ -157,20 +159,20 @@ static InterruptIssued BuildInterruptIssued(FunctionApprovalRequestContent fa, C
     if (!string.IsNullOrEmpty(fc.Name)) evt.ToolName = fc.Name;
     evt.Prompt    = BuildArgpackedPrompt(fc);
     if (carrier.MessageId is { } mid) evt.MessageId = mid;
-    evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, fa.Id);
+    evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, ta.RequestId);
     return evt;
 }
 
-static InterruptResolved BuildInterruptResolved(FunctionApprovalResponseContent fr, ChatMessage carrier, DateTimeOffset ts) {
-    var fc  = fr.FunctionCall;
+static InterruptResolved BuildInterruptResolved(ToolApprovalResponseContent tr, ChatMessage carrier, DateTimeOffset ts) {
+    var fc  = (FunctionCallContent)tr.ToolCall;
     var evt = new InterruptResolved {
         RequestId = fc.CallId,
-        Outcome   = fr.Approved ? "allow" : "deny",
+        Outcome   = tr.Approved ? "allow" : "deny",
         Timestamp = Timestamp.FromDateTimeOffset(ts),
     };
-    if (carrier.MessageId is { } mid) evt.MessageId = mid;
-    if (fr.Reason       is { } r)   evt.Response  = r;
-    evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, fr.Id);
+    if (carrier.MessageId is { } mid)          evt.MessageId = mid;
+    if (!string.IsNullOrWhiteSpace(tr.Reason)) evt.Response  = tr.Reason;
+    evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, tr.RequestId);
     return evt;
 }
 ```
@@ -229,8 +231,8 @@ Algorithm:
    - `UserMessageReceived` / `AssistantTextGenerated` → `TextContent(content)` if non-empty.
    - `AssistantToolCallsGenerated` → `TextContent(content)` (if any) + one `FunctionCallContent` per `tool_calls` entry.
    - `ToolResultReceived` → `FunctionResultContent(call_id, result)`.
-   - `InterruptIssued ii` → `FunctionApprovalRequestContent(approval_pair_id ?? ii.RequestId, ReconstructFunctionCall(ii))`. The inner FCC is rebuilt from `extensions.afw.interrupt.proposed_call`.
-   - `InterruptResolved ir` → look up `issuedByReqId[ir.RequestId]`. If present, build FCC from the issued event's `proposed_call`; else fall back to the resolved event's own `proposed_call`. Construct `FunctionApprovalResponseContent(approval_pair_id ?? ir.RequestId, ir.Outcome == "allow", FCC)` with `Reason = ir.Response`.
+   - `InterruptIssued ii` → `ToolApprovalRequestContent(approval_pair_id ?? ii.RequestId, ReconstructFunctionCall(ii))`. The inner FCC is rebuilt from `extensions.afw.interrupt.proposed_call`.
+   - `InterruptResolved ir` → look up `issuedByReqId[ir.RequestId]`. If present, build FCC from the issued event's `proposed_call`; else fall back to the resolved event's own `proposed_call`. Construct `ToolApprovalResponseContent(approval_pair_id ?? ir.RequestId, ir.Outcome == "allow", FCC)` with `Reason = ir.Response`.
    - If neither side has `proposed_call` (pathological — a Resolved without an Issued and without its own `proposed_call`): skip the event with a debug log; do not fabricate a stub FCC.
 3. Carry `MessageId`/`AuthorName`/`CreatedAt` from the first event in the group that has them.
 4. Return `null` when no content blocks were built (e.g. group contained only non-chat events).
@@ -243,7 +245,7 @@ Streams written before this change have no interrupts. Grouping is a no-op: each
 
 `kurrent_agent_framework` mirrors the .NET layout:
 
-- The Message↔canonical converter module gains `FunctionApprovalRequestContent`/`FunctionApprovalResponseContent` awareness with the same decomposition rules.
+- The Message↔canonical converter module gains `ToolApprovalRequestContent`/`ToolApprovalResponseContent` awareness with the same decomposition rules.
 - The history provider's read path adds the same `message_id`-keyed grouping pass, plus the same cross-event `issued_by_request_id` lookup for `InterruptResolved` reconstruction.
 - The `extensions.afw.interrupt` shape is built as a plain dict, serialized via the canonical Protobuf `Struct` bridge already used by other extension blocks.
 
@@ -292,7 +294,7 @@ The pre-existing Claude-Code-flavored fixture data (`kind=permission`, `extensio
 
 `KurrentDBChatHistoryProviderTests` — end-to-end round-trip:
 
-- `ApprovalRequestRoundTripsThroughKurrentDB`: store assistant `[Text, ApprovalRequest]`, read back, assert reconstructed `ChatMessage` contains a `TextContent` and a `FunctionApprovalRequestContent` with the original FCC fields.
+- `ApprovalRequestRoundTripsThroughKurrentDB`: store assistant `[Text, ApprovalRequest]`, read back, assert reconstructed `ChatMessage` contains a `TextContent` and a `ToolApprovalRequestContent` with the original FCC fields.
 - `ApprovalResponseRoundTripsThroughKurrentDB`: store the approval+response sequence, read back, assert assistant turn carries the request and user turn carries the response with `Approved`/`Reason` preserved.
 - `PostHocCorrelationRule_RequestIdMatchesToolCallId`: when the approved call subsequently surfaces as `AssistantToolCallsGenerated`, assert `InterruptIssued.RequestId == AssistantToolCallsGenerated.ToolCalls[0].CallId`.
 
@@ -316,7 +318,7 @@ Out of scope for this work; folded into DEV-1563. The contract this design guara
 None at design time. Two empirical questions resolve naturally during implementation:
 
 1. **Does MAF emit a separate `AssistantToolCallsGenerated` for an approved call?** If yes, the post-hoc correlation test asserts `InterruptIssued.RequestId == AssistantToolCallsGenerated.ToolCalls[0].CallId` directly. If no (MAF goes straight from approval response to `FunctionResultContent`), the test asserts on `ToolResultReceived.CallId` instead. Either way the rule holds because both downstream events use the same FCC `CallId`.
-2. **Does an approved call's eventual function-call message ever surface as a `FunctionCallContent` block alongside the original `FunctionApprovalRequestContent`?** Mixed-batch decomposition handles it either way (`[Text, FCC, ApprovalRequest]` row), so this is a tested-by-construction case.
+2. **Does an approved call's eventual function-call message ever surface as a `FunctionCallContent` block alongside the original `ToolApprovalRequestContent`?** Mixed-batch decomposition handles it either way (`[Text, FCC, ApprovalRequest]` row), so this is a tested-by-construction case.
 
 ## Risks
 

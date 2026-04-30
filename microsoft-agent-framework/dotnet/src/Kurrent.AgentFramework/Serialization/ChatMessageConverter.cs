@@ -134,8 +134,8 @@ public static class ChatMessageConverter {
             Outcome   = tr.Approved ? "allow" : "deny",
             Timestamp = Timestamp.FromDateTimeOffset(ts),
         };
-        if (carrier.MessageId is { } mid) evt.MessageId = mid;
-        if (tr.Reason         is { } r)   evt.Response  = r;
+        if (carrier.MessageId is { } mid)              evt.MessageId = mid;
+        if (!string.IsNullOrWhiteSpace(tr.Reason))     evt.Response  = tr.Reason;
         evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, tr.RequestId);
         return evt;
     }

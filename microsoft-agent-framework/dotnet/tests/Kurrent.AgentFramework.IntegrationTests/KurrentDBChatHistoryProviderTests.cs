@@ -214,9 +214,14 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         var issuedByReqId = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
         foreach (var ev in resolved) {
             string? key = ev switch {
-                InterruptIssued   x => x.HasMessageId ? x.MessageId : null,
-                InterruptResolved x => x.HasMessageId ? x.MessageId : null,
-                _                   => null,
+                UserMessageReceived         x => x.HasMessageId ? x.MessageId : null,
+                AssistantTextGenerated      x => x.HasMessageId ? x.MessageId : null,
+                AssistantToolCallsGenerated x => x.HasMessageId ? x.MessageId : null,
+                AssistantThinkingGenerated  x => x.HasMessageId ? x.MessageId : null,
+                ToolResultReceived          x => x.HasMessageId ? x.MessageId : null,
+                InterruptIssued             x => x.HasMessageId ? x.MessageId : null,
+                InterruptResolved           x => x.HasMessageId ? x.MessageId : null,
+                _                             => null,
             };
             if (key is { } k && byMessageId.TryGetValue(k, out var gi)) groups[gi].Add(ev);
             else {
