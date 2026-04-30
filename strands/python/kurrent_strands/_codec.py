@@ -21,7 +21,9 @@ Token usage (``MessageMetadata.usage``) is surfaced separately via
 from __future__ import annotations
 
 import base64
+import binascii
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,9 +40,17 @@ from kurrent_agent_schema import (
 )
 from strands.types.content import Message
 
+logger = logging.getLogger("kurrent_strands._codec")
+
 STRANDS_EXTENSION_KEY: str = "strands"
 """Slug under which Strands-specific fields ride on canonical events'
 ``extensions`` map. See ``schema/SCHEMA_v2.md §5``."""
+
+_BYTES_MARKER: str = "__bytes_b64__"
+"""Wrapper key used inside ``extensions.strands.*`` payloads to round-trip
+``bytes`` values losslessly through ``google.protobuf.Struct`` (which is
+JSON-shaped and cannot hold raw bytes). A bytes value is replaced with
+``{_BYTES_MARKER: <base64-string>}`` on write, and decoded back on read."""
 
 # Canonical-content keys in Strands' ContentBlock — these decompose into
 # canonical events. Anything else rides in
@@ -232,12 +242,16 @@ def _set_strands_extension(event: ProtoMessage, payload: dict[str, Any]) -> None
     """Stamp ``event.extensions['strands']`` from a plain dict.
 
     No-op when ``payload`` is empty so we don't emit a present-but-empty
-    extension entry on the wire.
+    extension entry on the wire. Recursively wraps ``bytes`` values via
+    :data:`_BYTES_MARKER` because ``google.protobuf.Struct`` is JSON-shaped
+    and cannot hold raw bytes. The pre-migration Pydantic codec used
+    ``ser_json_bytes="base64"`` to do the same; this restores that behaviour
+    so non-canonical content blocks with binary payloads round-trip cleanly.
     """
     if not payload:
         return
     struct = Struct()
-    ParseDict(payload, struct)
+    ParseDict(_jsonify_for_struct(payload), struct)
     event.extensions[STRANDS_EXTENSION_KEY].CopyFrom(struct)
 
 
@@ -245,13 +259,59 @@ def _read_strands_extension(event: ProtoMessage) -> dict[str, Any]:
     """Read ``event.extensions['strands']`` back as a plain dict.
 
     Returns an empty dict when the slug is absent — proto map fields are
-    always present, so we check membership explicitly.
+    always present, so we check membership explicitly. ``bytes`` values
+    wrapped on write via :data:`_BYTES_MARKER` are unwrapped here.
     """
     if STRANDS_EXTENSION_KEY not in event.extensions:
         return {}
-    return MessageToDict(
+    raw = MessageToDict(
         event.extensions[STRANDS_EXTENSION_KEY], preserving_proto_field_name=True
     )
+    return _dejsonify_from_struct(raw)
+
+
+def _jsonify_for_struct(value: Any) -> Any:
+    """Recursively coerce a Python value into a Struct-compatible JSON shape.
+
+    ``bytes`` are wrapped as ``{_BYTES_MARKER: <base64>}`` so they round-trip
+    losslessly via :func:`_dejsonify_from_struct`. Non-JSON-native scalars
+    (e.g. ``datetime``) are stringified — they are best-effort metadata, not
+    the canonical wire path.
+    """
+    if isinstance(value, bytes):
+        return {_BYTES_MARKER: base64.b64encode(value).decode("ascii")}
+    if isinstance(value, dict):
+        return {k: _jsonify_for_struct(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonify_for_struct(v) for v in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
+
+
+def _dejsonify_from_struct(value: Any) -> Any:
+    """Inverse of :func:`_jsonify_for_struct` — unwrap ``_BYTES_MARKER`` dicts.
+
+    A wrapper dict with malformed base64 falls back to the wrapper itself so
+    the rest of the extension payload keeps round-tripping.
+    """
+    if isinstance(value, dict):
+        if list(value.keys()) == [_BYTES_MARKER]:
+            try:
+                return base64.b64decode(value[_BYTES_MARKER], validate=True)
+            except (binascii.Error, TypeError, ValueError):
+                logger.warning(
+                    "Skipping malformed base64 in extensions.strands "
+                    "(%s wrapper); leaving raw value in place.",
+                    _BYTES_MARKER,
+                )
+                return value
+        return {k: _dejsonify_from_struct(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_dejsonify_from_struct(v) for v in value]
+    return value
 
 
 def _build_thinking_event(
@@ -263,8 +323,9 @@ def _build_thinking_event(
     """Build an ``AssistantThinkingGenerated`` from a ``reasoningContent`` block.
 
     Strands reasoning is plaintext (``encrypted`` stays at the proto default
-    of ``False``); the optional ``signature`` and any ``redactedContent``
-    bytes ride in ``extensions.strands.thinking``.
+    of ``False``). The optional ``signature`` is a canonical field on the
+    event (``SCHEMA_v2.md §3.2``); any ``redactedContent`` bytes ride in
+    ``extensions.strands.thinking.redacted_content`` as a base64 string.
     """
     reasoning_text = reasoning_content.get("reasoningText") or {}
     text = reasoning_text.get("text")
@@ -276,15 +337,15 @@ def _build_thinking_event(
         message_index=message_index,
         timestamp=timestamp,
     )
-
-    thinking_ext: dict[str, Any] = {}
     if signature:
-        thinking_ext["signature"] = signature
-    if redacted is not None:
-        thinking_ext["redacted_content"] = base64.b64encode(redacted).decode("ascii")
+        evt.signature = signature
 
-    if thinking_ext:
-        ext_for_event = _merge_strands_extension(base_strands_ext, "thinking", thinking_ext)
+    if redacted is not None:
+        ext_for_event = _merge_strands_extension(
+            base_strands_ext,
+            "thinking",
+            {"redacted_content": base64.b64encode(redacted).decode("ascii")},
+        )
     else:
         ext_for_event = base_strands_ext
 
@@ -366,18 +427,18 @@ def _reconstruct_message(events: list[ProtoMessage]) -> Message:
 
         if isinstance(event, UserMessageReceived):
             role = "user"
-            if event.HasField("content") and event.content:
+            if event.HasField("content"):
                 content.append({"text": event.content})
         elif isinstance(event, AssistantTextGenerated):
             role = "assistant"
-            if event.HasField("content") and event.content:
+            if event.HasField("content"):
                 content.append({"text": event.content})
         elif isinstance(event, AssistantThinkingGenerated):
             role = "assistant"
             content.append(_reconstruct_reasoning_block(event, per_event_ext))
         elif isinstance(event, AssistantToolCallsGenerated):
             role = "assistant"
-            if event.HasField("content") and event.content:
+            if event.HasField("content"):
                 content.append({"text": event.content})
             for tc in event.tool_calls:
                 tu_block: dict[str, Any] = {
@@ -418,18 +479,33 @@ def _reconstruct_message(events: list[ProtoMessage]) -> Message:
 def _reconstruct_reasoning_block(
     event: AssistantThinkingGenerated, strands_ext: dict[str, Any]
 ) -> dict[str, Any]:
-    """Rebuild a Strands ``reasoningContent`` block from a thinking event."""
+    """Rebuild a Strands ``reasoningContent`` block from a thinking event.
+
+    ``signature`` is read from the canonical event field (``SCHEMA_v2.md §3.2``);
+    ``redactedContent`` is decoded from ``extensions.strands.thinking.redacted_content``.
+    A malformed base64 value is logged and skipped so a single corrupt event
+    does not break session restore.
+    """
     rc: dict[str, Any] = {}
     rt: dict[str, Any] = {}
-    if event.HasField("content") and event.content:
+    if event.HasField("content"):
         rt["text"] = event.content
-    thinking = strands_ext.get("thinking") or {}
-    if thinking.get("signature"):
-        rt["signature"] = thinking["signature"]
+    if event.HasField("signature"):
+        rt["signature"] = event.signature
     if rt:
         rc["reasoningText"] = rt
-    if thinking.get("redacted_content"):
-        rc["redactedContent"] = base64.b64decode(thinking["redacted_content"])
+
+    thinking = strands_ext.get("thinking") or {}
+    redacted_b64 = thinking.get("redacted_content")
+    if isinstance(redacted_b64, str):
+        try:
+            rc["redactedContent"] = base64.b64decode(redacted_b64, validate=True)
+        except (binascii.Error, TypeError, ValueError):
+            logger.warning(
+                "Skipping malformed redacted_content base64 on "
+                "AssistantThinkingGenerated; reconstructed reasoning block "
+                "will omit redactedContent."
+            )
     return {"reasoningContent": rc}
 
 

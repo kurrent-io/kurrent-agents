@@ -121,6 +121,23 @@ class TestAssistantMessage:
         assert restored["content"][1]["toolUse"]["input"] == {"q": "x"}
 
 
+class TestEmptyContent:
+    """An assistant event whose ``content`` is explicitly empty (`""`) must
+    survive round-trip — distinct from ``content`` being unset entirely.
+    Pre-migration Pydantic logic preserved this; the proto codec does the
+    same via ``HasField`` (rather than truthiness)."""
+
+    def test_explicit_empty_assistant_text_round_trips(self) -> None:
+        evt = AssistantTextGenerated(
+            content="",
+            message_index=0,
+            timestamp=TS,
+        )
+        [restored] = canonical_to_messages([evt])
+        assert restored["role"] == "assistant"
+        assert restored["content"] == [{"text": ""}]
+
+
 class TestThinkingContent:
     """``reasoningContent`` blocks emit ``AssistantThinkingGenerated`` per
     ``SCHEMA_v2.md §3.2``. Strands reasoning is plaintext; signature and any
@@ -150,7 +167,10 @@ class TestThinkingContent:
         assert isinstance(events[1], AssistantTextGenerated)
         assert events[1].content == "Here's the answer."
 
-    def test_signature_round_trips_via_extensions(self) -> None:
+    def test_signature_is_set_on_canonical_field(self) -> None:
+        """``signature`` is a canonical field on ``AssistantThinkingGenerated``
+        per SCHEMA_v2 §3.2 — must be readable by cross-SDK readers without
+        decoding the strands extension envelope."""
         events = message_to_canonical(
             _msg(
                 "assistant",
@@ -168,8 +188,11 @@ class TestThinkingContent:
             message_index=0,
             timestamp=TS,
         )
-        thinking = _strands_extension(events[0])["thinking"]
-        assert thinking == {"signature": "sig-abc"}
+        assert events[0].HasField("signature")
+        assert events[0].signature == "sig-abc"
+        # Signature does NOT also appear under extensions.strands.thinking —
+        # canonical placement is the single source of truth.
+        assert "thinking" not in _strands_extension(events[0])
 
     def test_redacted_content_round_trips_via_extensions(self) -> None:
         events = message_to_canonical(
@@ -219,6 +242,30 @@ class TestThinkingContent:
         assert restored["content"][0] == {
             "reasoningContent": {"redactedContent": b"opaque-bytes"}
         }
+
+    def test_malformed_redacted_base64_does_not_break_restore(self) -> None:
+        """Corrupt or partial ``redacted_content`` must not abort session
+        restore (`canonical_to_messages` is invoked from
+        `KurrentDBSessionManager.initialize`)."""
+        from google.protobuf.json_format import ParseDict
+        from google.protobuf.struct_pb2 import Struct
+
+        from kurrent_strands._codec import STRANDS_EXTENSION_KEY
+
+        evt = AssistantThinkingGenerated(
+            content="thoughts",
+            message_index=0,
+            timestamp=TS,
+        )
+        struct = Struct()
+        ParseDict({"thinking": {"redacted_content": "not-valid-b64!!!"}}, struct)
+        evt.extensions[STRANDS_EXTENSION_KEY].CopyFrom(struct)
+
+        # Restore must succeed; the redactedContent simply gets omitted.
+        [restored] = canonical_to_messages([evt])
+        assert restored["role"] == "assistant"
+        rc = restored["content"][0]["reasoningContent"]
+        assert rc == {"reasoningText": {"text": "thoughts"}}
 
 
 class TestToolResult:
@@ -304,16 +351,9 @@ class TestToolResult:
 
 
 class TestNonCanonicalBlocks:
-    def test_image_block_preserved_via_extensions(self) -> None:
+    def test_image_block_with_uri_preserved_via_extensions(self) -> None:
         """Non-canonical blocks (image / document / etc.) ride in
-        ``extensions.strands.non_canonical_blocks`` and restore verbatim.
-
-        Note: the ``extensions.strands`` block is a JSON-shaped
-        ``google.protobuf.Struct``, so block fields must be JSON-compatible
-        (strings, numbers, bool, null, lists, dicts). Bytes-bearing blocks
-        (image source bytes, document data) are out of scope for this
-        round-trip and will be handled by a future canonical-artifact path.
-        """
+        ``extensions.strands.non_canonical_blocks`` and restore verbatim."""
         image_block = {
             "image": {"format": "png", "source": {"uri": "s3://bucket/img.png"}},
         }
@@ -327,6 +367,27 @@ class TestNonCanonicalBlocks:
         # Text block first (from canonical), then the image (from extensions).
         assert restored["content"][0] == {"text": "look at this"}
         assert restored["content"][1] == image_block
+
+    def test_image_block_with_inline_bytes_round_trips_losslessly(self) -> None:
+        """Bytes-bearing blocks (image source bytes, document data) round-trip
+        via the ``__bytes_b64__`` wrapper so ``message_to_canonical`` doesn't
+        crash on JSON-incompatible Struct values and same-framework reads
+        recover the original ``bytes``.
+        """
+        image_block = {
+            "image": {"format": "png", "source": {"bytes": b"fake-png"}},
+        }
+        original = _msg("user", [{"text": "see attached"}, image_block])
+        events = message_to_canonical(original, message_index=0, timestamp=TS)
+        assert len(events) == 1
+
+        [restored] = canonical_to_messages(events)
+        assert restored["content"][0] == {"text": "see attached"}
+        assert restored["content"][1] == image_block
+        # And the bytes are actually bytes after restore (not the wrapper).
+        assert isinstance(
+            restored["content"][1]["image"]["source"]["bytes"], bytes
+        )
 
 
 class TestCustomMetadata:
