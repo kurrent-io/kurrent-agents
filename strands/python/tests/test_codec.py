@@ -5,19 +5,21 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from kurrent_strands._codec import (
-    canonical_to_messages,
-    extract_usage_metadata,
-    message_to_canonical,
-)
-from kurrent_strands._schema.events import (
-    STRANDS_EXTENSION_KEY,
+from google.protobuf.json_format import MessageToDict
+from kurrent_agent_schema import (
     AssistantTextGenerated,
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
     ToolResultReceived,
     UserMessageReceived,
 )
 
+from kurrent_strands._codec import (
+    STRANDS_EXTENSION_KEY,
+    canonical_to_messages,
+    extract_usage_metadata,
+    message_to_canonical,
+)
 
 TS = datetime(2026, 4, 19, 12, 0, tzinfo=UTC)
 
@@ -27,6 +29,19 @@ def _msg(role: str, content: list[dict[str, Any]], **metadata: Any) -> dict[str,
     if metadata:
         msg["metadata"] = metadata
     return msg
+
+
+def _strands_extension(event: Any) -> dict[str, Any]:
+    """Read the ``strands`` extension block as a plain dict, or ``{}`` if absent."""
+    if STRANDS_EXTENSION_KEY not in event.extensions:
+        return {}
+    return MessageToDict(
+        event.extensions[STRANDS_EXTENSION_KEY], preserving_proto_field_name=True
+    )
+
+
+def _struct_to_dict(struct: Any) -> dict[str, Any]:
+    return MessageToDict(struct, preserving_proto_field_name=True)
 
 
 class TestUserMessage:
@@ -80,7 +95,7 @@ class TestAssistantMessage:
         assert events[0].content == "Let me search."
         assert events[0].tool_calls[0].call_id == "c1"
         assert events[0].tool_calls[0].tool_name == "search"
-        assert events[0].tool_calls[0].arguments == {"q": "kurrent"}
+        assert _struct_to_dict(events[0].tool_calls[0].arguments) == {"q": "kurrent"}
 
     def test_tool_call_round_trip(self) -> None:
         original = _msg(
@@ -106,6 +121,106 @@ class TestAssistantMessage:
         assert restored["content"][1]["toolUse"]["input"] == {"q": "x"}
 
 
+class TestThinkingContent:
+    """``reasoningContent`` blocks emit ``AssistantThinkingGenerated`` per
+    ``SCHEMA_v2.md §3.2``. Strands reasoning is plaintext; signature and any
+    redacted-content bytes ride in ``extensions.strands.thinking``."""
+
+    def test_plaintext_reasoning_emits_thinking_event(self) -> None:
+        events = message_to_canonical(
+            _msg(
+                "assistant",
+                [
+                    {
+                        "reasoningContent": {
+                            "reasoningText": {"text": "Let me think."}
+                        }
+                    },
+                    {"text": "Here's the answer."},
+                ],
+            ),
+            message_index=3,
+            timestamp=TS,
+        )
+        # Thinking event comes BEFORE the text event for the same turn.
+        assert len(events) == 2
+        assert isinstance(events[0], AssistantThinkingGenerated)
+        assert events[0].content == "Let me think."
+        assert events[0].HasField("encrypted") is False  # default, plaintext
+        assert isinstance(events[1], AssistantTextGenerated)
+        assert events[1].content == "Here's the answer."
+
+    def test_signature_round_trips_via_extensions(self) -> None:
+        events = message_to_canonical(
+            _msg(
+                "assistant",
+                [
+                    {
+                        "reasoningContent": {
+                            "reasoningText": {
+                                "text": "thoughts",
+                                "signature": "sig-abc",
+                            }
+                        }
+                    }
+                ],
+            ),
+            message_index=0,
+            timestamp=TS,
+        )
+        thinking = _strands_extension(events[0])["thinking"]
+        assert thinking == {"signature": "sig-abc"}
+
+    def test_redacted_content_round_trips_via_extensions(self) -> None:
+        events = message_to_canonical(
+            _msg(
+                "assistant",
+                [{"reasoningContent": {"redactedContent": b"opaque-bytes"}}],
+            ),
+            message_index=0,
+            timestamp=TS,
+        )
+        thinking = _strands_extension(events[0])["thinking"]
+        # Bytes ride as base64 in the JSON-shaped Struct extension.
+        assert thinking["redacted_content"] == "b3BhcXVlLWJ5dGVz"  # base64 of 'opaque-bytes'
+
+    def test_thinking_round_trip_reconstructs_reasoning_block(self) -> None:
+        original = _msg(
+            "assistant",
+            [
+                {
+                    "reasoningContent": {
+                        "reasoningText": {
+                            "text": "step by step",
+                            "signature": "sig-1",
+                        }
+                    }
+                },
+                {"text": "result"},
+            ],
+        )
+        events = message_to_canonical(original, message_index=0, timestamp=TS)
+        [restored] = canonical_to_messages(events)
+        assert restored["role"] == "assistant"
+        assert restored["content"][0] == {
+            "reasoningContent": {
+                "reasoningText": {"text": "step by step", "signature": "sig-1"}
+            }
+        }
+        assert restored["content"][1] == {"text": "result"}
+
+    def test_redacted_round_trip_recovers_bytes(self) -> None:
+        original = _msg(
+            "assistant",
+            [{"reasoningContent": {"redactedContent": b"opaque-bytes"}}],
+        )
+        events = message_to_canonical(original, message_index=0, timestamp=TS)
+        [restored] = canonical_to_messages(events)
+        assert restored["content"][0] == {
+            "reasoningContent": {"redactedContent": b"opaque-bytes"}
+        }
+
+
 class TestToolResult:
     def test_tool_result_on_user_role(self) -> None:
         events = message_to_canonical(
@@ -128,8 +243,8 @@ class TestToolResult:
         assert events[0].call_id == "c1"
 
     def test_status_round_trips_via_extensions(self) -> None:
-        """Strands' ``ToolResult.status`` is required by the Anthropic adapter but
-        isn't in the canonical schema — must ride in ``extensions.strands``
+        """Strands' ``ToolResult.status`` is required by the Anthropic adapter
+        but isn't in the canonical schema — must ride in ``extensions.strands``
         and restore on the reconstructed message.
         """
         original = _msg(
@@ -153,17 +268,14 @@ class TestToolResult:
         (e.g. written by an ADK agent), status defaults to ``success`` so
         Strands' Anthropic adapter doesn't raise ``KeyError``.
         """
-        from kurrent_strands._schema.events import ToolResultReceived
-
+        # Simulate a cross-framework read: build the proto event directly
+        # without setting ``extensions["strands"]``.
         events = [
             ToolResultReceived(
                 call_id="c1",
-                tool_name=None,
                 result='[{"text":"ok"}]',
                 message_index=0,
                 timestamp=TS,
-                # No extensions — simulates a cross-framework read.
-                extensions=None,
             )
         ]
         [restored] = canonical_to_messages(events)
@@ -193,16 +305,22 @@ class TestToolResult:
 
 class TestNonCanonicalBlocks:
     def test_image_block_preserved_via_extensions(self) -> None:
-        """Image / document / etc. blocks ride in extensions.strands and restore verbatim."""
+        """Non-canonical blocks (image / document / etc.) ride in
+        ``extensions.strands.non_canonical_blocks`` and restore verbatim.
+
+        Note: the ``extensions.strands`` block is a JSON-shaped
+        ``google.protobuf.Struct``, so block fields must be JSON-compatible
+        (strings, numbers, bool, null, lists, dicts). Bytes-bearing blocks
+        (image source bytes, document data) are out of scope for this
+        round-trip and will be handled by a future canonical-artifact path.
+        """
         image_block = {
-            "image": {"format": "png", "source": {"bytes": b"fake-png"}},
+            "image": {"format": "png", "source": {"uri": "s3://bucket/img.png"}},
         }
-        original = _msg(
-            "user", [{"text": "look at this"}, image_block]
-        )
+        original = _msg("user", [{"text": "look at this"}, image_block])
         events = message_to_canonical(original, message_index=0, timestamp=TS)
         assert len(events) == 1
-        strands_ext = events[0].extensions[STRANDS_EXTENSION_KEY]
+        strands_ext = _strands_extension(events[0])
         assert strands_ext["non_canonical_blocks"] == [image_block]
 
         [restored] = canonical_to_messages(events)

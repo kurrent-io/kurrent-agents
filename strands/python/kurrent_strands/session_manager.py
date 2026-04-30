@@ -16,6 +16,13 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from kurrent_agent_schema import (
+    AssistantTextGenerated,
+    AssistantThinkingGenerated,
+    AssistantToolCallsGenerated,
+    SessionEnded,
+    SessionStarted,
+)
 from kurrentdbclient import KurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
 from strands.session.session_manager import SessionManager
@@ -27,9 +34,8 @@ from ._codec import (
     extract_usage_metadata,
     message_to_canonical,
 )
-from ._schema import events as _events
-from ._schema.events import STRANDS_EXTENSION_KEY
-from ._schema.stream_names import for_session
+from ._strands_events import MessageRedacted, StrandsAgentState
+from ._stream_names import for_session
 
 if TYPE_CHECKING:  # pragma: no cover
     from strands.agent.agent import Agent
@@ -41,10 +47,11 @@ logger = logging.getLogger("kurrent_strands.session_manager")
 USAGE_METADATA_KEY = "$usage"
 
 # Canonical event types eligible to carry ``$usage`` (written only on assistant
-# events, per the schema).
+# events, per ``schema/SCHEMA_v2.md §3.6``).
 _ASSISTANT_EVENT_CLASSES: tuple[type, ...] = (
-    _events.AssistantTextGenerated,
-    _events.AssistantToolCallsGenerated,
+    AssistantTextGenerated,
+    AssistantToolCallsGenerated,
+    AssistantThinkingGenerated,
 )
 
 
@@ -106,15 +113,15 @@ class KurrentDBSessionManager(SessionManager):
             return
 
         canonical_events: list = []
-        latest_agent_state: _events.StrandsAgentState | None = None
+        latest_agent_state: StrandsAgentState | None = None
 
         for record in recorded:
             event = _serialization.deserialize(record)
             if event is None:
                 continue
-            if isinstance(event, _events.SessionStarted | _events.SessionEnded):
+            if isinstance(event, SessionStarted | SessionEnded):
                 continue
-            if isinstance(event, _events.StrandsAgentState):
+            if isinstance(event, StrandsAgentState):
                 latest_agent_state = event
                 continue
             # MessageRedacted handling is a v1 follow-up; for now keep the
@@ -180,7 +187,7 @@ class KurrentDBSessionManager(SessionManager):
             # Agent has no agent_id set — nothing durable to snapshot.
             logger.debug("Skipping sync_agent: agent.agent_id is not set")
             return
-        event = _events.StrandsAgentState(
+        event = StrandsAgentState(
             agent_id=session_agent.agent_id,
             state=dict(session_agent.state or {}),
             conversation_manager_state=dict(session_agent.conversation_manager_state or {}),
@@ -203,7 +210,7 @@ class KurrentDBSessionManager(SessionManager):
         # The message being redacted is the last one appended — so its index
         # is ``_next_message_index - 1`` (the counter advances after append).
         redacted_index = max(0, self._next_message_index - 1)
-        event = _events.MessageRedacted(
+        event = MessageRedacted(
             message_index=redacted_index,
             redact_message=dict(redact_message),
             timestamp=datetime.now(UTC),
@@ -217,7 +224,7 @@ class KurrentDBSessionManager(SessionManager):
     # ----- internals ---------------------------------------------------------
 
     def _emit_session_started(self) -> None:
-        started = _events.SessionStarted(
+        started = SessionStarted(
             app_name=self._app_name,
             user_id=self._user_id,
             agent_name=self._agent_name,
