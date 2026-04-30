@@ -1,15 +1,19 @@
 """Unit tests for ``KurrentDBHistoryProvider``.
 
 Uses an in-memory fake client (same pattern as ``test_memory.py``) so these
-tests don't need a running KurrentDB.
+tests don't need a running KurrentDB. The round-trip tests at the bottom
+require a live KurrentDB instance via the ``kurrentdb_client`` fixture.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, cast
+
+import pytest
 
 from agent_framework import ChatContext, ChatResponse, Content, Message, UsageDetails
 from kurrentdbclient import NewEvent, RecordedEvent
@@ -231,3 +235,483 @@ async def test_save_messages_without_capture_omits_usage_metadata() -> None:
     assert assistant_event.type == "AssistantTextGenerated"
     metadata = json.loads(assistant_event.metadata)
     assert "$usage" not in metadata
+
+
+def test_build_approval_prompt_simple_args():
+    from kurrent_agent_framework.chat_history import _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="send_email", arguments={"to": "alice@x.com", "subject": "hi"})
+
+    assert prompt == 'Approve calling send_email(to="alice@x.com", subject="hi")?'
+
+
+def test_build_approval_prompt_no_args():
+    from kurrent_agent_framework.chat_history import _build_approval_prompt
+
+    assert _build_approval_prompt(name="ping", arguments=None) == "Approve calling ping?"
+
+
+def test_build_approval_prompt_truncates_long_args():
+    from kurrent_agent_framework.chat_history import _APPROVAL_PROMPT_MAX_LENGTH, _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="huge", arguments={"payload": "x" * 500})
+
+    assert len(prompt) == _APPROVAL_PROMPT_MAX_LENGTH
+    assert prompt.endswith("…)?")
+    assert prompt.startswith('Approve calling huge(payload="')
+
+
+def test_build_approval_prompt_name_longer_than_cap_hard_caps_fallback():
+    from kurrent_agent_framework.chat_history import _APPROVAL_PROMPT_MAX_LENGTH, _build_approval_prompt
+
+    prompt = _build_approval_prompt(name="n" * 250, arguments=None)
+
+    assert len(prompt) == _APPROVAL_PROMPT_MAX_LENGTH
+    assert prompt.startswith("Approve calling n")
+
+
+def test_build_afw_interrupt_extension_call_id_equals_pair_id_omits_pair_id():
+    from kurrent_agent_framework.chat_history import _build_afw_interrupt_extension
+
+    ext = _build_afw_interrupt_extension(
+        call_id="call-1", name="ping", arguments={"x": 1}, approval_pair_id="call-1",
+    )
+
+    interrupt = ext["interrupt"]
+    assert "approval_pair_id" not in interrupt
+    proposed = interrupt["proposed_call"]
+    assert proposed == {"id": "call-1", "name": "ping", "arguments": {"x": 1}}
+
+
+def test_build_afw_interrupt_extension_differing_pair_id_includes_pair_id():
+    from kurrent_agent_framework.chat_history import _build_afw_interrupt_extension
+
+    ext = _build_afw_interrupt_extension(
+        call_id="call-1", name="ping", arguments=None, approval_pair_id="approval-pair-9",
+    )
+
+    assert ext["interrupt"]["approval_pair_id"] == "approval-pair-9"
+    proposed = ext["interrupt"]["proposed_call"]
+    assert proposed["id"] == "call-1"
+    assert proposed["name"] == "ping"
+    assert proposed["arguments"] == {}
+
+
+# --- Approval decomposition helpers ---
+
+
+def _make_function_call(call_id: str, name: str, arguments: dict[str, Any] | None = None):
+    from agent_framework import Content
+
+    return Content(type="function_call", call_id=call_id, name=name, arguments=arguments)
+
+
+def _make_approval_request(call_id: str, name: str, arguments: dict[str, Any] | None = None,
+                           pair_id: str | None = None):
+    from agent_framework import Content
+
+    return Content.from_function_approval_request(
+        id=pair_id or call_id,
+        function_call=_make_function_call(call_id, name, arguments),
+    )
+
+
+def _make_approval_response(call_id: str, approved: bool, name: str = "ping",
+                            arguments: dict[str, Any] | None = None,
+                            pair_id: str | None = None):
+    from agent_framework import Content
+
+    return Content.from_function_approval_response(
+        approved=approved,
+        id=pair_id or call_id,
+        function_call=_make_function_call(call_id, name, arguments),
+    )
+
+
+def test_message_to_events_assistant_text_and_approval_emits_text_and_interrupt():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting an email."),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    assert isinstance(events[0], AssistantTextGenerated)
+    assert events[0].content == "Drafting an email."
+    assert events[0].message_id == "asst-msg-1"
+
+    ii = events[1]
+    assert isinstance(ii, InterruptIssued)
+    assert ii.request_id == "call-1"
+    assert ii.kind == "approval"
+    assert ii.tool_name == "send_email"
+    assert ii.message_id == "asst-msg-1"
+    assert ii.prompt.startswith("Approve calling send_email(")
+
+    from google.protobuf.json_format import MessageToDict
+    afw = MessageToDict(ii.extensions["afw"], preserving_proto_field_name=True)
+    assert afw["interrupt"]["proposed_call"]["name"] == "send_email"
+
+
+def test_message_to_events_assistant_approval_only_emits_marker_and_interrupt():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "ping")],
+        message_id="asst-msg-2",
+    )
+
+    events = list(_message_to_events(msg, message_index=5, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    marker = events[0]
+    assert isinstance(marker, AssistantTextGenerated)
+    assert not marker.HasField("content")
+    assert marker.message_index == 5
+    assert marker.message_id == "asst-msg-2"
+    assert isinstance(events[1], InterruptIssued)
+
+
+def test_message_to_events_user_approval_response_emits_marker_and_resolved():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=True, name="send_email",
+                                          arguments={"to": "alice"})],
+        message_id="user-msg-1",
+    )
+
+    events = list(_message_to_events(msg, message_index=1, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    marker = events[0]
+    assert isinstance(marker, UserMessageReceived)
+    assert not marker.HasField("content")
+    assert marker.message_index == 1
+
+    ir = events[1]
+    assert isinstance(ir, InterruptResolved)
+    assert ir.request_id == "call-1"
+    assert ir.outcome == "allow"
+    assert ir.message_id == "user-msg-1"
+    from google.protobuf.json_format import MessageToDict
+    afw = MessageToDict(ir.extensions["afw"], preserving_proto_field_name=True)
+    assert afw["interrupt"]["proposed_call"]["name"] == "send_email"
+
+
+def test_message_to_events_user_approval_response_denied_emits_deny():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved
+
+    msg = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=False)],
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + resolved
+    assert len(events) == 2
+    ir = events[1]
+    assert isinstance(ir, InterruptResolved)
+    assert ir.outcome == "deny"
+
+
+def test_merge_events_assistant_text_and_interrupt_rebuilds_contents():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+
+    original = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+    events = list(_message_to_events(original, message_index=0, timestamp=datetime.now(UTC)))
+    from kurrent_agent_schema import InterruptIssued as _InterruptIssued
+    issued_by_request_id = {
+        e.request_id: e for e in events if isinstance(e, _InterruptIssued)
+    }
+
+    rebuilt = _merge_events_into_message(events, issued_by_request_id)
+
+    assert rebuilt is not None
+    assert rebuilt.role == "assistant"
+    assert rebuilt.message_id == "asst-msg-1"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+    assert approvals[0].function_call.name == "send_email"
+    assert approvals[0].function_call.call_id == "call-1"
+
+
+@pytest.mark.asyncio
+async def test_approval_request_round_trips_through_kurrentdb(kurrentdb_client: Any):
+    """End-to-end: write an assistant [Text, ApprovalRequest] message and read
+    it back through the provider; the rebuilt Message must contain both blocks."""
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import KurrentDBHistoryProvider
+
+    session_id = uuid.uuid4().hex
+    provider = KurrentDBHistoryProvider(kurrentdb_client)
+    carrier = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        message_id="asst-msg-1",
+    )
+    await provider.save_messages(session_id, [carrier])
+
+    # Fresh provider over same stream
+    reader = KurrentDBHistoryProvider(kurrentdb_client)
+    rebuilt_messages = await reader.get_messages(session_id)
+
+    assert len(rebuilt_messages) == 1
+    rebuilt = rebuilt_messages[0]
+    assert rebuilt.role == "assistant"
+    assert rebuilt.message_id == "asst-msg-1"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+    assert approvals[0].function_call.name == "send_email"
+
+
+@pytest.mark.asyncio
+async def test_approval_response_round_trips_through_kurrentdb(kurrentdb_client: Any):
+    """End-to-end: assistant approval request + user approval response.
+    Both events serialize/deserialize through KurrentDB and reconstruct
+    via the provider's grouping pass + cross-event lookup."""
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import KurrentDBHistoryProvider
+
+    session_id = uuid.uuid4().hex
+    provider = KurrentDBHistoryProvider(kurrentdb_client)
+    assistant = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "send_email", {"to": "alice"})],
+        message_id="asst-msg-1",
+    )
+    user_response = Message(
+        role="user",
+        contents=[_make_approval_response("call-1", approved=True, name="send_email",
+                                          arguments={"to": "alice"})],
+        message_id="user-msg-2",
+    )
+    await provider.save_messages(session_id, [assistant, user_response])
+
+    reader = KurrentDBHistoryProvider(kurrentdb_client)
+    rebuilt_messages = await reader.get_messages(session_id)
+
+    assert len(rebuilt_messages) == 2
+    rebuilt_user = rebuilt_messages[-1]
+    assert rebuilt_user.role == "user"
+    assert rebuilt_user.message_id == "user-msg-2"
+
+    responses = [c for c in rebuilt_user.contents if c.type == "function_approval_response"]
+    assert len(responses) == 1
+    assert responses[0].approved is True
+    assert responses[0].function_call.name == "send_email"
+    assert responses[0].function_call.call_id == "call-1"
+
+
+# --- Decomposition matrix: missing rows (Test A–D) ---
+
+
+def test_message_to_events_assistant_mixed_tools_and_approvals_both_emitted():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantToolCallsGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Looking up; will need approval to delete."),
+            _make_function_call("call-1", "lookup"),
+            _make_approval_request("call-2", "delete"),
+        ],
+        message_id="asst-msg-3",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    tools = events[0]
+    assert isinstance(tools, AssistantToolCallsGenerated)
+    assert tools.content == "Looking up; will need approval to delete."
+    assert len(tools.tool_calls) == 1
+    assert tools.tool_calls[0].call_id == "call-1"
+    assert tools.tool_calls[0].tool_name == "lookup"
+
+    ii = events[1]
+    assert isinstance(ii, InterruptIssued)
+    assert ii.request_id == "call-2"
+    assert ii.tool_name == "delete"
+
+
+def test_message_to_events_user_text_and_approval_response_emits_both():
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[
+            Content(type="text", text="OK go ahead."),
+            _make_approval_response("call-1", approved=True),
+        ],
+        message_id="user-msg-3",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    assert len(events) == 2
+    user = events[0]
+    assert isinstance(user, UserMessageReceived)
+    assert user.content == "OK go ahead."
+    assert user.message_id == "user-msg-3"
+    assert isinstance(events[1], InterruptResolved)
+
+
+def test_message_to_events_assistant_multiple_approvals_emit_one_interrupt_per():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import AssistantTextGenerated, InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            _make_approval_request("call-1", "delete_a"),
+            _make_approval_request("call-2", "delete_b"),
+        ],
+        message_id="asst-msg-multi",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + 2 InterruptIssued
+    assert len(events) == 3
+    assert isinstance(events[0], AssistantTextGenerated)
+    assert isinstance(events[1], InterruptIssued)
+    assert events[1].request_id == "call-1"
+    assert isinstance(events[2], InterruptIssued)
+    assert events[2].request_id == "call-2"
+
+
+def test_message_to_events_user_multiple_responses_emit_one_resolved_per():
+    from agent_framework import Message
+    from kurrent_agent_framework.chat_history import _message_to_events
+    from kurrent_agent_schema import InterruptResolved, UserMessageReceived
+
+    msg = Message(
+        role="user",
+        contents=[
+            _make_approval_response("call-1", approved=True),
+            _make_approval_response("call-2", approved=False),
+        ],
+        message_id="user-msg-multi",
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # marker + 2 InterruptResolved
+    assert len(events) == 3
+    assert isinstance(events[0], UserMessageReceived)
+    assert isinstance(events[1], InterruptResolved)
+    assert events[1].request_id == "call-1"
+    assert events[1].outcome == "allow"
+    assert isinstance(events[2], InterruptResolved)
+    assert events[2].request_id == "call-2"
+    assert events[2].outcome == "deny"
+
+
+def test_message_to_events_synthesizes_message_id_when_carrier_lacks_one():
+    """A carrier Message without message_id whose contents decompose into multiple
+    events (text + approval) must still emit events sharing a single message_id so
+    they regroup correctly on read.
+
+    Regression for Copilot finding on PR #39: events without message_id rehydrate
+    as separate Messages, losing the multi-block-per-message structure.
+    """
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+    from kurrent_agent_schema import InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        # message_id intentionally omitted
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # All emitted events share a synthesized message_id.
+    assert len(events) == 2
+    msg_ids = {e.message_id for e in events}
+    assert len(msg_ids) == 1
+    assert next(iter(msg_ids))  # non-empty
+
+    # Round-trip: regroup and reconstruct as a single Message.
+    issued = {e.request_id: e for e in events if isinstance(e, InterruptIssued)}
+    rebuilt = _merge_events_into_message(events, issued)
+
+    assert rebuilt is not None
+    assert rebuilt.role == "assistant"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+
+
+def test_message_to_events_approval_with_empty_args_round_trips():
+    """Zero-argument tool approval round-trips through proposed_call without
+    collapsing the empty arguments dict to None.
+
+    Regression for qodo finding on PR #39: ``proposed.get("arguments") or None``
+    silently dropped empty ``{}`` to ``None`` on the read side, breaking the
+    canonical empty-args preservation rule documented in CLAUDE.md.
+    """
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+    from kurrent_agent_schema import InterruptIssued
+
+    original = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "ping", arguments={})],
+        message_id="asst-empty-args",
+    )
+
+    events = list(_message_to_events(original, message_index=0, timestamp=datetime.now(UTC)))
+    issued = {e.request_id: e for e in events if isinstance(e, InterruptIssued)}
+
+    rebuilt = _merge_events_into_message(events, issued)
+
+    assert rebuilt is not None
+    approval = next(c for c in rebuilt.contents if c.type == "function_approval_request")
+    fc = approval.function_call
+    # The empty dict round-trips as an empty dict, not None.
+    assert fc.arguments == {}
