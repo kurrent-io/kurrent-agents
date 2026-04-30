@@ -1,11 +1,20 @@
 {
-  "request_id": "req-perm-001",
-  "outcome": "allow_once",
-  "timestamp": "2026-04-21T10:00:12Z",
+  "request_id": "call_send_email_001",
+  "outcome": "allow",
+  "response": "Looks good — proceed.",
+  "message_id": "user_msg_43",
+  "timestamp": "2026-04-29T10:00:25Z",
   "extensions": {
-    "claude_code": {
-      "permission": {
-        "behavior": "allow"
+    "afw": {
+      "interrupt": {
+        "proposed_call": {
+          "id": "call_send_email_001",
+          "name": "send_email",
+          "arguments": {
+            "to": "alice@example.com",
+            "subject": "Project update"
+          }
+        }
       }
     }
   }

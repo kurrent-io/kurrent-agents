@@ -5,10 +5,12 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 
 public class EventTypeMapTests {
     /// <summary>
-    /// The MAF .NET integration only consumes a subset of the canonical vocabulary today
-    /// (no interrupts, subagents, thinking, or artifacts from the MAF side yet). This list
-    /// locks in the subset we do exercise; the shared <see cref="EventTypeMap.All"/> is the
-    /// authoritative full registry covered by <c>FixtureRoundTripTests</c> in the schema package.
+    /// The MAF .NET integration consumes a subset of the canonical vocabulary.
+    /// As of DEV-1611, interrupts (kind=approval) are emitted for tool-approval
+    /// flows. Subagents, thinking, and artifacts are still not produced by the
+    /// MAF side. This list locks in the subset we exercise; the shared
+    /// <see cref="EventTypeMap.All"/> is the authoritative full registry covered
+    /// by <c>FixtureRoundTripTests</c> in the schema package.
     /// </summary>
     public static IEnumerable<(Type ClrType, string Name)> KnownEventTypes() => [
         (typeof(SessionStarted),              "SessionStarted"),
@@ -17,6 +19,8 @@ public class EventTypeMapTests {
         (typeof(AssistantTextGenerated),      "AssistantTextGenerated"),
         (typeof(AssistantToolCallsGenerated), "AssistantToolCallsGenerated"),
         (typeof(ToolResultReceived),          "ToolResultReceived"),
+        (typeof(InterruptIssued),             "InterruptIssued"),
+        (typeof(InterruptResolved),           "InterruptResolved"),
         (typeof(FactRetained),                "FactRetained"),
         (typeof(EvalRunStarted),              "EvalRunStarted"),
         (typeof(TurnScored),                  "TurnScored"),

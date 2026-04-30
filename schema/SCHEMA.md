@@ -223,7 +223,7 @@ Exactly one of `inline_bytes` / `canonical_uri` is expected.
 
 The following canonical event types are **reserved** in the schema vocabulary. They are not emitted by any v1 integration and readers should not expect them. They are listed here so integrations avoid colliding with the names and so the concept is on record for a later revision.
 
-**`InterruptIssued` / `InterruptResolved`** — future support for mid-turn human-in-the-loop pauses (e.g. approval before a destructive tool call). Strands has a first-class `Interrupt` concept; other frameworks may or may not adopt it. A v2 revision will specify field shapes; in v1, Strands integrations carrying interrupt state should use `extensions.strands.interrupt` on the surrounding event and rewrite to canonical events once the schema lands.
+**`InterruptIssued` / `InterruptResolved`** — promoted in schema v2; see [`SCHEMA_v2.md` §3.3](./SCHEMA_v2.md#33-interruptissued--interruptresolved-new-promoted-from-reserved) for the live shape and field documentation. Used today by Capacitor (Claude Code permission prompts) and the MAF integrations (tool approval).
 
 Other reserved names (not yet designed): `StreamingChunkEmitted`, `ConversationCompacted`, `MultiAgentNodeStarted`, `MultiAgentNodeCompleted`. Integrations encountering these concepts today should use `extensions.{framework}` — a future schema revision may promote one or more if a clear cross-framework shape emerges.
 
