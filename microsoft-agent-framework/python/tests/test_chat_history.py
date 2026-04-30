@@ -644,3 +644,33 @@ def test_message_to_events_user_multiple_responses_emit_one_resolved_per():
     assert isinstance(events[2], InterruptResolved)
     assert events[2].request_id == "call-2"
     assert events[2].outcome == "deny"
+
+
+def test_message_to_events_approval_with_empty_args_round_trips():
+    """Zero-argument tool approval round-trips through proposed_call without
+    collapsing the empty arguments dict to None.
+
+    Regression for qodo finding on PR #39: ``proposed.get("arguments") or None``
+    silently dropped empty ``{}`` to ``None`` on the read side, breaking the
+    canonical empty-args preservation rule documented in CLAUDE.md.
+    """
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+    from kurrent_agent_schema import InterruptIssued
+
+    original = Message(
+        role="assistant",
+        contents=[_make_approval_request("call-1", "ping", arguments={})],
+        message_id="asst-empty-args",
+    )
+
+    events = list(_message_to_events(original, message_index=0, timestamp=datetime.now(UTC)))
+    issued = {e.request_id: e for e in events if isinstance(e, InterruptIssued)}
+
+    rebuilt = _merge_events_into_message(events, issued)
+
+    assert rebuilt is not None
+    approval = next(c for c in rebuilt.contents if c.type == "function_approval_request")
+    fc = approval.function_call
+    # The empty dict round-trips as an empty dict, not None.
+    assert fc.arguments == {}

@@ -458,6 +458,19 @@ def _read_proposed_call(
     return call_id, name, arguments
 
 
+def _extract_arguments(proposed: dict[str, Any]) -> dict[str, Any] | None:
+    """Read ``proposed_call.arguments``, preserving an empty dict ``{}`` when present.
+
+    The write path emits ``arguments`` as an empty object for zero-argument calls;
+    the naive ``proposed.get("arguments") or None`` collapses ``{}`` to ``None`` and
+    breaks round-trip. This helper keeps the empty case distinguishable from "absent".
+    """
+    if "arguments" not in proposed:
+        return None
+    args = proposed["arguments"]
+    return args if isinstance(args, dict) else None
+
+
 def _read_proposed_call_explicit(
     extensions: Any,
     *,
@@ -476,7 +489,7 @@ def _read_proposed_call_explicit(
     return (
         proposed.get("id", fallback_call_id),
         proposed.get("name", fallback_name),
-        proposed.get("arguments") or None,
+        _extract_arguments(proposed),
         True,
     )
 
