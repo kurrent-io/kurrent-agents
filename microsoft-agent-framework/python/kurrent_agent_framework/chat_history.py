@@ -239,7 +239,7 @@ def _message_to_events(
     the approval content blocks. See SCHEMA_v2 §3.3 and
     ``docs/superpowers/specs/2026-04-29-maf-tool-approval-interrupts-design.md``.
     """
-    msg_id = message.message_id
+    effective_msg_id = message.message_id or _synthesize_message_id()
     author = message.author_name
     role = message.role
 
@@ -249,7 +249,7 @@ def _message_to_events(
         if message.text or responses:
             evt = UserMessageReceived(
                 content=message.text or None,
-                message_id=msg_id,
+                message_id=effective_msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
@@ -257,7 +257,7 @@ def _message_to_events(
             yield evt
 
         for response in responses:
-            yield _build_interrupt_resolved(response, message, timestamp)
+            yield _build_interrupt_resolved(response, effective_msg_id, timestamp)
         return
 
     if role == "assistant":
@@ -268,7 +268,7 @@ def _message_to_events(
             yield AssistantToolCallsGenerated(
                 tool_calls=tool_calls,
                 content=message.text or None,
-                message_id=msg_id,
+                message_id=effective_msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
@@ -276,14 +276,14 @@ def _message_to_events(
         elif message.text or approvals:
             yield AssistantTextGenerated(
                 content=message.text or None,
-                message_id=msg_id,
+                message_id=effective_msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
             )
 
         for approval in approvals:
-            yield _build_interrupt_issued(approval, message, timestamp)
+            yield _build_interrupt_issued(approval, effective_msg_id, timestamp)
         return
 
     if role == "tool":
@@ -293,7 +293,7 @@ def _message_to_events(
             yield ToolResultReceived(
                 call_id=c.call_id or "",
                 result=_coerce_result(c.result),
-                message_id=msg_id,
+                message_id=effective_msg_id,
                 author_name=author,
                 message_index=message_index,
                 timestamp=timestamp,
@@ -518,7 +518,7 @@ def _build_tool_call_info(content: Any) -> ToolCallInfo:
     return info
 
 
-def _build_interrupt_issued(approval: Any, carrier: Message, timestamp: datetime) -> InterruptIssued:
+def _build_interrupt_issued(approval: Any, carrier_message_id: str, timestamp: datetime) -> InterruptIssued:
     fc = approval.function_call
     args = _coerce_arguments(fc.arguments)
     event = InterruptIssued(
@@ -526,7 +526,7 @@ def _build_interrupt_issued(approval: Any, carrier: Message, timestamp: datetime
         kind="approval",
         tool_name=fc.name or None,
         prompt=_build_approval_prompt(name=fc.name or "", arguments=args),
-        message_id=carrier.message_id,
+        message_id=carrier_message_id,
         timestamp=timestamp,
     )
     afw = _build_afw_interrupt_extension(
@@ -539,13 +539,13 @@ def _build_interrupt_issued(approval: Any, carrier: Message, timestamp: datetime
     return event
 
 
-def _build_interrupt_resolved(response: Any, carrier: Message, timestamp: datetime) -> InterruptResolved:
+def _build_interrupt_resolved(response: Any, carrier_message_id: str, timestamp: datetime) -> InterruptResolved:
     fc = response.function_call
     args = _coerce_arguments(fc.arguments)
     event = InterruptResolved(
         request_id=fc.call_id or "",
         outcome="allow" if response.approved else "deny",
-        message_id=carrier.message_id,
+        message_id=carrier_message_id,
         timestamp=timestamp,
     )
     afw = _build_afw_interrupt_extension(
@@ -637,6 +637,19 @@ def _usage_to_metadata(usage: UsageDetails) -> dict[str, Any]:
 
 
 _APPROVAL_PROMPT_MAX_LENGTH: int = 200
+
+
+def _synthesize_message_id() -> str:
+    """Generate a stable per-call message_id for messages that arrive without one.
+
+    Decomposed canonical events use ``message_id`` as the on-read grouping key.
+    A carrier ``Message`` without ``message_id`` whose contents decompose into
+    multiple events (text + approval, multi-approval, text + tool call, etc.)
+    would otherwise rehydrate as separate ``Message`` instances — losing the
+    multi-block-per-message structure. Mint a UUID so the events share a key.
+    """
+    import uuid as _uuid
+    return _uuid.uuid4().hex
 
 
 def _build_approval_prompt(*, name: str, arguments: dict[str, Any] | None) -> str:

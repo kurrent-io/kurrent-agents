@@ -646,6 +646,47 @@ def test_message_to_events_user_multiple_responses_emit_one_resolved_per():
     assert events[2].outcome == "deny"
 
 
+def test_message_to_events_synthesizes_message_id_when_carrier_lacks_one():
+    """A carrier Message without message_id whose contents decompose into multiple
+    events (text + approval) must still emit events sharing a single message_id so
+    they regroup correctly on read.
+
+    Regression for Copilot finding on PR #39: events without message_id rehydrate
+    as separate Messages, losing the multi-block-per-message structure.
+    """
+    from agent_framework import Content, Message
+    from kurrent_agent_framework.chat_history import _merge_events_into_message, _message_to_events
+    from kurrent_agent_schema import InterruptIssued
+
+    msg = Message(
+        role="assistant",
+        contents=[
+            Content(type="text", text="Drafting…"),
+            _make_approval_request("call-1", "send_email", {"to": "alice"}),
+        ],
+        # message_id intentionally omitted
+    )
+
+    events = list(_message_to_events(msg, message_index=0, timestamp=datetime.now(UTC)))
+
+    # All emitted events share a synthesized message_id.
+    assert len(events) == 2
+    msg_ids = {e.message_id for e in events}
+    assert len(msg_ids) == 1
+    assert next(iter(msg_ids))  # non-empty
+
+    # Round-trip: regroup and reconstruct as a single Message.
+    issued = {e.request_id: e for e in events if isinstance(e, InterruptIssued)}
+    rebuilt = _merge_events_into_message(events, issued)
+
+    assert rebuilt is not None
+    assert rebuilt.role == "assistant"
+    text_blocks = [c for c in rebuilt.contents if c.type == "text"]
+    assert text_blocks[0].text == "Drafting…"
+    approvals = [c for c in rebuilt.contents if c.type == "function_approval_request"]
+    assert len(approvals) == 1
+
+
 def test_message_to_events_approval_with_empty_args_round_trips():
     """Zero-argument tool approval round-trips through proposed_call without
     collapsing the empty arguments dict to None.
