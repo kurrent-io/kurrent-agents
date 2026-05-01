@@ -18,12 +18,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from kurrent_agent_schema import FactRetained
 from kurrentdbclient import StreamState
 from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
-from ._schema import events as _events
-from ._schema.stream_names import for_memory
+from ._stream_names import for_memory
 
 if TYPE_CHECKING:  # pragma: no cover
     from kurrentdbclient import KurrentDBClient
@@ -51,7 +51,7 @@ class KurrentDBAgentMemory:
         """
         if not fact or not fact.strip():
             return
-        event = _events.FactRetained(
+        event = FactRetained(
             fact=fact.strip(),
             retained_at=datetime.now(UTC),
         )
@@ -71,7 +71,7 @@ class KurrentDBAgentMemory:
         facts: list[str] = []
         for record in recorded:
             event = _serialization.deserialize(record)
-            if not isinstance(event, _events.FactRetained):
+            if not isinstance(event, FactRetained):
                 continue
             if event.fact.strip():
                 facts.append(event.fact)

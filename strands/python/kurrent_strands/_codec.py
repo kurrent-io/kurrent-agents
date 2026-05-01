@@ -6,11 +6,13 @@ See ``DESIGN.md`` §4 for the mapping rules. Summary:
 - ``role=user`` + ``toolResult`` → ``ToolResultReceived`` (one per result)
 - ``role=assistant`` + text only → ``AssistantTextGenerated``
 - ``role=assistant`` + ``toolUse`` (± text) → ``AssistantToolCallsGenerated``
+- ``role=assistant`` + ``reasoningContent`` → ``AssistantThinkingGenerated``
+  (new in v2; emitted before the text/tool event for the same message turn)
 
-Non-canonical content blocks (image / document / video / reasoning / citations /
-cache point / guardContent) plus Strands ``MessageMetadata.custom`` ride
-verbatim in ``extensions.strands`` on each emitted canonical event so a
-same-framework reader can restore the original ``Message``.
+Non-canonical content blocks (image / document / video / citations / cache
+point / guardContent) plus Strands ``MessageMetadata.custom`` ride verbatim
+in ``extensions.strands`` on each emitted canonical event so a same-framework
+reader can restore the original ``Message``.
 
 Token usage (``MessageMetadata.usage``) is surfaced separately via
 ``extract_usage_metadata`` for the ``$usage`` KurrentDB event-metadata channel.
@@ -18,25 +20,42 @@ Token usage (``MessageMetadata.usage``) is surfaced separately via
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from strands.types.content import Message
-
-from ._schema.events import (
-    STRANDS_EXTENSION_KEY,
+from google.protobuf.json_format import MessageToDict, ParseDict
+from google.protobuf.message import Message as ProtoMessage
+from google.protobuf.struct_pb2 import Struct
+from kurrent_agent_schema import (
     AssistantTextGenerated,
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
     ToolCallInfo,
     ToolResultReceived,
     UserMessageReceived,
-    _EventBase as CanonicalEvent,
 )
+from strands.types.content import Message
 
+logger = logging.getLogger("kurrent_strands._codec")
 
-# Canonical-content keys in Strands' ContentBlock.
-_CANONICAL_BLOCK_KEYS = frozenset({"text", "toolUse", "toolResult"})
+STRANDS_EXTENSION_KEY: str = "strands"
+"""Slug under which Strands-specific fields ride on canonical events'
+``extensions`` map. See ``schema/SCHEMA_v2.md §5``."""
+
+_BYTES_MARKER: str = "__bytes_b64__"
+"""Wrapper key used inside ``extensions.strands.*`` payloads to round-trip
+``bytes`` values losslessly through ``google.protobuf.Struct`` (which is
+JSON-shaped and cannot hold raw bytes). A bytes value is replaced with
+``{_BYTES_MARKER: <base64-string>}`` on write, and decoded back on read."""
+
+# Canonical-content keys in Strands' ContentBlock — these decompose into
+# canonical events. Anything else rides in
+# ``extensions.strands.non_canonical_blocks``.
+_CANONICAL_BLOCK_KEYS = frozenset({"text", "toolUse", "toolResult", "reasoningContent"})
 
 
 def message_to_canonical(
@@ -44,7 +63,7 @@ def message_to_canonical(
     *,
     message_index: int,
     timestamp: datetime | None = None,
-) -> list[CanonicalEvent]:
+) -> list[ProtoMessage]:
     """Decompose a Strands ``Message`` into one or more canonical events.
 
     ``message_index`` is assigned by the caller (the session manager keeps a
@@ -57,6 +76,7 @@ def message_to_canonical(
     text_chunks: list[str] = []
     tool_uses: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = []
+    reasoning_blocks: list[dict[str, Any]] = []
     non_canonical_blocks: list[dict[str, Any]] = []
 
     for block in content_blocks:
@@ -66,82 +86,81 @@ def message_to_canonical(
             tool_uses.append(block["toolUse"])
         if "toolResult" in block and block.get("toolResult") is not None:
             tool_results.append(block["toolResult"])
-        # Any key outside the canonical set rides in extensions.strands.
+        if "reasoningContent" in block and block.get("reasoningContent") is not None:
+            reasoning_blocks.append(block["reasoningContent"])
+        # Anything outside the canonical set rides in extensions.strands.
         extra = {k: v for k, v in block.items() if k not in _CANONICAL_BLOCK_KEYS}
         if extra:
             non_canonical_blocks.append(extra)
 
     text_content = "".join(text_chunks) if text_chunks else None
-    extensions = _build_strands_extensions(message, non_canonical_blocks)
+    base_strands_ext = _build_strands_extensions_dict(message, non_canonical_blocks)
 
-    results: list[CanonicalEvent] = []
+    results: list[ProtoMessage] = []
 
     if role == "user":
         # Tool results come on user-role messages per Strands' model.
         for tr in tool_results:
-            # Preserve Strands-specific toolResult fields (notably ``status``
-            # — required by Strands' Anthropic adapter) that aren't in the
-            # canonical ToolResultReceived shape.
             tr_extras = {
                 k: v for k, v in tr.items() if k not in {"toolUseId", "content"}
             }
-            per_event_extensions = (
-                _merge_extensions(extensions, {"tool_result": tr_extras})
+            ext_for_event = (
+                _merge_strands_extension(base_strands_ext, "tool_result", tr_extras)
                 if tr_extras
-                else extensions
+                else base_strands_ext
             )
-            results.append(
-                ToolResultReceived(
-                    call_id=tr.get("toolUseId") or "",
-                    tool_name=None,
-                    result=_serialize_tool_result_content(tr.get("content")),
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=per_event_extensions,
-                )
+            evt = ToolResultReceived(
+                call_id=tr.get("toolUseId") or "",
+                result=_serialize_tool_result_content(tr.get("content")),
+                message_index=message_index,
+                timestamp=ts,
             )
+            _set_strands_extension(evt, ext_for_event)
+            results.append(evt)
         if text_content is not None:
-            results.append(
-                UserMessageReceived(
-                    content=text_content,
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=extensions,
-                )
+            evt = UserMessageReceived(
+                content=text_content,
+                message_index=message_index,
+                timestamp=ts,
             )
-    else:
-        # assistant
-        if tool_uses:
-            results.append(
-                AssistantToolCallsGenerated(
-                    tool_calls=[_tool_call_info(tu) for tu in tool_uses],
-                    content=text_content,
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=extensions,
-                )
-            )
-        elif text_content is not None:
-            results.append(
-                AssistantTextGenerated(
-                    content=text_content,
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=extensions,
-                )
-            )
+            _set_strands_extension(evt, base_strands_ext)
+            results.append(evt)
+        return results
+
+    # role == "assistant"
+    # Thinking events come FIRST in the message turn (per SCHEMA_v2 §3.2 ordering).
+    for rc in reasoning_blocks:
+        results.append(_build_thinking_event(rc, message_index, ts, base_strands_ext))
+
+    if tool_uses:
+        evt = AssistantToolCallsGenerated(
+            tool_calls=[_tool_call_info(tu) for tu in tool_uses],
+            content=text_content,
+            message_index=message_index,
+            timestamp=ts,
+        )
+        _set_strands_extension(evt, base_strands_ext)
+        results.append(evt)
+    elif text_content is not None:
+        evt = AssistantTextGenerated(
+            content=text_content,
+            message_index=message_index,
+            timestamp=ts,
+        )
+        _set_strands_extension(evt, base_strands_ext)
+        results.append(evt)
 
     return results
 
 
-def canonical_to_messages(events: list[CanonicalEvent]) -> list[Message]:
+def canonical_to_messages(events: list[ProtoMessage]) -> list[Message]:
     """Reconstruct Strands ``Message``s from an ordered stream of canonical events.
 
-    Events sharing the same ``extensions.strands.message_index`` are merged
-    back into one Message (e.g. an ``AssistantToolCallsGenerated`` that has
-    accompanying text, plus its original non-canonical content blocks).
+    Events sharing the same ``message_index`` are merged back into one Message
+    (e.g. an ``AssistantToolCallsGenerated`` that has accompanying text, plus
+    its original non-canonical content blocks).
     """
-    by_index: dict[int, list[CanonicalEvent]] = {}
+    by_index: dict[int, list[ProtoMessage]] = {}
     order: list[int] = []
     for event in events:
         idx = _message_index(event)
@@ -160,6 +179,10 @@ def extract_usage_metadata(message: Message) -> dict[str, Any] | None:
 
     Returns ``None`` when the message has no ``metadata.usage`` (Strands'
     Usage TypedDict is camelCase; canonical ``$usage`` is snake_case).
+
+    Strands ``Usage`` does not surface a ``reasoning_tokens`` field — those
+    counts are folded into ``outputTokens`` upstream, so canonical
+    ``$usage.reasoning_tokens`` stays absent on Strands-emitted events.
     """
     metadata = message.get("metadata")
     if not metadata:
@@ -184,9 +207,14 @@ def extract_usage_metadata(message: Message) -> dict[str, Any] | None:
 # ----- helpers ---------------------------------------------------------------
 
 
-def _build_strands_extensions(
+def _build_strands_extensions_dict(
     message: Message, non_canonical_blocks: list[dict[str, Any]]
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, Any]:
+    """Build the ``extensions.strands`` payload as a plain dict.
+
+    Returned dict is later converted to a ``google.protobuf.Struct`` via
+    :func:`_set_strands_extension` when stamped on an event.
+    """
     ext: dict[str, Any] = {}
     metadata = message.get("metadata")
     if metadata:
@@ -198,23 +226,141 @@ def _build_strands_extensions(
             ext["metrics"] = dict(metrics)
     if non_canonical_blocks:
         ext["non_canonical_blocks"] = non_canonical_blocks
-    return {STRANDS_EXTENSION_KEY: ext}
+    return ext
 
 
-def _merge_extensions(
-    base: dict[str, dict[str, Any]],
-    overrides: dict[str, Any],
-) -> dict[str, dict[str, Any]]:
-    """Shallow-merge ``overrides`` into ``base[STRANDS_EXTENSION_KEY]`` non-destructively."""
-    merged = {k: dict(v) for k, v in base.items()}
-    strands = merged.setdefault(STRANDS_EXTENSION_KEY, {})
-    strands.update(overrides)
+def _merge_strands_extension(
+    base: dict[str, Any], key: str, value: Any
+) -> dict[str, Any]:
+    """Return a copy of ``base`` with ``key`` set to ``value``."""
+    merged = dict(base)
+    merged[key] = value
     return merged
 
 
+def _set_strands_extension(event: ProtoMessage, payload: dict[str, Any]) -> None:
+    """Stamp ``event.extensions['strands']`` from a plain dict.
+
+    No-op when ``payload`` is empty so we don't emit a present-but-empty
+    extension entry on the wire. Recursively wraps ``bytes`` values via
+    :data:`_BYTES_MARKER` because ``google.protobuf.Struct`` is JSON-shaped
+    and cannot hold raw bytes. The pre-migration Pydantic codec used
+    ``ser_json_bytes="base64"`` to do the same; this restores that behaviour
+    so non-canonical content blocks with binary payloads round-trip cleanly.
+    """
+    if not payload:
+        return
+    struct = Struct()
+    ParseDict(_jsonify_for_struct(payload), struct)
+    event.extensions[STRANDS_EXTENSION_KEY].CopyFrom(struct)
+
+
+def _read_strands_extension(event: ProtoMessage) -> dict[str, Any]:
+    """Read ``event.extensions['strands']`` back as a plain dict.
+
+    Returns an empty dict when the slug is absent — proto map fields are
+    always present, so we check membership explicitly. ``bytes`` values
+    wrapped on write via :data:`_BYTES_MARKER` are unwrapped here.
+    """
+    if STRANDS_EXTENSION_KEY not in event.extensions:
+        return {}
+    raw = MessageToDict(
+        event.extensions[STRANDS_EXTENSION_KEY], preserving_proto_field_name=True
+    )
+    return _dejsonify_from_struct(raw)
+
+
+def _jsonify_for_struct(value: Any) -> Any:
+    """Recursively coerce a Python value into a Struct-compatible JSON shape.
+
+    ``bytes`` are wrapped as ``{_BYTES_MARKER: <base64>}`` so they round-trip
+    losslessly via :func:`_dejsonify_from_struct`. Non-JSON-native scalars
+    (e.g. ``datetime``) are stringified — they are best-effort metadata, not
+    the canonical wire path.
+    """
+    if isinstance(value, bytes):
+        return {_BYTES_MARKER: base64.b64encode(value).decode("ascii")}
+    if isinstance(value, dict):
+        return {k: _jsonify_for_struct(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonify_for_struct(v) for v in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
+
+
+def _dejsonify_from_struct(value: Any) -> Any:
+    """Inverse of :func:`_jsonify_for_struct` — unwrap ``_BYTES_MARKER`` dicts.
+
+    A wrapper dict with malformed base64 falls back to the wrapper itself so
+    the rest of the extension payload keeps round-tripping.
+    """
+    if isinstance(value, dict):
+        if list(value.keys()) == [_BYTES_MARKER]:
+            try:
+                return base64.b64decode(value[_BYTES_MARKER], validate=True)
+            except (binascii.Error, TypeError, ValueError):
+                logger.warning(
+                    "Skipping malformed base64 in extensions.strands "
+                    "(%s wrapper); leaving raw value in place.",
+                    _BYTES_MARKER,
+                )
+                return value
+        return {k: _dejsonify_from_struct(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_dejsonify_from_struct(v) for v in value]
+    return value
+
+
+def _build_thinking_event(
+    reasoning_content: dict[str, Any],
+    message_index: int,
+    timestamp: datetime,
+    base_strands_ext: dict[str, Any],
+) -> AssistantThinkingGenerated:
+    """Build an ``AssistantThinkingGenerated`` from a ``reasoningContent`` block.
+
+    Strands reasoning is plaintext (``encrypted`` stays at the proto default
+    of ``False``). The optional ``signature`` is a canonical field on the
+    event (``SCHEMA_v2.md §3.2``); any ``redactedContent`` bytes ride in
+    ``extensions.strands.thinking.redacted_content`` as a base64 string.
+    """
+    reasoning_text = reasoning_content.get("reasoningText") or {}
+    text = reasoning_text.get("text")
+    signature = reasoning_text.get("signature")
+    redacted = reasoning_content.get("redactedContent")
+
+    evt = AssistantThinkingGenerated(
+        content=text,
+        message_index=message_index,
+        timestamp=timestamp,
+    )
+    if signature:
+        evt.signature = signature
+
+    if redacted is not None:
+        ext_for_event = _merge_strands_extension(
+            base_strands_ext,
+            "thinking",
+            {"redacted_content": base64.b64encode(redacted).decode("ascii")},
+        )
+    else:
+        ext_for_event = base_strands_ext
+
+    _set_strands_extension(evt, ext_for_event)
+    return evt
+
+
 def _tool_call_info(tool_use: dict[str, Any]) -> ToolCallInfo:
-    # Strands uses camelCase (toolUseId, name, input). Canonical uses snake_case
-    # (call_id, tool_name, arguments).
+    """Convert a Strands toolUse block to a canonical ``ToolCallInfo``.
+
+    Strands uses camelCase (``toolUseId``, ``name``, ``input``); canonical
+    uses snake_case (``call_id``, ``tool_name``, ``arguments``). The
+    ``arguments`` field is a ``google.protobuf.Struct`` — empty dicts must
+    survive round-trip (see schema commit ``ff1540d``).
+    """
     input_value = tool_use.get("input")
     if isinstance(input_value, str):
         try:
@@ -223,12 +369,16 @@ def _tool_call_info(tool_use: dict[str, Any]) -> ToolCallInfo:
             input_value = {"_raw": input_value}
     if input_value is not None and not isinstance(input_value, dict):
         input_value = {"_value": input_value}
-    return ToolCallInfo(
+
+    info = ToolCallInfo(
         call_id=tool_use.get("toolUseId") or "",
         tool_name=tool_use.get("name") or "",
-        # Preserve ``{}`` distinctly from missing args.
-        arguments=dict(input_value) if input_value is not None else None,
     )
+    if input_value is not None:
+        # ``Struct.update`` preserves the empty-dict case (Struct is "present
+        # but empty"), distinct from "absent" which we don't emit.
+        info.arguments.update(input_value)
+    return info
 
 
 def _serialize_tool_result_content(content: Any) -> str | None:
@@ -246,76 +396,122 @@ def _serialize_tool_result_content(content: Any) -> str | None:
         return json.dumps(content, default=str)
 
 
-def _message_index(event: CanonicalEvent) -> int | None:
+def _message_index(event: ProtoMessage) -> int | None:
     """Return a canonical event's ``message_index`` when it has one.
 
-    Canonical conversation events all carry ``message_index``; framework-
-    specific events (StrandsAgentState, etc.) do not.
+    Lifecycle events (``SessionStarted`` / ``SessionEnded``) and Strands-
+    specific events lack the field; we skip them on reconstruction.
     """
-    return getattr(event, "message_index", None)
+    try:
+        if not event.HasField("message_index"):
+            return None
+    except (AttributeError, ValueError):
+        return None
+    return event.message_index
 
 
-def _reconstruct_message(events: list[CanonicalEvent]) -> Message:
-    """Merge a group of canonical events sharing a message_index into a Message."""
+def _reconstruct_message(events: list[ProtoMessage]) -> Message:
+    """Merge a group of canonical events sharing a ``message_index`` into a Message."""
     role: str = "user"
     content: list[dict[str, Any]] = []
-    strands_ext: dict[str, Any] = {}
+    base_strands_ext: dict[str, Any] = {}
 
     for event in events:
-        # Extract extension envelope (last one wins — they should all match).
-        if event.extensions and STRANDS_EXTENSION_KEY in event.extensions:
-            strands_ext = event.extensions[STRANDS_EXTENSION_KEY]
+        per_event_ext = _read_strands_extension(event)
+        # Track the last seen "shared" extension fields (custom_metadata, metrics,
+        # non_canonical_blocks). Per-event-only fields like ``tool_result`` and
+        # ``thinking`` are read inline below and not promoted to the shared dict.
+        for k in ("custom_metadata", "metrics", "non_canonical_blocks"):
+            if k in per_event_ext:
+                base_strands_ext[k] = per_event_ext[k]
 
         if isinstance(event, UserMessageReceived):
             role = "user"
-            if event.content is not None:
+            if event.HasField("content"):
                 content.append({"text": event.content})
         elif isinstance(event, AssistantTextGenerated):
             role = "assistant"
-            if event.content is not None:
+            if event.HasField("content"):
                 content.append({"text": event.content})
+        elif isinstance(event, AssistantThinkingGenerated):
+            role = "assistant"
+            content.append(_reconstruct_reasoning_block(event, per_event_ext))
         elif isinstance(event, AssistantToolCallsGenerated):
             role = "assistant"
-            if event.content is not None:
+            if event.HasField("content"):
                 content.append({"text": event.content})
             for tc in event.tool_calls:
-                content.append(
-                    {
-                        "toolUse": {
-                            "toolUseId": tc.call_id,
-                            "name": tc.tool_name,
-                            "input": tc.arguments if tc.arguments is not None else {},
-                        }
-                    }
-                )
+                tu_block: dict[str, Any] = {
+                    "toolUseId": tc.call_id,
+                    "name": tc.tool_name,
+                    "input": _struct_to_dict(tc.arguments) if tc.HasField("arguments") else {},
+                }
+                content.append({"toolUse": tu_block})
         elif isinstance(event, ToolResultReceived):
             role = "user"
             tr_block: dict[str, Any] = {
                 "toolUseId": event.call_id,
                 "content": _deserialize_tool_result_content(event.result),
             }
-            # Restore Strands-specific fields (e.g. ``status``) from extensions.
-            if event.extensions:
-                per_event = event.extensions.get(STRANDS_EXTENSION_KEY, {}) or {}
-                tr_block.update(per_event.get("tool_result") or {})
-            # Default status if missing (e.g. if an ADK-written session is read
-            # by Strands): Strands' Anthropic adapter requires it.
+            tr_extras = per_event_ext.get("tool_result")
+            if isinstance(tr_extras, dict):
+                tr_block.update(tr_extras)
+            # Strands' Anthropic adapter requires ``status``; default to success
+            # when missing (e.g. cross-framework reads from non-Strands writers).
             tr_block.setdefault("status", "success")
             content.append({"toolResult": tr_block})
 
-    # Restore non-canonical content blocks (image/document/etc.) at the end.
-    for block in strands_ext.get("non_canonical_blocks") or []:
+    # Restore non-canonical content blocks (image / document / etc.) at the end.
+    for block in base_strands_ext.get("non_canonical_blocks") or []:
         content.append(block)
 
     message: Message = {"role": role, "content": content}  # type: ignore[assignment]
     metadata: dict[str, Any] = {}
-    if strands_ext.get("custom_metadata"):
-        metadata["custom"] = strands_ext["custom_metadata"]
-    if strands_ext.get("metrics"):
-        metadata["metrics"] = strands_ext["metrics"]
+    if base_strands_ext.get("custom_metadata"):
+        metadata["custom"] = base_strands_ext["custom_metadata"]
+    if base_strands_ext.get("metrics"):
+        metadata["metrics"] = base_strands_ext["metrics"]
     if metadata:
         message["metadata"] = metadata  # type: ignore[typeddict-item]
     return message
+
+
+def _reconstruct_reasoning_block(
+    event: AssistantThinkingGenerated, strands_ext: dict[str, Any]
+) -> dict[str, Any]:
+    """Rebuild a Strands ``reasoningContent`` block from a thinking event.
+
+    ``signature`` is read from the canonical event field (``SCHEMA_v2.md §3.2``);
+    ``redactedContent`` is decoded from ``extensions.strands.thinking.redacted_content``.
+    A malformed base64 value is logged and skipped so a single corrupt event
+    does not break session restore.
+    """
+    rc: dict[str, Any] = {}
+    rt: dict[str, Any] = {}
+    if event.HasField("content"):
+        rt["text"] = event.content
+    if event.HasField("signature"):
+        rt["signature"] = event.signature
+    if rt:
+        rc["reasoningText"] = rt
+
+    thinking = strands_ext.get("thinking") or {}
+    redacted_b64 = thinking.get("redacted_content")
+    if isinstance(redacted_b64, str):
+        try:
+            rc["redactedContent"] = base64.b64decode(redacted_b64, validate=True)
+        except (binascii.Error, TypeError, ValueError):
+            logger.warning(
+                "Skipping malformed redacted_content base64 on "
+                "AssistantThinkingGenerated; reconstructed reasoning block "
+                "will omit redactedContent."
+            )
+    return {"reasoningContent": rc}
+
+
+def _struct_to_dict(struct: Struct) -> dict[str, Any]:
+    """Convert a ``google.protobuf.Struct`` to a plain dict, preserving keys."""
+    return MessageToDict(struct, preserving_proto_field_name=True)
 
 
 def _deserialize_tool_result_content(value: str | None) -> Any:

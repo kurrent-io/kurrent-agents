@@ -44,7 +44,7 @@ class TestAppendAndInitialize:
         sm.initialize(_FakeAgent())
 
         # Stream now exists with a SessionStarted event at position 0.
-        from kurrent_strands._schema.stream_names import for_session
+        from kurrent_strands._stream_names import for_session
 
         records = kurrentdb_client.get_stream(for_session(sid))
         assert len(records) == 1
@@ -141,16 +141,19 @@ class TestAppendAndInitialize:
             _FakeAgent(),
         )
 
-        from kurrent_strands._schema.stream_names import for_session
         from kurrent_strands._serialization import read_metadata
+        from kurrent_strands._stream_names import for_session
 
         records = kurrentdb_client.get_stream(for_session(sid))
         assistant = next(r for r in records if r.type == "AssistantTextGenerated")
         md = read_metadata(assistant)
+        # ``$schema_version`` is stamped by the writer per SCHEMA_v2 §9; the
+        # caller-supplied ``$usage`` metadata rides alongside it.
         assert md == {
+            "$schema_version": 2,
             "$usage": {
                 "input_tokens": 42,
                 "output_tokens": 7,
                 "total_tokens": 49,
-            }
+            },
         }
