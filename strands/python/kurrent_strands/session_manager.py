@@ -103,9 +103,14 @@ def _interpret_outcome(response: Any) -> str:
         if normalized in {"cancelled", "canceled"}:
             return "cancel"
     if isinstance(response, dict):
-        decision = response.get("decision")
-        if isinstance(decision, str) and decision.strip().lower() in _CANONICAL_OUTCOMES:
-            return decision.strip().lower()
+        raw_decision = response.get("decision")
+        decision = (
+            raw_decision.strip().lower()
+            if isinstance(raw_decision, str)
+            else None
+        )
+        if decision in _CANONICAL_OUTCOMES:
+            return decision
         if response.get("approve") is True or decision in {"allow", "approve"}:
             return "allow"
         if response.get("approve") is False or decision in {"deny", "reject"}:
@@ -321,30 +326,32 @@ class KurrentDBSessionManager(SessionManager):
         if tool_use_id in self._issued_request_ids:
             return
 
-        tool_name = tool_use.get("name") or ""
+        # ``tool_name`` is optional in SCHEMA_v2 §3.3; under proto Edition
+        # 2024 explicit presence, an explicitly-set empty string is distinct
+        # from "unset" via ``HasField``. Only set the field when we have a
+        # real name so cross-SDK readers can rely on ``HasField('tool_name')``.
+        raw_tool_name = tool_use.get("name")
+        tool_name = raw_tool_name if raw_tool_name else None
         arguments = coerce_tool_input(tool_use.get("input"))
 
         evt = InterruptIssued(
             request_id=tool_use_id,
             kind=kind,
-            tool_name=tool_name,
             timestamp=datetime.now(UTC),
         )
+        if tool_name is not None:
+            evt.tool_name = tool_name
         if prompt is not None:
             evt.prompt = prompt
 
-        _set_strands_extension(
-            evt,
-            {
-                "interrupt": {
-                    "proposed_call": {
-                        "id": tool_use_id,
-                        "name": tool_name,
-                        "arguments": arguments if arguments is not None else {},
-                    }
-                }
-            },
-        )
+        proposed_call: dict[str, Any] = {
+            "id": tool_use_id,
+            "arguments": arguments if arguments is not None else {},
+        }
+        if tool_name is not None:
+            proposed_call["name"] = tool_name
+
+        _set_strands_extension(evt, {"interrupt": {"proposed_call": proposed_call}})
 
         self._client.append_to_stream(
             self._stream,
@@ -391,6 +398,17 @@ class KurrentDBSessionManager(SessionManager):
             outcome=outcome,
             timestamp=datetime.now(UTC),
         )
+        # SCHEMA_v2 §3.3 ``InterruptResolved.response`` is optional free-form
+        # text (rationale / user-supplied input). Populate the canonical
+        # field when the Strands response IS already a string so cross-SDK
+        # readers can read it without decoding the strands extension. Dict /
+        # structured responses stay only in ``extensions.strands`` — coercing
+        # them via ``str()`` would surface ``"{'approve': True}"`` which is
+        # noise, not rationale.
+        if isinstance(response, str):
+            stripped = response.strip()
+            if stripped:
+                evt.response = stripped
         if response is not None:
             _set_strands_extension(evt, {"interrupt": {"resolution": response}})
 

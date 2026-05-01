@@ -518,6 +518,11 @@ class TestInterruptObserver:
         ({"approve": True}, "allow"),
         ({"approve": False}, "deny"),
         ({"decision": "allow"}, "allow"),
+        # Case-insensitive + whitespace-tolerant: ``decision`` is normalised
+        # via strip+lower before matching, so common stylings round-trip.
+        ({"decision": "ALLOW"}, "allow"),
+        ({"decision": " deny "}, "deny"),
+        ({"decision": "Cancel"}, "cancel"),
         ({"decision": "allow_once"}, "allow_once"),
         ({"decision": "allow_always"}, "allow_always"),
         ({"decision": "deny"}, "deny"),
@@ -528,6 +533,128 @@ class TestInterruptObserver:
 )
 def test_interpret_outcome_maps_common_responses(response: Any, expected: str) -> None:
     assert _interpret_outcome(response) == expected
+
+
+class TestPresenceAwareEmission:
+    """Proto Edition 2024 makes explicit field presence the default — an
+    explicitly-set empty string differs from an unset field via
+    ``HasField``. The emitters must not stamp empty/missing values onto
+    optional canonical fields."""
+
+    def _read_canonical(self, kurrentdb_client: KurrentDBClient, sid: str, type_name: str):
+        from kurrent_strands._serialization import deserialize
+        from kurrent_strands._stream_names import for_session
+
+        records = kurrentdb_client.get_stream(for_session(sid))
+        return [deserialize(r) for r in records if r.type == type_name]
+
+    def test_issued_without_tool_name_leaves_field_unset(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        sm.emit_interrupt_issued(
+            tool_use={"toolUseId": "tu", "name": "", "input": {}}
+        )
+
+        [issued] = self._read_canonical(
+            kurrentdb_client, sid, "InterruptIssued"
+        )
+        assert not issued.HasField("tool_name")
+
+        from google.protobuf.json_format import MessageToDict
+
+        from kurrent_strands._codec import STRANDS_EXTENSION_KEY
+
+        ext = MessageToDict(
+            issued.extensions[STRANDS_EXTENSION_KEY],
+            preserving_proto_field_name=True,
+        )
+        # ``proposed_call.name`` follows suit — absent rather than empty.
+        assert "name" not in ext["interrupt"]["proposed_call"]
+
+    def test_resolved_with_string_response_sets_canonical_field(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        """SCHEMA_v2 §3.3 ``InterruptResolved.response`` is the canonical
+        home for free-form text rationale; cross-SDK readers find it
+        without decoding the strands extension."""
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        sm.emit_interrupt_resolved(
+            tool_use_id="tu",
+            outcome="answered",
+            response="  user gave a clarification  ",
+        )
+
+        [resolved] = self._read_canonical(
+            kurrentdb_client, sid, "InterruptResolved"
+        )
+        assert resolved.HasField("response")
+        # Whitespace is stripped — the canonical field carries the trimmed text.
+        assert resolved.response == "user gave a clarification"
+
+    def test_resolved_with_dict_response_leaves_canonical_field_unset(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        """A structured (dict / list) response stays only in
+        ``extensions.strands.interrupt.resolution``; coercing it via
+        ``str()`` would surface noise like ``"{'approve': True}"`` which
+        is not human-readable rationale."""
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        sm.emit_interrupt_resolved(
+            tool_use_id="tu",
+            outcome="allow",
+            response={"approve": True, "by": "ops"},
+        )
+
+        [resolved] = self._read_canonical(
+            kurrentdb_client, sid, "InterruptResolved"
+        )
+        assert not resolved.HasField("response")
+
+        from google.protobuf.json_format import MessageToDict
+
+        from kurrent_strands._codec import STRANDS_EXTENSION_KEY
+
+        ext = MessageToDict(
+            resolved.extensions[STRANDS_EXTENSION_KEY],
+            preserving_proto_field_name=True,
+        )
+        assert ext["interrupt"]["resolution"] == {"approve": True, "by": "ops"}
+
+    def test_resolved_with_empty_string_leaves_canonical_field_unset(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        """Empty / whitespace-only strings don't add information; treat
+        them the same as no response for the canonical field."""
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        sm.emit_interrupt_resolved(
+            tool_use_id="tu", outcome="answered", response="   "
+        )
+
+        [resolved] = self._read_canonical(
+            kurrentdb_client, sid, "InterruptResolved"
+        )
+        assert not resolved.HasField("response")
 
 
 class TestEmitValidation:
