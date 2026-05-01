@@ -353,6 +353,33 @@ def _build_thinking_event(
     return evt
 
 
+def coerce_tool_input(input_value: Any) -> dict[str, Any] | None:
+    """Coerce a Strands ``ToolUse.input`` value to a JSON-shaped dict.
+
+    Strands tool inputs are typed ``Any`` and observed as: dict (the common
+    case), JSON-string (some adapters re-encode), or scalar (provider quirks).
+    We normalise to a dict so canonical ``ToolCallInfo.arguments`` (a
+    ``google.protobuf.Struct``) and ``extensions.strands.interrupt.proposed_call``
+    can hold the value uniformly without the caller worrying about shape.
+
+    Returns ``None`` when ``input_value`` is itself ``None`` so the caller
+    can distinguish "absent" from "empty dict".
+    """
+    if input_value is None:
+        return None
+    if isinstance(input_value, str):
+        try:
+            parsed = json.loads(input_value)
+        except json.JSONDecodeError:
+            return {"_raw": input_value}
+        if isinstance(parsed, dict):
+            return parsed
+        return {"_value": parsed}
+    if isinstance(input_value, dict):
+        return input_value
+    return {"_value": input_value}
+
+
 def _tool_call_info(tool_use: dict[str, Any]) -> ToolCallInfo:
     """Convert a Strands toolUse block to a canonical ``ToolCallInfo``.
 
@@ -361,14 +388,7 @@ def _tool_call_info(tool_use: dict[str, Any]) -> ToolCallInfo:
     ``arguments`` field is a ``google.protobuf.Struct`` — empty dicts must
     survive round-trip (see schema commit ``ff1540d``).
     """
-    input_value = tool_use.get("input")
-    if isinstance(input_value, str):
-        try:
-            input_value = json.loads(input_value)
-        except json.JSONDecodeError:
-            input_value = {"_raw": input_value}
-    if input_value is not None and not isinstance(input_value, dict):
-        input_value = {"_value": input_value}
+    input_value = coerce_tool_input(tool_use.get("input"))
 
     info = ToolCallInfo(
         call_id=tool_use.get("toolUseId") or "",

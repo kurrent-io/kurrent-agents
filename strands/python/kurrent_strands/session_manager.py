@@ -36,6 +36,7 @@ from . import _serialization
 from ._codec import (
     _set_strands_extension,
     canonical_to_messages,
+    coerce_tool_input,
     extract_usage_metadata,
     message_to_canonical,
 )
@@ -57,6 +58,23 @@ _ASSISTANT_EVENT_CLASSES: tuple[type, ...] = (
 )
 
 
+# Canonical ``InterruptResolved.outcome`` values per ``SCHEMA_v2.md §3.3``.
+_CANONICAL_OUTCOMES: frozenset[str] = frozenset({
+    "allow",
+    "allow_once",
+    "allow_always",
+    "deny",
+    "cancel",
+    "answered",
+    "timeout",
+})
+
+# Strands-generated interrupt id format embeds the toolUseId between the
+# second and third colon: ``v1:before_tool_call:{toolUseId}:{uuid5}``.
+# We match by exact prefix to avoid false hits on substring overlap.
+_STRANDS_INTERRUPT_ID_PREFIX: str = "v1:before_tool_call:"
+
+
 def _interpret_outcome(response: Any) -> str:
     """Map an opaque Strands interrupt response to a canonical outcome string.
 
@@ -66,7 +84,9 @@ def _interpret_outcome(response: Any) -> str:
     opaque (free-form caller data), so we map the most common conventions
     (booleans, ``"allow"``/``"deny"`` strings, ``{"approve": …}`` /
     ``{"decision": …}`` dicts) and fall back to ``answered`` for anything
-    else (the canonical "input" interrupt-kind catch-all).
+    else (the canonical "input" interrupt-kind catch-all). The ``allow_once``
+    / ``allow_always`` shades survive round-trip when the caller surfaces
+    them explicitly — we don't collapse them to plain ``allow``.
     """
     if response is None:
         return "timeout"
@@ -74,18 +94,23 @@ def _interpret_outcome(response: Any) -> str:
         return "allow" if response else "deny"
     if isinstance(response, str):
         normalized = response.strip().lower()
-        if normalized in {"allow", "allow_once", "allow_always", "approve", "approved", "yes"}:
+        if normalized in _CANONICAL_OUTCOMES:
+            return normalized
+        if normalized in {"approve", "approved", "yes"}:
             return "allow"
-        if normalized in {"deny", "denied", "reject", "rejected", "no"}:
+        if normalized in {"denied", "reject", "rejected", "no"}:
             return "deny"
-        if normalized in {"cancel", "cancelled", "canceled"}:
+        if normalized in {"cancelled", "canceled"}:
             return "cancel"
     if isinstance(response, dict):
-        if response.get("approve") is True or response.get("decision") in {"allow", "approve"}:
+        decision = response.get("decision")
+        if isinstance(decision, str) and decision.strip().lower() in _CANONICAL_OUTCOMES:
+            return decision.strip().lower()
+        if response.get("approve") is True or decision in {"allow", "approve"}:
             return "allow"
-        if response.get("approve") is False or response.get("decision") in {"deny", "reject"}:
+        if response.get("approve") is False or decision in {"deny", "reject"}:
             return "deny"
-        if response.get("decision") == "cancel":
+        if decision == "cancel":
             return "cancel"
     return "answered"
 
@@ -283,8 +308,21 @@ class KurrentDBSessionManager(SessionManager):
             prompt: Optional human-readable prompt (e.g. "Approve calling X?").
         """
         tool_use_id = tool_use.get("toolUseId") or ""
+        if not tool_use_id:
+            raise ValueError(
+                "tool_use['toolUseId'] is required to emit InterruptIssued "
+                "(canonical request_id must be the model-assigned tool-use id "
+                "per SCHEMA_v2 §3.3 post-hoc rule)."
+            )
+        # Idempotent on the in-memory tracker: a duplicate explicit call from
+        # the same process is a no-op rather than a second stream write. The
+        # observer hook checks the same set, so explicit + observer paths
+        # cooperate without double-emit.
+        if tool_use_id in self._issued_request_ids:
+            return
+
         tool_name = tool_use.get("name") or ""
-        arguments = dict(tool_use.get("input") or {})
+        arguments = coerce_tool_input(tool_use.get("input"))
 
         evt = InterruptIssued(
             request_id=tool_use_id,
@@ -302,7 +340,7 @@ class KurrentDBSessionManager(SessionManager):
                     "proposed_call": {
                         "id": tool_use_id,
                         "name": tool_name,
-                        "arguments": arguments,
+                        "arguments": arguments if arguments is not None else {},
                     }
                 }
             },
@@ -313,6 +351,7 @@ class KurrentDBSessionManager(SessionManager):
             events=[_serialization.serialize(evt)],
             current_version=StreamState.ANY,
         )
+        self._issued_request_ids.add(tool_use_id)
 
     def emit_interrupt_resolved(
         self,
@@ -335,6 +374,18 @@ class KurrentDBSessionManager(SessionManager):
             outcome: Canonical outcome string.
             response: Optional original user-supplied response payload.
         """
+        if not tool_use_id:
+            raise ValueError(
+                "tool_use_id is required to emit InterruptResolved."
+            )
+        if outcome not in _CANONICAL_OUTCOMES:
+            raise ValueError(
+                f"outcome={outcome!r} is not a canonical SCHEMA_v2 §3.3 "
+                f"value. Use one of: {sorted(_CANONICAL_OUTCOMES)}."
+            )
+        if tool_use_id in self._resolved_request_ids:
+            return
+
         evt = InterruptResolved(
             request_id=tool_use_id,
             outcome=outcome,
@@ -348,6 +399,7 @@ class KurrentDBSessionManager(SessionManager):
             events=[_serialization.serialize(evt)],
             current_version=StreamState.ANY,
         )
+        self._resolved_request_ids.add(tool_use_id)
 
     def redact_latest_message(
         self,
@@ -403,9 +455,15 @@ class KurrentDBSessionManager(SessionManager):
         if not tool_use_id:
             return
 
-        # Strands embeds the toolUseId inside its generated interrupt id.
+        # Strands ids look like ``v1:before_tool_call:{toolUseId}:{uuid5}`` —
+        # match by exact prefix so a short toolUseId doesn't false-match on
+        # substring overlap with another interrupt's id.
+        prefix = f"{_STRANDS_INTERRUPT_ID_PREFIX}{tool_use_id}:"
         matching = next(
-            (i for i in interrupts.values() if tool_use_id in getattr(i, "id", "")),
+            (
+                i for i in interrupts.values()
+                if getattr(i, "id", "").startswith(prefix)
+            ),
             None,
         )
         if matching is None:
@@ -417,8 +475,9 @@ class KurrentDBSessionManager(SessionManager):
                 if getattr(matching, "reason", None) is not None
                 else None
             )
+            # ``emit_interrupt_issued`` updates ``_issued_request_ids`` itself
+            # so the explicit-API and observer paths share dedupe state.
             self.emit_interrupt_issued(tool_use=tool_use, prompt=prompt)
-            self._issued_request_ids.add(tool_use_id)
 
         response = getattr(matching, "response", None)
         if response is not None and tool_use_id not in self._resolved_request_ids:
@@ -427,7 +486,6 @@ class KurrentDBSessionManager(SessionManager):
                 outcome=_interpret_outcome(response),
                 response=response,
             )
-            self._resolved_request_ids.add(tool_use_id)
 
     def _emit_session_started(self) -> None:
         started = SessionStarted(

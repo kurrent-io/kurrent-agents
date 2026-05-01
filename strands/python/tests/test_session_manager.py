@@ -503,6 +503,12 @@ class TestInterruptObserver:
         (False, "deny"),
         ("allow", "allow"),
         ("ALLOW", "allow"),
+        # The ``allow_once`` / ``allow_always`` shades survive round-trip;
+        # they are NOT collapsed to plain ``allow`` (SCHEMA_v2 §3.3).
+        ("allow_once", "allow_once"),
+        ("allow_always", "allow_always"),
+        ("answered", "answered"),
+        ("timeout", "timeout"),
         ("approve", "allow"),
         ("yes", "allow"),
         ("deny", "deny"),
@@ -512,6 +518,8 @@ class TestInterruptObserver:
         ({"approve": True}, "allow"),
         ({"approve": False}, "deny"),
         ({"decision": "allow"}, "allow"),
+        ({"decision": "allow_once"}, "allow_once"),
+        ({"decision": "allow_always"}, "allow_always"),
         ({"decision": "deny"}, "deny"),
         ({"decision": "cancel"}, "cancel"),
         ({"freeform": "user typed something"}, "answered"),
@@ -520,3 +528,120 @@ class TestInterruptObserver:
 )
 def test_interpret_outcome_maps_common_responses(response: Any, expected: str) -> None:
     assert _interpret_outcome(response) == expected
+
+
+class TestEmitValidation:
+    """Boundary validation on the explicit emission API."""
+
+    def test_emit_interrupt_issued_rejects_empty_tool_use_id(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+        with pytest.raises(ValueError, match="toolUseId"):
+            sm.emit_interrupt_issued(
+                tool_use={"toolUseId": "", "name": "x", "input": {}}
+            )
+
+    def test_emit_interrupt_resolved_rejects_non_canonical_outcome(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+        with pytest.raises(ValueError, match="canonical"):
+            sm.emit_interrupt_resolved(tool_use_id="c1", outcome="approved")
+
+    def test_emit_interrupt_issued_handles_json_string_input(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        """Some Strands adapters pass ``tool_use['input']`` as a JSON string;
+        the codec already coerces, the emit path now does the same."""
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+        sm.emit_interrupt_issued(
+            tool_use={
+                "toolUseId": "tu",
+                "name": "lookup",
+                "input": '{"q": "kurrent"}',
+            }
+        )
+
+        from google.protobuf.json_format import MessageToDict
+
+        from kurrent_strands._codec import STRANDS_EXTENSION_KEY
+        from kurrent_strands._serialization import deserialize
+        from kurrent_strands._stream_names import for_session
+
+        records = kurrentdb_client.get_stream(for_session(sid))
+        issued = next(
+            deserialize(r) for r in records if r.type == "InterruptIssued"
+        )
+        ext = MessageToDict(
+            issued.extensions[STRANDS_EXTENSION_KEY],
+            preserving_proto_field_name=True,
+        )
+        assert ext["interrupt"]["proposed_call"]["arguments"] == {"q": "kurrent"}
+
+
+class TestObserverDedupeWithExplicit:
+    """The observer + explicit emission paths share dedupe state, so a user
+    hook that calls ``emit_interrupt_issued`` directly never produces a
+    duplicate event when the observer runs in the same dispatch."""
+
+    def _read_canonical(self, kurrentdb_client: KurrentDBClient, sid: str, type_name: str):
+        from kurrent_strands._serialization import deserialize
+        from kurrent_strands._stream_names import for_session
+
+        records = kurrentdb_client.get_stream(for_session(sid))
+        return [deserialize(r) for r in records if r.type == type_name]
+
+    def test_observer_does_not_re_emit_after_explicit_emit(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        # User hook calls explicit API ahead of the observer.
+        sm.emit_interrupt_issued(
+            tool_use={"toolUseId": "tu", "name": "x", "input": {}}
+        )
+        # Observer fires next on the same tool call — must not duplicate.
+        sm._on_before_tool_call(
+            _fake_before_tool_call_event("tu", interrupts=[_interrupt("tu")])
+        )
+        assert (
+            len(self._read_canonical(kurrentdb_client, sid, "InterruptIssued"))
+            == 1
+        )
+
+    def test_observer_does_not_match_substring_tool_use_ids(
+        self, kurrentdb_client: KurrentDBClient
+    ) -> None:
+        """A short ``toolUseId`` like ``c1`` must not be mis-matched against
+        an interrupt whose id contains ``c12`` etc. The observer matches by
+        exact prefix on the framework's id format."""
+        app, user, sid = _ids()
+        sm = KurrentDBSessionManager(
+            client=kurrentdb_client, session_id=sid, app_name=app, user_id=user
+        )
+        sm.initialize(_FakeAgent())
+
+        # _interrupt_state contains an interrupt for ``c12345`` (not ``c1``).
+        sm._on_before_tool_call(
+            _fake_before_tool_call_event("c1", interrupts=[_interrupt("c12345")])
+        )
+        assert (
+            self._read_canonical(kurrentdb_client, sid, "InterruptIssued") == []
+        )
