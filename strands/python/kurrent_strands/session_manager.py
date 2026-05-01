@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from kurrent_agent_schema import (
+    USAGE_METADATA_KEY,
     AssistantTextGenerated,
     AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
@@ -42,9 +43,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from strands.types.content import Message
 
 logger = logging.getLogger("kurrent_strands.session_manager")
-
-# KurrentDB metadata key for per-event token usage (SCHEMA.md §3.4).
-USAGE_METADATA_KEY = "$usage"
 
 # Canonical event types eligible to carry ``$usage`` (written only on assistant
 # events, per ``schema/SCHEMA_v2.md §3.6``).
