@@ -1,17 +1,21 @@
-// Hybrid eval demo: heuristic first, LLM judge only on ambiguity.
-// Cheap signals (empty, clearly correct, tool errors) are decided by heuristics.
-// Borderline cases (short answers, uncertain phrasing) are escalated to an LLM judge.
-// The runner just sees one Func<Turn, ...> — composition lives in the scorer.
+// Hybrid eval demo: heuristic first, LLM-based evaluators only on ambiguity.
+// Cheap signals (empty, clearly correct, tool errors) come from a heuristic IEvaluator.
+// Borderline cases escalate to RelevanceEvaluator + CoherenceEvaluator from
+// Microsoft.Extensions.AI.Evaluation.Quality. The runner just sees one IEvaluator —
+// composition lives in HybridEvaluator below.
 
 using System.Text;
 using Anthropic;
 using Google.Protobuf.WellKnownTypes;
+using HybridEvalDemo;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Eval;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI.Evaluation;
+using Microsoft.Extensions.AI.Evaluation.Quality;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using static Kurrent.AgentFramework.Serialization.EventSerializer;
@@ -29,8 +33,9 @@ var anthropicKey = config["Anthropic:ApiKey"]
 
 var model = config["Anthropic:Model"] ?? "claude-sonnet-4-20250514";
 
-IAnthropicClient anthropic   = new AnthropicClient(new() { ApiKey = anthropicKey });
-var              judgeClient = anthropic.AsIChatClient(model, 1024);
+IAnthropicClient anthropic         = new AnthropicClient(new() { ApiKey = anthropicKey });
+var              judgeClient       = anthropic.AsIChatClient(model, 1024);
+var              chatConfiguration = new ChatConfiguration(judgeClient);
 
 // ============================================================
 // Step 1: Synthetic session covering confident + ambiguous turns
@@ -89,40 +94,51 @@ await kurrentDb.AppendToStreamAsync(streamName, StreamState.Any, events);
 Console.WriteLine($"  Written {events.Count} events\n");
 
 // ============================================================
-// Step 2: Build the hybrid scorer
+// Step 2: Build the hybrid evaluator
 // ============================================================
 const string criteria = "Response is helpful, factually correct, and uses tools when appropriate.";
 
-var llmJudge = EvalRunner.LlmJudge(judgeClient, criteria, model);
-var stats    = new ScorerStats();
+var stats = new ScorerStats();
+var hybrid = new HybridEvaluator(
+    heuristic: new DemoHeuristicEvaluator(),
+    onEscalation: () => stats.Escalated++,
+    onConfident:  () => stats.HeuristicOnly++,
+    new RelevanceEvaluator(),
+    new CoherenceEvaluator()
+);
 
 // ============================================================
 // Step 3: Run the eval
 // ============================================================
 Console.WriteLine("========================================");
-Console.WriteLine("Running hybrid eval (heuristic + LLM judge)");
+Console.WriteLine("Running hybrid eval (heuristic + LLM judge on ambiguity)");
 Console.WriteLine("========================================\n");
 
-var evalRunner = new EvalRunner(kurrentDb);
-
-var result = await evalRunner.RunAsync(
+var result = await new EvalRunner(kurrentDb).RunAsync(
     sessionId,
     scorerName: "hybrid-v1",
     criteria: criteria,
-    scorer: Hybrid
+    evaluator: hybrid,
+    chatConfiguration: chatConfiguration
 );
 
-foreach (var scored in result.ScoredTurns) {
-    Console.WriteLine($"  Turn {scored.Turn.Index}: {scored.Score:F2} [{scored.Label}]");
-    Console.WriteLine($"    Input:  {scored.Turn.UserInput}");
-    Console.WriteLine($"    Output: {scored.Turn.AssistantOutput ?? "(empty)"}");
+foreach (var grouped in result.ScoredMetrics.GroupBy(s => s.Turn.Index)) {
+    var turn = grouped.First().Turn;
+    Console.WriteLine($"  Turn {turn.Index}");
+    Console.WriteLine($"    Input:  {turn.UserInput}");
+    Console.WriteLine($"    Output: {turn.AssistantOutput ?? "(empty)"}");
 
-    if (!string.IsNullOrEmpty(scored.Reason))
-        Console.WriteLine($"    Reason: {scored.Reason}");
+    foreach (var scored in grouped) {
+        var rating = scored.InterpretationRating is null ? "" : $" [{scored.InterpretationRating}]";
+        var reason = string.IsNullOrEmpty(scored.Reason) ? "" : $" — {scored.Reason}";
+        Console.WriteLine($"    {scored.MetricName}: {scored.Score:F2}{rating}{reason}");
+    }
     Console.WriteLine();
 }
 
-Console.WriteLine($"  Average score:    {result.AverageScore:F2}");
+Console.WriteLine("  Per-metric averages:");
+foreach (var (name, value) in result.PerMetricAverage)
+    Console.WriteLine($"    {name}: {value:F2}");
 Console.WriteLine($"  Heuristic-only:   {stats.HeuristicOnly} turn(s)");
 Console.WriteLine($"  Escalated to LLM: {stats.Escalated} turn(s)");
 
@@ -153,79 +169,6 @@ await foreach (var resolved in allStreams) {
     }
 
     break;
-}
-
-return;
-
-async Task<ScoredTurn> Hybrid(Turn turn, CancellationToken ct) {
-    var heuristic = await DemoHeuristicScorer(turn, ct);
-
-    // Confident bands → trust the heuristic, no LLM call.
-    if (heuristic.Score is >= 0.85 or <= 0.15) {
-        stats.HeuristicOnly++;
-
-        return heuristic with { Reason = $"[heuristic] {heuristic.Reason}" };
-    }
-
-    // Ambiguous → escalate.
-    stats.Escalated++;
-    var llm = await llmJudge(turn, ct);
-
-    return llm with {
-        Reason = $"[llm | heuristic={heuristic.Score:F2}] {llm.Reason}"
-    };
-}
-
-// --- Heuristic scorer (deterministic, no LLM) ---
-// Returns extreme scores when confident, mid-band scores when uncertain —
-// the hybrid wrapper uses the score band to decide whether to escalate.
-static Task<ScoredTurn> DemoHeuristicScorer(Turn turn, CancellationToken ct) {
-    var score   = 1.0;
-    var reasons = new List<string>();
-
-    if (string.IsNullOrWhiteSpace(turn.AssistantOutput)) {
-        return Task.FromResult(new ScoredTurn(turn, 0.0, "poor", "empty response"));
-    }
-
-    var len = turn.AssistantOutput!.Length;
-
-    switch (len) {
-        case < 10:
-            score = 0.5;
-            reasons.Add("very short response");
-
-            break;
-        case < 40:
-            score = 0.6;
-            reasons.Add("short response");
-
-            break;
-    }
-
-    var errorTools = turn.ToolCalls.Count(tc => tc.IsError);
-
-    if (errorTools > 0) {
-        score -= 0.2 * errorTools;
-        reasons.Add($"{errorTools} tool error(s)");
-    }
-
-    var needsTool = turn.UserInput?.Contains("weather", StringComparison.OrdinalIgnoreCase) == true
-     || turn.UserInput?.Contains("time", StringComparison.OrdinalIgnoreCase)                == true;
-
-    if (needsTool && turn.ToolCalls.Count == 0) {
-        score = Math.Min(score, 0.55);
-        reasons.Add("expected tool call but none made");
-    }
-
-    score = Math.Clamp(score, 0.0, 1.0);
-
-    var label = score >= 0.8
-        ? "good"
-        : score >= 0.5
-            ? "acceptable"
-            : "poor";
-
-    return Task.FromResult(new ScoredTurn(turn, score, label, string.Join("; ", reasons)));
 }
 
 internal sealed class ScorerStats {

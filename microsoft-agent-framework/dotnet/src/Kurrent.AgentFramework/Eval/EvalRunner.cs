@@ -1,57 +1,71 @@
-using System.Text.Json;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI.Evaluation;
 
 namespace Kurrent.AgentFramework.Eval;
 
 /// <summary>
-/// Scored result for a single turn.
+/// One row of the eval output: a single <see cref="EvaluationMetric"/> against a single <see cref="Turn"/>.
 /// </summary>
-public sealed record ScoredTurn(Turn Turn, double Score, string? Label, string? Reason);
+public sealed record ScoredMetric(
+        Turn                  Turn,
+        string                MetricName,
+        double                Score,
+        string                MetricKind,
+        string?               Reason,
+        string?               InterpretationRating,
+        bool                  InterpretationFailed,
+        IReadOnlyList<string> Diagnostics
+    );
 
 /// <summary>
-/// Result of an eval run across an entire session.
+/// Result of an eval run across a session. Per-turn scores are not aggregated across metrics —
+/// averaging heterogeneous metrics produces a number with no meaning. Per-metric averages are
+/// the meaningful aggregation.
 /// </summary>
 public sealed record EvalResult(
-        string                    SessionId,
-        IReadOnlyList<ScoredTurn> ScoredTurns,
-        double                    AverageScore,
-        long?                     TotalInputTokens,
-        long?                     TotalOutputTokens
+        string                              SessionId,
+        IReadOnlyList<ScoredMetric>         ScoredMetrics,
+        IReadOnlyDictionary<string, double> PerMetricAverage,
+        long?                               TotalInputTokens,
+        long?                               TotalOutputTokens
     );
 
 /// <summary>
 /// Runs evaluations against agent sessions stored in KurrentDB.
-/// Reads turns from the session stream, scores each turn with a provided scorer,
-/// and writes score events back to a dedicated eval stream.
-///
-/// Scorers can be:
-/// - LLM-as-judge (pass an IChatClient)
-/// - Heuristic functions
-/// - Any async function that takes a Turn and returns a score
+/// Reads turns from the session stream, evaluates each turn with an <see cref="IEvaluator"/>
+/// (or <see cref="CompositeEvaluator"/>) from <c>Microsoft.Extensions.AI.Evaluation</c>, and
+/// writes one <see cref="TurnScored"/> per (turn, metric) to a dedicated <c>EvalRun-{id}</c>
+/// stream alongside <see cref="EvalRunStarted"/> / <see cref="EvalRunCompleted"/>.
 /// </summary>
 public sealed class EvalRunner(KurrentDBClient client) {
     /// <summary>
-    /// Run an evaluation against a session using a custom scoring function.
-    /// Writes EvalRunStarted, TurnScored, and EvalRunCompleted events to an EvalRun-{id} stream.
+    /// Run an evaluation against a session.
     /// </summary>
+    /// <param name="sessionId">Session id whose stream provides the turns to evaluate.</param>
+    /// <param name="scorerName">Free-text scorer identifier persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="criteria">Free-text criteria description persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="evaluator">The evaluator to apply per turn. Wrap multiple evaluators in a <see cref="CompositeEvaluator"/>.</param>
+    /// <param name="chatConfiguration">Required when the evaluator uses an <see cref="IChatClient"/>; <c>null</c> for purely heuristic evaluators.</param>
+    /// <param name="additionalContext">Optional per-turn context supplier (e.g. for <see cref="GroundednessEvaluator"/>).</param>
     public async Task<EvalResult> RunAsync(
-            string                                          sessionId,
-            string                                          scorerName,
-            string                                          criteria,
-            Func<Turn, CancellationToken, Task<ScoredTurn>> scorer,
-            CancellationToken                               ct = default
+            string                                       sessionId,
+            string                                       scorerName,
+            string                                       criteria,
+            IEvaluator                                   evaluator,
+            ChatConfiguration?                           chatConfiguration = null,
+            Func<Turn, IEnumerable<EvaluationContext>?>? additionalContext = null,
+            CancellationToken                            ct                = default
         ) {
         var turns  = await SessionTurnReader.ReadTurnsAsync(client, sessionId, ct).ConfigureAwait(false);
         var evalId = Guid.NewGuid().ToString("N");
         var stream = StreamNames.EvalRun(evalId);
         var now    = DateTimeOffset.UtcNow;
 
-        // Write EvalRunStarted
         await AppendAsync(stream, new EvalRunStarted {
             SessionId = sessionId,
             Scorer    = scorerName,
@@ -59,91 +73,139 @@ public sealed class EvalRunner(KurrentDBClient client) {
             Timestamp = Timestamp.FromDateTimeOffset(now),
         }, ct).ConfigureAwait(false);
 
-        // Score each turn
-        var scoredTurns = new List<ScoredTurn>();
+        var scoredMetrics = new List<ScoredMetric>();
+        var sums          = new Dictionary<string, (double Sum, int Count)>();
 
         foreach (var turn in turns) {
-            var scored = await scorer(turn, ct).ConfigureAwait(false);
-            scoredTurns.Add(scored);
+            var (messages, response) = ToChat(turn);
+            var context              = additionalContext?.Invoke(turn);
 
-            var turnScored = new TurnScored {
-                SessionId = sessionId,
-                TurnIndex = turn.Index,
-                Score     = scored.Score,
-                Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
-            };
-            if (turn.UserInput       is not null) turnScored.Input      = turn.UserInput;
-            if (turn.AssistantOutput is not null) turnScored.Output     = turn.AssistantOutput;
-            if (scored.Label         is not null) turnScored.ScoreLabel = scored.Label;
-            if (scored.Reason        is not null) turnScored.Reason     = scored.Reason;
+            var evalResult = await evaluator
+                .EvaluateAsync(messages, response, chatConfiguration, context, ct)
+                .ConfigureAwait(false);
 
-            await AppendAsync(stream, turnScored, ct).ConfigureAwait(false);
+            foreach (var metric in evalResult.Metrics.Values) {
+                var scored = ToScoredMetric(turn, metric);
+                scoredMetrics.Add(scored);
+
+                var prev = sums.GetValueOrDefault(metric.Name);
+                sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
+
+                await AppendAsync(stream, BuildTurnScored(sessionId, scored), ct).ConfigureAwait(false);
+            }
         }
 
-        var avgScore = scoredTurns.Count > 0 ? scoredTurns.Average(s => s.Score) : 0;
+        var perMetricAverage = sums.ToDictionary(kv => kv.Key, kv => kv.Value.Sum / kv.Value.Count);
 
-        // Write EvalRunCompleted
-        await AppendAsync(
-            stream,
-            new EvalRunCompleted {
-                SessionId    = sessionId,
-                TurnsScored  = scoredTurns.Count,
-                AverageScore = avgScore,
-                Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
-            },
-            ct
-        ).ConfigureAwait(false);
+        var completed = new EvalRunCompleted {
+            SessionId    = sessionId,
+            TurnsScored  = turns.Count,
+            AverageScore = perMetricAverage.Values.Count > 0 ? perMetricAverage.Values.Average() : 0,
+            Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        if (perMetricAverage.Count > 0) completed.Extensions["afw"] = BuildCompletedExtension(perMetricAverage);
+        await AppendAsync(stream, completed, ct).ConfigureAwait(false);
 
         return new(
             sessionId,
-            scoredTurns,
-            avgScore,
+            scoredMetrics,
+            perMetricAverage,
             turns.Where(t => t.InputTokens.HasValue).Sum(t => t.InputTokens!.Value),
             turns.Where(t => t.OutputTokens.HasValue).Sum(t => t.OutputTokens!.Value)
         );
     }
 
-    /// <summary>
-    /// Create an LLM-as-judge scorer that uses an IChatClient to evaluate each turn.
-    /// </summary>
-    public static Func<Turn, CancellationToken, Task<ScoredTurn>> LlmJudge(
-            IChatClient chatClient,
-            string      criteria,
-            string?     model = null
-        ) =>
-        async (turn, ct) => {
-            var toolContext = turn.ToolCalls.Count > 0
-                ? $"\nTool calls made:\n{string.Join("\n", turn.ToolCalls.Select(tc => $"  - {tc.Name}({tc.Arguments}) → {tc.Result}"))}"
-                : "";
+    static (IList<ChatMessage> Messages, ChatResponse Response) ToChat(Turn turn) {
+        var messages = new List<ChatMessage> { new(ChatRole.User, turn.UserInput ?? "") };
 
-            var prompt = $$"""
-                           You are an AI evaluator. Score the following agent response on a scale of 0.0 to 1.0.
+        var assistant = new ChatMessage(ChatRole.Assistant, turn.AssistantOutput ?? "");
+        foreach (var tc in turn.ToolCalls) {
+            assistant.Contents.Add(new FunctionCallContent(callId: tc.Name, name: tc.Name));
+            if (tc.Result is not null)
+                assistant.Contents.Add(new FunctionResultContent(callId: tc.Name, result: tc.Result) {
+                    Exception = tc.IsError ? new InvalidOperationException(tc.Result) : null,
+                });
+        }
 
-                           Criteria: {{criteria}}
+        return (messages, new ChatResponse(assistant));
+    }
 
-                           User input: {{turn.UserInput}}
-                           {{toolContext}}
-                           Agent output: {{turn.AssistantOutput}}
-
-                           Respond with ONLY a JSON object:
-                           {"score": <0.0-1.0>, "label": "<good|acceptable|poor>", "reason": "<brief explanation>"}
-                           """;
-
-            var response = await chatClient.GetResponseAsync(prompt, new() { ModelId = model }, ct).ConfigureAwait(false);
-            var text     = response.Text.Trim();
-
-            try {
-                var result = JsonSerializer.Deserialize<JsonElement>(text);
-                var score  = result.GetProperty("score").GetDouble();
-                var label  = result.TryGetProperty("label", out var l) ? l.GetString() : null;
-                var reason = result.TryGetProperty("reason", out var r) ? r.GetString() : null;
-
-                return new(turn, score, label, reason);
-            } catch {
-                // Fallback if LLM doesn't return valid JSON
-                return new(turn, 0.5, "parse_error", $"Could not parse judge response: {text}");
-            }
+    static ScoredMetric ToScoredMetric(Turn turn, EvaluationMetric metric) {
+        var (score, kind) = metric switch {
+            NumericMetric n => (n.Value ?? 0d, "numeric"),
+            BooleanMetric b => (b.Value == true ? 1d : 0d, "boolean"),
+            StringMetric _  => (0d, "string"),
+            _               => (0d, "none"),
         };
+
+        var diagnostics = metric.Diagnostics is null
+            ? Array.Empty<string>()
+            : metric.Diagnostics.Select(d => $"[{d.Severity}] {d.Message}").ToArray();
+
+        return new(
+            turn,
+            metric.Name,
+            score,
+            kind,
+            metric.Reason,
+            metric.Interpretation?.Rating.ToString(),
+            metric.Interpretation?.Failed ?? false,
+            diagnostics
+        );
+    }
+
+    static TurnScored BuildTurnScored(string sessionId, ScoredMetric scored) {
+        var evt = new TurnScored {
+            SessionId  = sessionId,
+            TurnIndex  = scored.Turn.Index,
+            Score      = scored.Score,
+            ScoreLabel = scored.MetricName,
+            Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        if (scored.Turn.UserInput       is not null) evt.Input  = scored.Turn.UserInput;
+        if (scored.Turn.AssistantOutput is not null) evt.Output = scored.Turn.AssistantOutput;
+        if (scored.Reason               is not null) evt.Reason = scored.Reason;
+
+        evt.Extensions["afw"] = BuildScoredExtension(scored);
+
+        return evt;
+    }
+
+    static Struct BuildScoredExtension(ScoredMetric scored) {
+        var eval = new Struct();
+        eval.Fields["metric_kind"] = Value.ForString(scored.MetricKind);
+
+        if (scored.InterpretationRating is not null) {
+            var interp = new Struct();
+            interp.Fields["rating"] = Value.ForString(scored.InterpretationRating);
+            interp.Fields["failed"] = Value.ForBool(scored.InterpretationFailed);
+            eval.Fields["interpretation"] = Value.ForStruct(interp);
+        }
+
+        if (scored.Diagnostics.Count > 0) {
+            eval.Fields["diagnostics"] = Value.ForList(
+                scored.Diagnostics.Select(d => Value.ForString(d)).ToArray()
+            );
+        }
+
+        var afw = new Struct();
+        afw.Fields["eval"] = Value.ForStruct(eval);
+
+        return afw;
+    }
+
+    static Struct BuildCompletedExtension(IReadOnlyDictionary<string, double> perMetricAverage) {
+        var averages = new Struct();
+        foreach (var (name, value) in perMetricAverage) averages.Fields[name] = Value.ForNumber(value);
+
+        var eval = new Struct();
+        eval.Fields["per_metric_average"] = Value.ForStruct(averages);
+
+        var afw = new Struct();
+        afw.Fields["eval"] = Value.ForStruct(eval);
+
+        return afw;
+    }
 
     async Task AppendAsync(string stream, object @event, CancellationToken ct) =>
         await client.AppendToStreamAsync(
