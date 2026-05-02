@@ -91,6 +91,8 @@ public class EvalRunnerTests(KurrentDbFixture db) {
             EventFor(UserMsg("q2", "m-3", 2)),
             EventFor(AsstText("a2", "m-4", 3)));
 
+        var startPos = await SnapshotAllEndAsync(client);
+
         // Two metrics per turn: Helpfulness fixed-per-turn, Coherence fixed at 0.5.
         var helpfulness = new[] { 1.0, 0.4 };
         var evaluator   = new FixedDualEvaluator(t => helpfulness[t], _ => 0.5);
@@ -102,6 +104,16 @@ public class EvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(result.ScoredMetrics.Count).IsEqualTo(4); // 2 turns × 2 metrics
         await Assert.That(result.PerMetricAverage["Helpfulness"]).IsEqualTo(0.7);
         await Assert.That(result.PerMetricAverage["Coherence"]).IsEqualTo(0.5);
+
+        var evts = await ReadEvalEventsForSession(client, sessionId, startPos);
+        try {
+            // Multiple aggregable metrics → AverageScore stays at 0 (cross-metric mean is meaningless);
+            // readers must consult extensions.afw.eval.per_metric_average for the truth.
+            var completed = evts.Single(e => e.Type == "EvalRunCompleted").Payload.RootElement;
+            await Assert.That(completed.GetProperty("average_score").GetDouble()).IsEqualTo(0.0);
+        } finally {
+            foreach (var (_, doc) in evts) doc.Dispose();
+        }
     }
 
     [Test]
@@ -195,6 +207,100 @@ public class EvalRunnerTests(KurrentDbFixture db) {
     }
 
     [Test]
+    public async Task RunAsync_NonNumericMetrics_ExcludedFromAverages_ValuePreservedInExtensions() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q1", "m-1", 0)),
+            EventFor(AsstText("a1", "m-2", 1)),
+            EventFor(UserMsg("q2", "m-3", 2)),
+            EventFor(AsstText("a2", "m-4", 3)));
+
+        var startPos = await SnapshotAllEndAsync(client);
+
+        // Returns Verdict (string) + Helpfulness (numeric, null on turn 0, 0.8 on turn 1).
+        var evaluator = new MixedKindEvaluator();
+        var result    = await new EvalRunner(client).RunAsync(sessionId, "mixed", "criteria", evaluator);
+
+        await Assert.That(result.PerMetricAverage.ContainsKey("Verdict")).IsFalse();
+        // Helpfulness null on turn 0 is excluded; turn 1 contributes 0.8.
+        await Assert.That(result.PerMetricAverage["Helpfulness"]).IsEqualTo(0.8);
+        await Assert.That(result.ScoredMetrics.Count(s => s.MetricName == "Verdict" && !s.IsAggregable)).IsEqualTo(2);
+
+        var evts = await ReadEvalEventsForSession(client, sessionId, startPos);
+        try {
+            var verdictRows = evts
+                .Where(e => e.Type == "TurnScored")
+                .Where(e => e.Payload.RootElement.GetProperty("score_label").GetString() == "Verdict")
+                .ToList();
+
+            var firstVerdict = verdictRows[0].Payload.RootElement
+                .GetProperty("extensions").GetProperty("afw").GetProperty("eval");
+            await Assert.That(firstVerdict.GetProperty("metric_kind").GetString()).IsEqualTo("string");
+            await Assert.That(firstVerdict.GetProperty("string_value").GetString()).IsEqualTo("pass");
+
+            var nullNumeric = evts
+                .Where(e => e.Type == "TurnScored")
+                .Select(e => e.Payload.RootElement)
+                .First(e =>
+                    e.GetProperty("score_label").GetString()                    == "Helpfulness"
+                 && e.GetProperty("turn_index").GetInt32()                      == 0
+                 && e.GetProperty("extensions").GetProperty("afw").GetProperty("eval")
+                      .TryGetProperty("value_missing", out _));
+
+            await Assert.That(nullNumeric.GetProperty("extensions").GetProperty("afw").GetProperty("eval")
+                .GetProperty("value_missing").GetBoolean()).IsTrue();
+
+            var completed = evts.Single(e => e.Type == "EvalRunCompleted").Payload.RootElement;
+            // Verdict (StringMetric) is non-aggregable, so only Helpfulness ends up in the
+            // per-metric averages → run collapses to a single-metric run and AverageScore
+            // carries that one metric's average.
+            await Assert.That(completed.GetProperty("average_score").GetDouble()).IsEqualTo(0.8);
+        } finally {
+            foreach (var (_, doc) in evts) doc.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task RunAsync_PassesUniqueCallIdsAndParsedArgumentsToEvaluator() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = Pts };
+        var argStruct = new Struct();
+        argStruct.Fields["city"] = Value.ForString("London");
+        toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "ignored-1", ToolName = "GetWeather", Arguments = argStruct });
+        toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "ignored-2", ToolName = "GetWeather", Arguments = argStruct });
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q", "m-1", 0)),
+            EventFor(toolCalls),
+            EventFor(new ToolResultReceived {
+                CallId = "ignored-1", ToolName = "GetWeather", Result = "Sunny",
+                MessageIndex = 2, Timestamp = Pts,
+            }),
+            EventFor(new ToolResultReceived {
+                CallId = "ignored-2", ToolName = "GetWeather", Result = "Cloudy",
+                MessageIndex = 3, Timestamp = Pts,
+            }),
+            EventFor(AsstText("a", "m-2", 4)));
+
+        var capturing = new ChatCapturingEvaluator();
+        await new EvalRunner(client).RunAsync(sessionId, "scorer", "criteria", capturing);
+
+        var assistant = capturing.LastResponse!.Messages.Last();
+        var calls     = assistant.Contents.OfType<FunctionCallContent>().ToArray();
+        var results   = assistant.Contents.OfType<FunctionResultContent>().ToArray();
+
+        await Assert.That(calls.Length).IsEqualTo(2);
+        await Assert.That(calls[0].CallId).IsNotEqualTo(calls[1].CallId);
+        await Assert.That(calls[0].Arguments?["city"]?.ToString()).IsEqualTo("London");
+        await Assert.That(results[0].CallId).IsEqualTo(calls[0].CallId);
+        await Assert.That(results[1].CallId).IsEqualTo(calls[1].CallId);
+    }
+
+    [Test]
     public async Task RunAsync_SerializesInterpretationAndDiagnosticsUnderExtensions() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
@@ -255,6 +361,46 @@ public class EvalRunnerTests(KurrentDbFixture db) {
                 new NumericMetric("Helpfulness", first(i)),
                 new NumericMetric("Coherence",   second(i)),
             ]));
+        }
+    }
+
+    sealed class MixedKindEvaluator : IEvaluator {
+        int _turn;
+
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = ["Verdict", "Helpfulness"];
+
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage>        messages,
+                ChatResponse                    modelResponse,
+                ChatConfiguration?              chatConfiguration = null,
+                IEnumerable<EvaluationContext>? additionalContext = null,
+                CancellationToken               cancellationToken = default
+            ) {
+            var i      = _turn++;
+            // Helpfulness intentionally null on turn 0 to exercise the missing-value path.
+            double? helpfulness = i == 0 ? null : 0.8;
+
+            return ValueTask.FromResult(new EvaluationResult([
+                new StringMetric("Verdict",          i == 0 ? "pass" : "fail"),
+                new NumericMetric("Helpfulness",     helpfulness),
+            ]));
+        }
+    }
+
+    sealed class ChatCapturingEvaluator : IEvaluator {
+        public ChatResponse? LastResponse { get; private set; }
+
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = ["Capture"];
+
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage>        messages,
+                ChatResponse                    modelResponse,
+                ChatConfiguration?              chatConfiguration = null,
+                IEnumerable<EvaluationContext>? additionalContext = null,
+                CancellationToken               cancellationToken = default
+            ) {
+            LastResponse = modelResponse;
+            return ValueTask.FromResult(new EvaluationResult(new NumericMetric("Capture", 1.0)));
         }
     }
 

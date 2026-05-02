@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
@@ -11,11 +12,23 @@ namespace Kurrent.AgentFramework.Eval;
 /// <summary>
 /// One row of the eval output: a single <see cref="EvaluationMetric"/> against a single <see cref="Turn"/>.
 /// </summary>
+/// <param name="Score">
+/// The numeric value persisted on <c>TurnScored.score</c>. <c>0</c> when the metric has no numeric
+/// meaning (<see cref="StringMetric"/>, or <see cref="NumericMetric"/> with a null value); see
+/// <paramref name="IsAggregable"/>.
+/// </param>
+/// <param name="IsAggregable">
+/// <c>true</c> when <paramref name="Score"/> carries genuine numeric meaning and should participate
+/// in per-metric averaging. <c>false</c> for string-valued or missing-value metrics, whose qualitative
+/// content is preserved under <c>extensions.afw.eval</c> instead.
+/// </param>
 public sealed record ScoredMetric(
         Turn                  Turn,
         string                MetricName,
         double                Score,
         string                MetricKind,
+        bool                  IsAggregable,
+        string?               StringValue,
         string?               Reason,
         string?               InterpretationRating,
         bool                  InterpretationFailed,
@@ -88,8 +101,10 @@ public sealed class EvalRunner(KurrentDBClient client) {
                 var scored = ToScoredMetric(turn, metric);
                 scoredMetrics.Add(scored);
 
-                var prev = sums.GetValueOrDefault(metric.Name);
-                sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
+                if (scored.IsAggregable) {
+                    var prev = sums.GetValueOrDefault(metric.Name);
+                    sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
+                }
 
                 await AppendAsync(stream, BuildTurnScored(sessionId, scored), ct).ConfigureAwait(false);
             }
@@ -97,10 +112,13 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
         var perMetricAverage = sums.ToDictionary(kv => kv.Key, kv => kv.Value.Sum / kv.Value.Count);
 
+        // Cross-metric averaging is meaningless (see EvalResult docs), so AverageScore only
+        // carries the single-metric run's average; multi-metric runs leave it at 0 and rely on
+        // extensions.afw.eval.per_metric_average for the meaningful aggregation.
         var completed = new EvalRunCompleted {
             SessionId    = sessionId,
             TurnsScored  = turns.Count,
-            AverageScore = perMetricAverage.Values.Count > 0 ? perMetricAverage.Values.Average() : 0,
+            AverageScore = perMetricAverage.Count == 1 ? perMetricAverage.Values.Single() : 0,
             Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
         };
         if (perMetricAverage.Count > 0) completed.Extensions["afw"] = BuildCompletedExtension(perMetricAverage);
@@ -119,10 +137,21 @@ public sealed class EvalRunner(KurrentDBClient client) {
         var messages = new List<ChatMessage> { new(ChatRole.User, turn.UserInput ?? "") };
 
         var assistant = new ChatMessage(ChatRole.Assistant, turn.AssistantOutput ?? "");
-        foreach (var tc in turn.ToolCalls) {
-            assistant.Contents.Add(new FunctionCallContent(callId: tc.Name, name: tc.Name));
+
+        // Turn.ToolCall has no upstream call id, so synthesize a per-turn unique one. This
+        // keeps FunctionCallContent / FunctionResultContent paired correctly when the same
+        // tool is invoked more than once in a single turn.
+        for (var i = 0; i < turn.ToolCalls.Count; i++) {
+            var tc     = turn.ToolCalls[i];
+            var callId = $"call-{i}";
+
+            assistant.Contents.Add(new FunctionCallContent(
+                callId:    callId,
+                name:      tc.Name,
+                arguments: ParseToolArguments(tc.Arguments)));
+
             if (tc.Result is not null)
-                assistant.Contents.Add(new FunctionResultContent(callId: tc.Name, result: tc.Result) {
+                assistant.Contents.Add(new FunctionResultContent(callId: callId, result: tc.Result) {
                     Exception = tc.IsError ? new InvalidOperationException(tc.Result) : null,
                 });
         }
@@ -130,12 +159,22 @@ public sealed class EvalRunner(KurrentDBClient client) {
         return (messages, new ChatResponse(assistant));
     }
 
+    static IDictionary<string, object?>? ParseToolArguments(string? json) {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try {
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(json);
+        } catch (JsonException) {
+            return null;
+        }
+    }
+
     static ScoredMetric ToScoredMetric(Turn turn, EvaluationMetric metric) {
-        var (score, kind) = metric switch {
-            NumericMetric n => (n.Value ?? 0d, "numeric"),
-            BooleanMetric b => (b.Value == true ? 1d : 0d, "boolean"),
-            StringMetric _  => (0d, "string"),
-            _               => (0d, "none"),
+        var (score, kind, isAggregable, stringValue) = metric switch {
+            NumericMetric { Value: { } v } => (v,                          "numeric", true,  (string?)null),
+            NumericMetric                  => (0d,                         "numeric", false, (string?)null),
+            BooleanMetric b                => (b.Value == true ? 1d : 0d,  "boolean", true,  (string?)null),
+            StringMetric s                 => (0d,                         "string",  false, s.Value),
+            _                              => (0d,                         "none",    false, (string?)null),
         };
 
         var diagnostics = metric.Diagnostics is null
@@ -147,6 +186,8 @@ public sealed class EvalRunner(KurrentDBClient client) {
             metric.Name,
             score,
             kind,
+            isAggregable,
+            stringValue,
             metric.Reason,
             metric.Interpretation?.Rating.ToString(),
             metric.Interpretation?.Failed ?? false,
@@ -174,6 +215,14 @@ public sealed class EvalRunner(KurrentDBClient client) {
     static Struct BuildScoredExtension(ScoredMetric scored) {
         var eval = new Struct();
         eval.Fields["metric_kind"] = Value.ForString(scored.MetricKind);
+
+        if (scored.StringValue is not null)
+            eval.Fields["string_value"] = Value.ForString(scored.StringValue);
+
+        // NumericMetric with no value reaches the event stream as score=0 with this flag set,
+        // so readers can tell "evaluator ran, produced no number" apart from a real zero.
+        if (scored is { MetricKind: "numeric", IsAggregable: false })
+            eval.Fields["value_missing"] = Value.ForBool(true);
 
         if (scored.InterpretationRating is not null) {
             var interp = new Struct();
