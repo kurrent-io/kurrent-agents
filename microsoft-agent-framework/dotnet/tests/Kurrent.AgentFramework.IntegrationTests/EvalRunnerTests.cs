@@ -263,6 +263,50 @@ public class EvalRunnerTests(KurrentDbFixture db) {
     }
 
     [Test]
+    public async Task RunAsync_BooleanMetric_MapsToZeroOrOne_AndAggregates() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q1", "m-1", 0)),
+            EventFor(AsstText("a1", "m-2", 1)),
+            EventFor(UserMsg("q2", "m-3", 2)),
+            EventFor(AsstText("a2", "m-4", 3)));
+
+        var startPos = await SnapshotAllEndAsync(client);
+
+        // Turn 0 → true (1.0), turn 1 → false (0.0); average = 0.5.
+        var values    = new bool?[] { true, false };
+        var evaluator = new BooleanEvaluator("Passed", t => values[t]);
+
+        var result = await new EvalRunner(client).RunAsync(sessionId, "bool-scorer", "criteria", evaluator);
+
+        await Assert.That(result.PerMetricAverage["Passed"]).IsEqualTo(0.5);
+        await Assert.That(result.ScoredMetrics.All(s => s.IsAggregable)).IsTrue();
+        await Assert.That(result.ScoredMetrics.Select(s => s.Score)).IsEquivalentTo(new[] { 1.0, 0.0 });
+
+        var evts = await ReadEvalEventsForSession(client, sessionId, startPos);
+        try {
+            var rows = evts
+                .Where(e => e.Type == "TurnScored")
+                .Select(e => e.Payload.RootElement)
+                .ToList();
+
+            await Assert.That(rows).Count().IsEqualTo(2);
+            foreach (var row in rows) {
+                var eval = row.GetProperty("extensions").GetProperty("afw").GetProperty("eval");
+                await Assert.That(eval.GetProperty("metric_kind").GetString()).IsEqualTo("boolean");
+            }
+
+            var completed = evts.Single(e => e.Type == "EvalRunCompleted").Payload.RootElement;
+            // Single aggregable metric → AverageScore carries that metric's average.
+            await Assert.That(completed.GetProperty("average_score").GetDouble()).IsEqualTo(0.5);
+        } finally {
+            foreach (var (_, doc) in evts) doc.Dispose();
+        }
+    }
+
+    [Test]
     public async Task RunAsync_PassesUniqueCallIdsAndParsedArgumentsToEvaluator() {
         using var client = db.CreateClient();
         var sessionId    = Guid.NewGuid().ToString("N");
@@ -362,6 +406,21 @@ public class EvalRunnerTests(KurrentDbFixture db) {
                 new NumericMetric("Coherence",   second(i)),
             ]));
         }
+    }
+
+    sealed class BooleanEvaluator(string name, Func<int, bool?> value) : IEvaluator {
+        int _turn;
+
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [name];
+
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage>        messages,
+                ChatResponse                    modelResponse,
+                ChatConfiguration?              chatConfiguration = null,
+                IEnumerable<EvaluationContext>? additionalContext = null,
+                CancellationToken               cancellationToken = default
+            ) =>
+            ValueTask.FromResult(new EvaluationResult(new BooleanMetric(name, value(_turn++))));
     }
 
     sealed class MixedKindEvaluator : IEvaluator {

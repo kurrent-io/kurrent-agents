@@ -97,6 +97,10 @@ public sealed class EvalRunner(KurrentDBClient client) {
                 .EvaluateAsync(messages, response, chatConfiguration, context, ct)
                 .ConfigureAwait(false);
 
+            // Batch all per-turn TurnScored events into one append. With multiple metrics per
+            // turn, per-metric appends would multiply KurrentDB round-trips by N.
+            var turnEvents = new List<EventData>(evalResult.Metrics.Count);
+
             foreach (var metric in evalResult.Metrics.Values) {
                 var scored = ToScoredMetric(turn, metric);
                 scoredMetrics.Add(scored);
@@ -106,8 +110,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
                     sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
                 }
 
-                await AppendAsync(stream, BuildTurnScored(sessionId, scored), ct).ConfigureAwait(false);
+                turnEvents.Add(EventSerializer.Serialize(BuildTurnScored(sessionId, scored)));
             }
+
+            if (turnEvents.Count > 0)
+                await client.AppendToStreamAsync(stream, StreamState.Any, turnEvents, cancellationToken: ct)
+                    .ConfigureAwait(false);
         }
 
         var perMetricAverage = sums.ToDictionary(kv => kv.Key, kv => kv.Value.Sum / kv.Value.Count);
