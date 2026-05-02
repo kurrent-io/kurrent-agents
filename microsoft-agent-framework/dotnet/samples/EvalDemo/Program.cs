@@ -1,10 +1,11 @@
 // Lightweight eval tool demo.
 // First: creates a synthetic agent session with known turns in KurrentDB.
-// Then: runs heuristic eval against it, scoring each turn.
-// Scores are written back as events in an EvalRun-{id} stream.
-// No LLM required — uses the heuristic scorer. Swap in EvalRunner.LlmJudge() for LLM scoring.
+// Then: runs a heuristic IEvaluator against it, scoring each turn.
+// Per-metric scores are written back as TurnScored events in an EvalRun-{id} stream.
+// No LLM required — see HybridEvalDemo for an LLM-judge example.
 
 using System.Text;
+using EvalDemo;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
@@ -92,7 +93,7 @@ foreach (var turn in turns) {
 }
 
 // ============================================================
-// Step 3: Run heuristic eval
+// Step 3: Run the heuristic evaluator
 // ============================================================
 Console.WriteLine("========================================");
 Console.WriteLine("Running heuristic eval");
@@ -104,11 +105,12 @@ var result = await evalRunner.RunAsync(
     sessionId,
     scorerName: "heuristic-v1",
     criteria: "Response quality: completeness, tool usage, helpfulness",
-    scorer: DemoHeuristicScorer
+    evaluator: new DemoHeuristicEvaluator()
 );
 
-foreach (var scored in result.ScoredTurns) {
-    Console.WriteLine($"  Turn {scored.Turn.Index}: {scored.Score:F1} [{scored.Label}]");
+foreach (var scored in result.ScoredMetrics) {
+    var rating = scored.InterpretationRating is null ? "" : $" [{scored.InterpretationRating}]";
+    Console.WriteLine($"  Turn {scored.Turn.Index} · {scored.MetricName}: {scored.Score:F2}{rating}");
     Console.WriteLine($"    Input:  {scored.Turn.UserInput}");
     Console.WriteLine($"    Output: {scored.Turn.AssistantOutput ?? "(empty)"}");
 
@@ -117,7 +119,9 @@ foreach (var scored in result.ScoredTurns) {
     Console.WriteLine();
 }
 
-Console.WriteLine($"  Average score: {result.AverageScore:F2}");
+Console.WriteLine("  Per-metric averages:");
+foreach (var (name, value) in result.PerMetricAverage)
+    Console.WriteLine($"    {name}: {value:F2}");
 Console.WriteLine($"  Total tokens:  {result.TotalInputTokens ?? 0} in / {result.TotalOutputTokens ?? 0} out");
 
 // ============================================================
@@ -127,47 +131,6 @@ Console.WriteLine("\n========================================");
 Console.WriteLine("Eval events in KurrentDB");
 Console.WriteLine("========================================\n");
 
-// --- Demo-specific heuristic scorer ---
-// This scorer is tailored to the synthetic turns above.
-// Real scorers should be built per-domain using the Func<Turn, CancellationToken, Task<ScoredTurn>> contract.
-static Task<ScoredTurn> DemoHeuristicScorer(Turn turn, CancellationToken ct) {
-    var score   = 1.0;
-    var reasons = new List<string>();
-
-    if (string.IsNullOrWhiteSpace(turn.AssistantOutput)) {
-        score = 0.0;
-        reasons.Add("empty response");
-    }
-
-    if (turn.AssistantOutput?.Length < 10) {
-        score -= 0.3;
-        reasons.Add("very short response");
-    }
-
-    var errorTools = turn.ToolCalls.Count(tc => tc.IsError);
-
-    if (errorTools > 0) {
-        score -= 0.2 * errorTools;
-        reasons.Add($"{errorTools} tool error(s)");
-    }
-
-    // Demo-specific: these keywords match the synthetic turns created above
-    var needsTool = turn.UserInput?.Contains("weather", StringComparison.OrdinalIgnoreCase) == true
-     || turn.UserInput?.Contains("time", StringComparison.OrdinalIgnoreCase)                == true;
-
-    if (needsTool && turn.ToolCalls.Count == 0) {
-        score -= 0.3;
-        reasons.Add("expected tool call but none made");
-    }
-
-    score = Math.Clamp(score, 0.0, 1.0);
-
-    var label = score >= 0.8 ? "good" : score >= 0.5 ? "acceptable" : "poor";
-
-    return Task.FromResult(new ScoredTurn(turn, score, label, string.Join("; ", reasons)));
-}
-
-// Find the EvalRun stream
 var allStreams = kurrentDb.ReadAllAsync(Direction.Backwards, Position.End, maxCount: 100);
 
 await foreach (var resolved in allStreams) {
@@ -181,7 +144,7 @@ await foreach (var resolved in allStreams) {
 
     await foreach (var evt in evalEvents) {
         var data                    = Encoding.UTF8.GetString(evt.Event.Data.Span);
-        if (data.Length > 150) data = data[..150] + "...";
+        if (data.Length > 200) data = data[..200] + "...";
         Console.WriteLine($"  [{pos}] {evt.Event.EventType}");
         Console.WriteLine($"       {data}");
         pos++;
