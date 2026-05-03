@@ -268,6 +268,44 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(result.TotalOutputTokens).IsEqualTo(125L);
     }
 
+    [Test]
+    public async Task RunSessionAsync_AssistantOnlySession_StillFlattens() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(AsstText("standalone", "m-1", 0)));
+
+        var evaluator = new FixedSessionEvaluator(0.5, "Helpfulness");
+
+        await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", evaluator);
+
+        await Assert.That(evaluator.LastMessages).IsNotNull();
+        await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(1);
+        await Assert.That(evaluator.LastMessages[0].Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(evaluator.LastResponse!.Messages[0].Text).IsEqualTo("standalone");
+    }
+
+    [Test]
+    public async Task RunSessionAsync_UserOnlySession_LastResponseIsEmpty() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("just a question", "m-1", 0)));
+
+        var evaluator = new FixedSessionEvaluator(0.5, "Helpfulness");
+
+        await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", evaluator);
+
+        await Assert.That(evaluator.LastMessages).IsNotNull();
+        await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(1);
+        await Assert.That(evaluator.LastMessages[0].Role).IsEqualTo(ChatRole.User);
+        await Assert.That(evaluator.LastResponse!.Messages[0].Text).IsEqualTo("");
+    }
+
     /// <summary>
     /// Test double — records the call it received and returns a single
     /// <see cref="NumericMetric"/> with the configured score and name.
