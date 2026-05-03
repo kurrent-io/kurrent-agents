@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
@@ -182,7 +183,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
         var perMetricAverage = new Dictionary<string, double>();
 
         if (messages.Count > 0) {
-            // Body filled out in subsequent tasks (Task 6 onwards).
+            var evalResult = await evaluator
+                .EvaluateAsync(messages, response, chatConfiguration, additionalContext, ct)
+                .ConfigureAwait(false);
+
+            // Per-metric writes filled in by Task 7.
+            _ = evalResult;
         }
 
         var completed = new EvalRunCompleted {
@@ -196,13 +202,92 @@ public sealed class EvalRunner(KurrentDBClient client) {
         return new(sessionId, scoredMetrics, perMetricAverage, inputTokens, outputTokens);
     }
 
-    static Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
+    static async Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
         FlattenSessionAsync(KurrentDBClient client, string sessionId, CancellationToken ct) {
-        // Stub — full implementation in Task 6.
-        IList<ChatMessage> empty = new List<ChatMessage>();
-        return Task.FromResult<(IList<ChatMessage>, ChatResponse, long?, long?)>(
-            (empty, new ChatResponse(new ChatMessage(ChatRole.Assistant, "")), null, null)
-        );
+        var streamName = StreamNames.AgentSession(sessionId);
+        var messages   = new List<ChatMessage>();
+        long? inputTokens  = null;
+        long? outputTokens = null;
+        ChatMessage? lastAssistant = null;
+
+        try {
+            var events = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, cancellationToken: ct);
+            await foreach (var resolved in events.ConfigureAwait(false)) {
+                var domainEvent = EventSerializer.Deserialize(resolved);
+                if (domainEvent is null) continue;
+
+                switch (domainEvent) {
+                    case UserMessageReceived userMsg:
+                        if (userMsg.HasContent)
+                            messages.Add(new ChatMessage(ChatRole.User, userMsg.Content));
+                        break;
+
+                    case AssistantTextGenerated asstMsg:
+                        if (asstMsg.HasContent) {
+                            var msg = new ChatMessage(ChatRole.Assistant, asstMsg.Content);
+                            messages.Add(msg);
+                            lastAssistant = msg;
+                        } else {
+                            // A content-less AssistantTextGenerated signals turn-end without a final
+                            // text response. Clear lastAssistant so the response falls through to the
+                            // empty default rather than wrapping a prior tool-call message.
+                            lastAssistant = null;
+                        }
+                        ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+                        break;
+
+                    case AssistantToolCallsGenerated toolCalls:
+                        var toolMsg = new ChatMessage(ChatRole.Assistant, toolCalls.HasContent ? toolCalls.Content : null);
+                        for (var i = 0; i < toolCalls.ToolCalls.Count; i++) {
+                            var tc     = toolCalls.ToolCalls[i];
+                            var callId = string.IsNullOrEmpty(tc.CallId) ? $"call-{i}" : tc.CallId;
+                            toolMsg.Contents.Add(new FunctionCallContent(
+                                callId:    callId,
+                                name:      tc.ToolName,
+                                arguments: ParseToolArguments(StructToJson(tc.Arguments))));
+                        }
+                        messages.Add(toolMsg);
+                        lastAssistant = toolMsg;
+                        ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+                        break;
+
+                    case ToolResultReceived toolResult:
+                        if (toolResult.HasResult) {
+                            messages.Add(new ChatMessage(ChatRole.Tool, [
+                                new FunctionResultContent(
+                                    callId: toolResult.CallId,
+                                    result: toolResult.Result)
+                            ]));
+                        }
+                        break;
+                }
+            }
+        } catch (StreamNotFoundException) { }
+
+        var response = lastAssistant is null
+            ? new ChatResponse(new ChatMessage(ChatRole.Assistant, ""))
+            : new ChatResponse(lastAssistant);
+
+        return (messages, response, inputTokens, outputTokens);
+    }
+
+    static string? StructToJson(Struct? args) =>
+        args is null || args.Fields.Count == 0
+            ? null
+            : JsonFormatter.Default.Format(args);
+
+    static void ReadUsageFromMetadata(ResolvedEvent resolved, ref long? inputTokens, ref long? outputTokens) {
+        if (resolved.Event.Metadata.Length == 0) return;
+        try {
+            var meta = JsonSerializer.Deserialize<JsonElement>(resolved.Event.Metadata.Span);
+            if (!meta.TryGetProperty("$usage", out var usage)) return;
+
+            if (usage.TryGetProperty("input_tokens", out var inp) && inp.ValueKind == JsonValueKind.Number)
+                inputTokens = (inputTokens ?? 0) + inp.GetInt64();
+
+            if (usage.TryGetProperty("output_tokens", out var outp) && outp.ValueKind == JsonValueKind.Number)
+                outputTokens = (outputTokens ?? 0) + outp.GetInt64();
+        } catch { }
     }
 
     static (IList<ChatMessage> Messages, ChatResponse Response) ToChat(Turn turn) {

@@ -1,5 +1,9 @@
 using System.Text.Json;
+using Google.Protobuf.WellKnownTypes;
+using Kurrent.Agent.Schema;
+using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Eval;
+using Kurrent.AgentFramework.Serialization;
 using KurrentDB.Client;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.AI.Evaluation;
@@ -8,6 +12,36 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 
 [ClassDataSource<KurrentDbFixture>(Shared = SharedType.PerTestSession)]
 public class SessionEvalRunnerTests(KurrentDbFixture db) {
+    static readonly DateTimeOffset Ts  = new(2026, 5, 3, 12, 0, 0, TimeSpan.Zero);
+    static readonly Timestamp      Pts = Timestamp.FromDateTimeOffset(Ts);
+
+    static EventData EventFor(object @event, IDictionary<string, object?>? metadata = null) =>
+        EventSerializer.Serialize(@event, metadata: metadata);
+
+    static async Task SeedSessionAsync(KurrentDBClient client, string sessionId, params EventData[] events) {
+        await client.AppendToStreamAsync(StreamNames.AgentSession(sessionId), StreamState.Any, events);
+    }
+
+    static UserMessageReceived UserMsg(string content, string messageId, int idx) =>
+        new() {
+            Content      = content,
+            MessageId    = messageId,
+            AuthorName   = "user",
+            CreatedAt    = Pts,
+            MessageIndex = idx,
+            Timestamp    = Pts,
+        };
+
+    static AssistantTextGenerated AsstText(string content, string messageId, int idx) =>
+        new() {
+            Content      = content,
+            MessageId    = messageId,
+            AuthorName   = "agent",
+            CreatedAt    = Pts,
+            MessageIndex = idx,
+            Timestamp    = Pts,
+        };
+
     static async Task<Position> SnapshotAllEndAsync(KurrentDBClient client) {
         await foreach (var e in client.ReadAllAsync(Direction.Backwards, Position.End, maxCount: 1)) {
             return e.OriginalPosition ?? Position.Start;
@@ -68,6 +102,42 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         } finally {
             foreach (var (_, doc) in events) doc.Dispose();
         }
+    }
+
+    [Test]
+    public async Task RunSessionAsync_FlattenedMessages_PreservesUserAssistantOrder() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("first user", "m-1", 0)),
+            EventFor(AsstText("first assistant", "m-2", 1)),
+            EventFor(UserMsg("second user", "m-3", 2)),
+            EventFor(AsstText("second assistant", "m-4", 3)));
+
+        var evaluator = new FixedSessionEvaluator(1.0, "Helpfulness");
+
+        await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", evaluator);
+
+        await Assert.That(evaluator.CallCount).IsEqualTo(1);
+        await Assert.That(evaluator.LastMessages).IsNotNull();
+        await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(4);
+
+        await Assert.That(evaluator.LastMessages[0].Role).IsEqualTo(ChatRole.User);
+        await Assert.That(evaluator.LastMessages[0].Text).IsEqualTo("first user");
+
+        await Assert.That(evaluator.LastMessages[1].Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(evaluator.LastMessages[1].Text).IsEqualTo("first assistant");
+
+        await Assert.That(evaluator.LastMessages[2].Role).IsEqualTo(ChatRole.User);
+        await Assert.That(evaluator.LastMessages[2].Text).IsEqualTo("second user");
+
+        await Assert.That(evaluator.LastMessages[3].Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(evaluator.LastMessages[3].Text).IsEqualTo("second assistant");
+
+        await Assert.That(evaluator.LastResponse!.Messages.Count).IsGreaterThan(0);
+        await Assert.That(evaluator.LastResponse.Messages[0].Text).IsEqualTo("second assistant");
     }
 
     /// <summary>
