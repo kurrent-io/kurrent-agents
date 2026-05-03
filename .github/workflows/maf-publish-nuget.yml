@@ -1,0 +1,77 @@
+name: Publish Kurrent.AgentFramework to NuGet
+
+on:
+  push:
+    tags:
+      - 'maf-dotnet-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack only; skip publishing (for verifying the workflow without a tag).'
+        type: boolean
+        default: false
+
+# Uses NuGet trusted publishing (OIDC) via the NuGet/login action — no API key secret.
+# The trusted publisher policy must be pre-configured on nuget.org for this repo +
+# this workflow file, and `secrets.NUGET_USER` must be set to the publisher account.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Build, pack, push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify tag matches csproj version
+        if: startsWith(github.ref, 'refs/tags/maf-dotnet-v')
+        working-directory: microsoft-agent-framework/dotnet/src/Kurrent.AgentFramework
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#maf-dotnet-v}"
+          FILE_VERSION=$(grep -oE '<Version>[^<]+</Version>' Kurrent.AgentFramework.csproj | sed -E 's#</?Version>##g')
+          echo "tag=$TAG_VERSION file=$FILE_VERSION"
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error ::tag version ($TAG_VERSION) does not match csproj version ($FILE_VERSION)"
+            exit 1
+          fi
+
+      - name: Restore
+        working-directory: microsoft-agent-framework/dotnet
+        run: dotnet restore src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj
+
+      - name: Build
+        working-directory: microsoft-agent-framework/dotnet
+        run: dotnet build src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj -c Release --no-restore
+
+      # Note: integration tests are intentionally not run here. The test project
+      # uses TUnit on Microsoft Testing Platform with Testcontainers (KurrentDB),
+      # which requires Docker and substantial wall time. Tests are expected to
+      # have run locally during development; a dedicated MAF CI workflow is a
+      # separate follow-up.
+
+      - name: Pack
+        working-directory: microsoft-agent-framework/dotnet
+        run: dotnet pack src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj -c Release --no-build -o nupkg
+
+      - name: NuGet OIDC login
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        working-directory: microsoft-agent-framework/dotnet
+        run: |
+          dotnet nuget push nupkg/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate
