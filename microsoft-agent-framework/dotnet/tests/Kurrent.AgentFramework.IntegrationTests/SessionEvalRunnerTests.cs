@@ -242,6 +242,32 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         }
     }
 
+    [Test]
+    public async Task RunSessionAsync_TokenTotals_SumUsageMetadataAcrossAssistantEvents() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        var usageMeta1 = new Dictionary<string, object?> {
+            ["$usage"] = new Dictionary<string, object?> { ["input_tokens"] = 100L, ["output_tokens"] = 50L }
+        };
+        var usageMeta2 = new Dictionary<string, object?> {
+            ["$usage"] = new Dictionary<string, object?> { ["input_tokens"] = 200L, ["output_tokens"] = 75L }
+        };
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q1", "m-1", 0)),
+            EventFor(AsstText("a1", "m-2", 1), usageMeta1),
+            EventFor(UserMsg("q2", "m-3", 2)),
+            EventFor(AsstText("a2", "m-4", 3), usageMeta2));
+
+        var result = await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test",
+            new FixedSessionEvaluator(1.0, "Helpfulness"));
+
+        await Assert.That(result.TotalInputTokens).IsEqualTo(300L);
+        await Assert.That(result.TotalOutputTokens).IsEqualTo(125L);
+    }
+
     /// <summary>
     /// Test double — records the call it received and returns a single
     /// <see cref="NumericMetric"/> with the configured score and name.
