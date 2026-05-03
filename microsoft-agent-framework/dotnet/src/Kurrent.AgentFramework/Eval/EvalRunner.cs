@@ -179,24 +179,42 @@ public sealed class EvalRunner(KurrentDBClient client) {
             Timestamp = Timestamp.FromDateTimeOffset(now),
         }, ct).ConfigureAwait(false);
 
-        var scoredMetrics    = new List<ScoredMetric>();
-        var perMetricAverage = new Dictionary<string, double>();
+        var scoredMetrics = new List<ScoredMetric>();
+        var sums          = new Dictionary<string, (double Sum, int Count)>();
 
         if (messages.Count > 0) {
             var evalResult = await evaluator
                 .EvaluateAsync(messages, response, chatConfiguration, additionalContext, ct)
                 .ConfigureAwait(false);
 
-            // Per-metric writes filled in by Task 7.
-            _ = evalResult;
+            var sessionEvents = new List<EventData>(evalResult.Metrics.Count);
+
+            foreach (var metric in evalResult.Metrics.Values) {
+                var scored = ToScoredMetric(turn: null, metric);
+                scoredMetrics.Add(scored);
+
+                if (scored.IsAggregable) {
+                    var prev = sums.GetValueOrDefault(metric.Name);
+                    sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
+                }
+
+                sessionEvents.Add(EventSerializer.Serialize(BuildSessionScored(sessionId, scored)));
+            }
+
+            if (sessionEvents.Count > 0)
+                await client.AppendToStreamAsync(stream, StreamState.Any, sessionEvents, cancellationToken: ct)
+                    .ConfigureAwait(false);
         }
+
+        var perMetricAverage = sums.ToDictionary(kv => kv.Key, kv => kv.Value.Sum / kv.Value.Count);
 
         var completed = new EvalRunCompleted {
             SessionId    = sessionId,
-            TurnsScored  = 0,
-            AverageScore = 0,
+            TurnsScored  = 0, // session-level run; turn count not meaningful here
+            AverageScore = perMetricAverage.Count == 1 ? perMetricAverage.Values.Single() : 0,
             Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
         };
+        if (perMetricAverage.Count > 0) completed.Extensions["afw"] = BuildCompletedExtension(perMetricAverage);
         await AppendAsync(stream, completed, ct).ConfigureAwait(false);
 
         return new(sessionId, scoredMetrics, perMetricAverage, inputTokens, outputTokens);
@@ -325,7 +343,7 @@ public sealed class EvalRunner(KurrentDBClient client) {
         }
     }
 
-    static ScoredMetric ToScoredMetric(Turn turn, EvaluationMetric metric) {
+    static ScoredMetric ToScoredMetric(Turn? turn, EvaluationMetric metric) {
         var (score, kind, isAggregable, stringValue) = metric switch {
             NumericMetric { Value: { } v } => (v,                          "numeric", true,  (string?)null),
             NumericMetric                  => (0d,                         "numeric", false, (string?)null),
@@ -366,6 +384,20 @@ public sealed class EvalRunner(KurrentDBClient client) {
         if (turn.UserInput       is not null) evt.Input  = turn.UserInput;
         if (turn.AssistantOutput is not null) evt.Output = turn.AssistantOutput;
         if (scored.Reason        is not null) evt.Reason = scored.Reason;
+
+        evt.Extensions["afw"] = BuildScoredExtension(scored);
+
+        return evt;
+    }
+
+    static SessionScored BuildSessionScored(string sessionId, ScoredMetric scored) {
+        var evt = new SessionScored {
+            SessionId  = sessionId,
+            Score      = scored.Score,
+            ScoreLabel = scored.MetricName,
+            Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        if (scored.Reason is not null) evt.Reason = scored.Reason;
 
         evt.Extensions["afw"] = BuildScoredExtension(scored);
 

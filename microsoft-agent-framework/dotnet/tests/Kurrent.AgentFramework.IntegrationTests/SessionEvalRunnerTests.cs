@@ -140,6 +140,54 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(evaluator.LastResponse.Messages[0].Text).IsEqualTo("second assistant");
     }
 
+    [Test]
+    public async Task RunSessionAsync_NumericMetric_EmitsOneSessionScoredWithCorrectScore() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("question", "m-1", 0)),
+            EventFor(AsstText("answer", "m-2", 1)));
+
+        var startPos = await SnapshotAllEndAsync(client);
+
+        var evaluator = new FixedSessionEvaluator(0.75, "Helpfulness");
+
+        var result = await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", evaluator);
+
+        await Assert.That(result.ScoredMetrics.Count).IsEqualTo(1);
+        var scored = result.ScoredMetrics[0];
+        await Assert.That(scored.Turn).IsNull();
+        await Assert.That(scored.MetricName).IsEqualTo("Helpfulness");
+        await Assert.That(scored.Score).IsEqualTo(0.75);
+        await Assert.That(scored.MetricKind).IsEqualTo("numeric");
+        await Assert.That(scored.IsAggregable).IsTrue();
+
+        await Assert.That(result.PerMetricAverage.Count).IsEqualTo(1);
+        await Assert.That(result.PerMetricAverage["Helpfulness"]).IsEqualTo(0.75);
+
+        var events = await ReadEvalEventsForSession(client, sessionId, startPos);
+        try {
+            await Assert.That(events.Count).IsEqualTo(3);
+            await Assert.That(events[0].Type).IsEqualTo("EvalRunStarted");
+            await Assert.That(events[1].Type).IsEqualTo("SessionScored");
+            await Assert.That(events[2].Type).IsEqualTo("EvalRunCompleted");
+
+            var completedJson = events[2].Payload.RootElement;
+            await Assert.That(completedJson.GetProperty("average_score").GetDouble()).IsEqualTo(0.75);
+
+            var scoredJson = events[1].Payload.RootElement;
+            await Assert.That(scoredJson.GetProperty("score").GetDouble()).IsEqualTo(0.75);
+            await Assert.That(scoredJson.GetProperty("score_label").GetString()).IsEqualTo("Helpfulness");
+
+            var afwEval = scoredJson.GetProperty("extensions").GetProperty("afw").GetProperty("eval");
+            await Assert.That(afwEval.GetProperty("metric_kind").GetString()).IsEqualTo("numeric");
+        } finally {
+            foreach (var (_, doc) in events) doc.Dispose();
+        }
+    }
+
     /// <summary>
     /// Test double — records the call it received and returns a single
     /// <see cref="NumericMetric"/> with the configured score and name.
