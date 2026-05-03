@@ -256,11 +256,13 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
                     case AssistantToolCallsGenerated toolCalls:
                         var toolMsg = new ChatMessage(ChatRole.Assistant, toolCalls.HasContent ? toolCalls.Content : null);
-                        for (var i = 0; i < toolCalls.ToolCalls.Count; i++) {
-                            var tc     = toolCalls.ToolCalls[i];
-                            var callId = string.IsNullOrEmpty(tc.CallId) ? $"call-{i}" : tc.CallId;
+                        foreach (var tc in toolCalls.ToolCalls) {
+                            // Use tc.CallId verbatim (even if empty) so it pairs with the
+                            // matching ToolResultReceived.CallId. Per-turn ToChat synthesises
+                            // call-{i} because Turn.ToolCall has no upstream id; canonical
+                            // ToolCallInfo does, so synthesising here would break pairing.
                             toolMsg.Contents.Add(new FunctionCallContent(
-                                callId:    callId,
+                                callId:    tc.CallId,
                                 name:      tc.ToolName,
                                 arguments: ParseToolArguments(StructToJson(tc.Arguments))));
                         }

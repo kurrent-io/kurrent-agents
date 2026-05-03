@@ -306,6 +306,47 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(evaluator.LastResponse!.Messages[0].Text).IsEqualTo("");
     }
 
+    [Test]
+    public async Task RunSessionAsync_FlattensToolCallsAndResults_PairsCallIds() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = Pts };
+        toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-x", ToolName = "GetWeather" });
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("get the weather", "m-1", 0)),
+            EventFor(toolCalls),
+            EventFor(new ToolResultReceived {
+                CallId       = "call-x",
+                ToolName     = "GetWeather",
+                Result       = "Sunny",
+                MessageIndex = 2,
+                Timestamp    = Pts,
+            }),
+            EventFor(AsstText("the weather is sunny", "m-4", 3)));
+
+        var evaluator = new FixedSessionEvaluator(1.0, "Helpfulness");
+
+        await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", evaluator);
+
+        await Assert.That(evaluator.LastMessages).IsNotNull();
+        await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(4);
+
+        var fcc = evaluator.LastMessages[1].Contents.OfType<FunctionCallContent>().Single();
+        var frc = evaluator.LastMessages[2].Contents.OfType<FunctionResultContent>().Single();
+
+        await Assert.That(fcc.CallId).IsEqualTo("call-x");
+        await Assert.That(frc.CallId).IsEqualTo("call-x");
+        await Assert.That(fcc.CallId).IsEqualTo(frc.CallId);
+        await Assert.That(fcc.Name).IsEqualTo("GetWeather");
+        await Assert.That(frc.Result).IsEqualTo("Sunny");
+
+        await Assert.That(evaluator.LastMessages[3].Role).IsEqualTo(ChatRole.Assistant);
+        await Assert.That(evaluator.LastMessages[3].Text).IsEqualTo("the weather is sunny");
+    }
+
     /// <summary>
     /// Test double — records the call it received and returns a single
     /// <see cref="NumericMetric"/> with the configured score and name.
