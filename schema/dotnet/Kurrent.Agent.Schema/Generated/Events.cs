@@ -170,17 +170,24 @@ namespace Kurrent.Agent.Schema.Events {
             "bnNpb25zGAkgAygLMiwua3VycmVudC5hZ2VudC52Mi5UdXJuU2NvcmVkLkV4",
             "dGVuc2lvbnNFbnRyeVIKZXh0ZW5zaW9ucxpWCg9FeHRlbnNpb25zRW50cnkS",
             "EAoDa2V5GAEgASgJUgNrZXkSLQoFdmFsdWUYAiABKAsyFy5nb29nbGUucHJv",
-            "dG9idWYuU3RydWN0UgV2YWx1ZToCOAEi/gIKEEV2YWxSdW5Db21wbGV0ZWQS",
-            "HQoKc2Vzc2lvbl9pZBgBIAEoCVIJc2Vzc2lvbklkEiEKDHR1cm5zX3Njb3Jl",
-            "ZBgCIAEoBVILdHVybnNTY29yZWQSIwoNYXZlcmFnZV9zY29yZRgDIAEoAVIM",
-            "YXZlcmFnZVNjb3JlEh0KCnRvdGFsX2Nvc3QYBCABKAFSCXRvdGFsQ29zdBI4",
-            "Cgl0aW1lc3RhbXAYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1w",
-            "Ugl0aW1lc3RhbXASUgoKZXh0ZW5zaW9ucxgGIAMoCzIyLmt1cnJlbnQuYWdl",
-            "bnQudjIuRXZhbFJ1bkNvbXBsZXRlZC5FeHRlbnNpb25zRW50cnlSCmV4dGVu",
-            "c2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5Ei0K",
-            "BXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdFIFdmFsdWU6",
-            "AjgBQh6qAhtLdXJyZW50LkFnZW50LlNjaGVtYS5FdmVudHNiCGVkaXRpb25z",
-            "cOkH"));
+            "dG9idWYuU3RydWN0UgV2YWx1ZToCOAEi4AIKDVNlc3Npb25TY29yZWQSHQoK",
+            "c2Vzc2lvbl9pZBgBIAEoCVIJc2Vzc2lvbklkEhQKBXNjb3JlGAIgASgBUgVz",
+            "Y29yZRIfCgtzY29yZV9sYWJlbBgDIAEoCVIKc2NvcmVMYWJlbBIWCgZyZWFz",
+            "b24YBCABKAlSBnJlYXNvbhI4Cgl0aW1lc3RhbXAYBSABKAsyGi5nb29nbGUu",
+            "cHJvdG9idWYuVGltZXN0YW1wUgl0aW1lc3RhbXASTwoKZXh0ZW5zaW9ucxgG",
+            "IAMoCzIvLmt1cnJlbnQuYWdlbnQudjIuU2Vzc2lvblNjb3JlZC5FeHRlbnNp",
+            "b25zRW50cnlSCmV4dGVuc2lvbnMaVgoPRXh0ZW5zaW9uc0VudHJ5EhAKA2tl",
+            "eRgBIAEoCVIDa2V5Ei0KBXZhbHVlGAIgASgLMhcuZ29vZ2xlLnByb3RvYnVm",
+            "LlN0cnVjdFIFdmFsdWU6AjgBIv4CChBFdmFsUnVuQ29tcGxldGVkEh0KCnNl",
+            "c3Npb25faWQYASABKAlSCXNlc3Npb25JZBIhCgx0dXJuc19zY29yZWQYAiAB",
+            "KAVSC3R1cm5zU2NvcmVkEiMKDWF2ZXJhZ2Vfc2NvcmUYAyABKAFSDGF2ZXJh",
+            "Z2VTY29yZRIdCgp0b3RhbF9jb3N0GAQgASgBUgl0b3RhbENvc3QSOAoJdGlt",
+            "ZXN0YW1wGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJdGlt",
+            "ZXN0YW1wElIKCmV4dGVuc2lvbnMYBiADKAsyMi5rdXJyZW50LmFnZW50LnYy",
+            "LkV2YWxSdW5Db21wbGV0ZWQuRXh0ZW5zaW9uc0VudHJ5UgpleHRlbnNpb25z",
+            "GlYKD0V4dGVuc2lvbnNFbnRyeRIQCgNrZXkYASABKAlSA2tleRItCgV2YWx1",
+            "ZRgCIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3RSBXZhbHVlOgI4AUIe",
+            "qgIbS3VycmVudC5BZ2VudC5TY2hlbWEuRXZlbnRzYghlZGl0aW9uc3DpBw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Kurrent.Agent.Schema.Events.ValueTypesReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
@@ -200,6 +207,7 @@ namespace Kurrent.Agent.Schema.Events {
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated), global::Kurrent.Agent.Schema.Events.ArtifactVersionCreated.Parser, new[]{ "Version", "MimeType", "InlineBytes", "CanonicalUri", "CustomMetadata", "CreatedAt", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.EvalRunStarted), global::Kurrent.Agent.Schema.Events.EvalRunStarted.Parser, new[]{ "SessionId", "Scorer", "Criteria", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.TurnScored), global::Kurrent.Agent.Schema.Events.TurnScored.Parser, new[]{ "SessionId", "TurnIndex", "Input", "Output", "Score", "ScoreLabel", "Reason", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.SessionScored), global::Kurrent.Agent.Schema.Events.SessionScored.Parser, new[]{ "SessionId", "Score", "ScoreLabel", "Reason", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, }),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.EvalRunCompleted), global::Kurrent.Agent.Schema.Events.EvalRunCompleted.Parser, new[]{ "SessionId", "TurnsScored", "AverageScore", "TotalCost", "Timestamp", "Extensions" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { null, })
           }));
     }
@@ -7589,6 +7597,459 @@ namespace Kurrent.Agent.Schema.Events {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class SessionScored : pb::IMessage<SessionScored>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<SessionScored> _parser = new pb::MessageParser<SessionScored>(() => new SessionScored());
+    private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<SessionScored> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Kurrent.Agent.Schema.Events.EventsReflection.Descriptor.MessageTypes[16]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SessionScored() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SessionScored(SessionScored other) : this() {
+      _hasBits0 = other._hasBits0;
+      sessionId_ = other.sessionId_;
+      score_ = other.score_;
+      scoreLabel_ = other.scoreLabel_;
+      reason_ = other.reason_;
+      timestamp_ = other.timestamp_ != null ? other.timestamp_.Clone() : null;
+      extensions_ = other.extensions_.Clone();
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SessionScored Clone() {
+      return new SessionScored(this);
+    }
+
+    /// <summary>Field number for the "session_id" field.</summary>
+    public const int SessionIdFieldNumber = 1;
+    private readonly static string SessionIdDefaultValue = "";
+
+    private string sessionId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string SessionId {
+      get { return sessionId_ ?? SessionIdDefaultValue; }
+      set {
+        sessionId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "session_id" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSessionId {
+      get { return sessionId_ != null; }
+    }
+    /// <summary>Clears the value of the "session_id" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSessionId() {
+      sessionId_ = null;
+    }
+
+    /// <summary>Field number for the "score" field.</summary>
+    public const int ScoreFieldNumber = 2;
+    private readonly static double ScoreDefaultValue = 0D;
+
+    private double score_;
+    /// <summary>
+    /// Numeric value persisted on score. 0 with extensions.afw.eval.value_missing=true
+    /// when the metric has no numeric meaning (StringMetric, or NumericMetric with
+    /// null Value) — same convention as TurnScored.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double Score {
+      get { if ((_hasBits0 & 1) != 0) { return score_; } else { return ScoreDefaultValue; } }
+      set {
+        _hasBits0 |= 1;
+        score_ = value;
+      }
+    }
+    /// <summary>Gets whether the "score" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasScore {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "score" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearScore() {
+      _hasBits0 &= ~1;
+    }
+
+    /// <summary>Field number for the "score_label" field.</summary>
+    public const int ScoreLabelFieldNumber = 3;
+    private readonly static string ScoreLabelDefaultValue = "";
+
+    private string scoreLabel_;
+    /// <summary>
+    /// Metric name (e.g. "Helpfulness"). Mirrors TurnScored.score_label.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ScoreLabel {
+      get { return scoreLabel_ ?? ScoreLabelDefaultValue; }
+      set {
+        scoreLabel_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "score_label" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasScoreLabel {
+      get { return scoreLabel_ != null; }
+    }
+    /// <summary>Clears the value of the "score_label" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearScoreLabel() {
+      scoreLabel_ = null;
+    }
+
+    /// <summary>Field number for the "reason" field.</summary>
+    public const int ReasonFieldNumber = 4;
+    private readonly static string ReasonDefaultValue = "";
+
+    private string reason_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Reason {
+      get { return reason_ ?? ReasonDefaultValue; }
+      set {
+        reason_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "reason" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasReason {
+      get { return reason_ != null; }
+    }
+    /// <summary>Clears the value of the "reason" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearReason() {
+      reason_ = null;
+    }
+
+    /// <summary>Field number for the "timestamp" field.</summary>
+    public const int TimestampFieldNumber = 5;
+    private global::Google.Protobuf.WellKnownTypes.Timestamp timestamp_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Google.Protobuf.WellKnownTypes.Timestamp Timestamp {
+      get { return timestamp_; }
+      set {
+        timestamp_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "extensions" field.</summary>
+    public const int ExtensionsFieldNumber = 6;
+    private static readonly pbc::MapField<string, global::Google.Protobuf.WellKnownTypes.Struct>.Codec _map_extensions_codec
+        = new pbc::MapField<string, global::Google.Protobuf.WellKnownTypes.Struct>.Codec(pb::FieldCodec.ForString(10, ""), pb::FieldCodec.ForMessage(18, global::Google.Protobuf.WellKnownTypes.Struct.Parser), 50);
+    private readonly pbc::MapField<string, global::Google.Protobuf.WellKnownTypes.Struct> extensions_ = new pbc::MapField<string, global::Google.Protobuf.WellKnownTypes.Struct>();
+    /// <summary>
+    /// Framework-specific extension envelope keyed by slug.
+    /// metric_kind / is_aggregable / interpretation / diagnostics / string_value
+    /// live under extensions.afw.eval.* (mirrors TurnScored).
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::MapField<string, global::Google.Protobuf.WellKnownTypes.Struct> Extensions {
+      get { return extensions_; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as SessionScored);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(SessionScored other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (SessionId != other.SessionId) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Score, other.Score)) return false;
+      if (ScoreLabel != other.ScoreLabel) return false;
+      if (Reason != other.Reason) return false;
+      if (!object.Equals(Timestamp, other.Timestamp)) return false;
+      if (!Extensions.Equals(other.Extensions)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (HasSessionId) hash ^= SessionId.GetHashCode();
+      if (HasScore) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Score);
+      if (HasScoreLabel) hash ^= ScoreLabel.GetHashCode();
+      if (HasReason) hash ^= Reason.GetHashCode();
+      if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
+      hash ^= Extensions.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (HasSessionId) {
+        output.WriteRawTag(10);
+        output.WriteString(SessionId);
+      }
+      if (HasScore) {
+        output.WriteRawTag(17);
+        output.WriteDouble(Score);
+      }
+      if (HasScoreLabel) {
+        output.WriteRawTag(26);
+        output.WriteString(ScoreLabel);
+      }
+      if (HasReason) {
+        output.WriteRawTag(34);
+        output.WriteString(Reason);
+      }
+      if (timestamp_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Timestamp);
+      }
+      extensions_.WriteTo(output, _map_extensions_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (HasSessionId) {
+        output.WriteRawTag(10);
+        output.WriteString(SessionId);
+      }
+      if (HasScore) {
+        output.WriteRawTag(17);
+        output.WriteDouble(Score);
+      }
+      if (HasScoreLabel) {
+        output.WriteRawTag(26);
+        output.WriteString(ScoreLabel);
+      }
+      if (HasReason) {
+        output.WriteRawTag(34);
+        output.WriteString(Reason);
+      }
+      if (timestamp_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Timestamp);
+      }
+      extensions_.WriteTo(ref output, _map_extensions_codec);
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (HasSessionId) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(SessionId);
+      }
+      if (HasScore) {
+        size += 1 + 8;
+      }
+      if (HasScoreLabel) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ScoreLabel);
+      }
+      if (HasReason) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Reason);
+      }
+      if (timestamp_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Timestamp);
+      }
+      size += extensions_.CalculateSize(_map_extensions_codec);
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(SessionScored other) {
+      if (other == null) {
+        return;
+      }
+      if (other.HasSessionId) {
+        SessionId = other.SessionId;
+      }
+      if (other.HasScore) {
+        Score = other.Score;
+      }
+      if (other.HasScoreLabel) {
+        ScoreLabel = other.ScoreLabel;
+      }
+      if (other.HasReason) {
+        Reason = other.Reason;
+      }
+      if (other.timestamp_ != null) {
+        if (timestamp_ == null) {
+          Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+        }
+        Timestamp.MergeFrom(other.Timestamp);
+      }
+      extensions_.MergeFrom(other.extensions_);
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            SessionId = input.ReadString();
+            break;
+          }
+          case 17: {
+            Score = input.ReadDouble();
+            break;
+          }
+          case 26: {
+            ScoreLabel = input.ReadString();
+            break;
+          }
+          case 34: {
+            Reason = input.ReadString();
+            break;
+          }
+          case 42: {
+            if (timestamp_ == null) {
+              Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(Timestamp);
+            break;
+          }
+          case 50: {
+            extensions_.AddEntriesFrom(input, _map_extensions_codec);
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            SessionId = input.ReadString();
+            break;
+          }
+          case 17: {
+            Score = input.ReadDouble();
+            break;
+          }
+          case 26: {
+            ScoreLabel = input.ReadString();
+            break;
+          }
+          case 34: {
+            Reason = input.ReadString();
+            break;
+          }
+          case 42: {
+            if (timestamp_ == null) {
+              Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
+            }
+            input.ReadMessage(Timestamp);
+            break;
+          }
+          case 50: {
+            extensions_.AddEntriesFrom(ref input, _map_extensions_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class EvalRunCompleted : pb::IMessage<EvalRunCompleted>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -7604,7 +8065,7 @@ namespace Kurrent.Agent.Schema.Events {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Kurrent.Agent.Schema.Events.EventsReflection.Descriptor.MessageTypes[16]; }
+      get { return global::Kurrent.Agent.Schema.Events.EventsReflection.Descriptor.MessageTypes[17]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
