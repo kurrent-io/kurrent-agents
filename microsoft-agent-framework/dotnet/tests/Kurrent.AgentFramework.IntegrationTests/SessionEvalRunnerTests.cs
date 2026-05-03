@@ -188,6 +188,60 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         }
     }
 
+    [Test]
+    public async Task RunSessionAsync_CompositeEvaluator_MixedMetricKinds_AllPersistedCorrectly() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q", "m-1", 0)),
+            EventFor(AsstText("a", "m-2", 1)));
+
+        var startPos = await SnapshotAllEndAsync(client);
+
+        var composite = new CompositeEvaluator(
+            new FixedSessionEvaluator(0.7,  "Numeric"),
+            new BooleanSessionEvaluator(true, "Boolean"),
+            new StringSessionEvaluator("good", "String"),
+            new NullNumericSessionEvaluator("MissingNumeric"));
+
+        var result = await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", composite);
+
+        await Assert.That(result.ScoredMetrics.Count).IsEqualTo(4);
+
+        var byName = result.ScoredMetrics.ToDictionary(s => s.MetricName);
+
+        await Assert.That(byName["Numeric"].MetricKind).IsEqualTo("numeric");
+        await Assert.That(byName["Numeric"].IsAggregable).IsTrue();
+        await Assert.That(byName["Numeric"].Score).IsEqualTo(0.7);
+
+        await Assert.That(byName["Boolean"].MetricKind).IsEqualTo("boolean");
+        await Assert.That(byName["Boolean"].IsAggregable).IsTrue();
+        await Assert.That(byName["Boolean"].Score).IsEqualTo(1.0);
+
+        await Assert.That(byName["String"].MetricKind).IsEqualTo("string");
+        await Assert.That(byName["String"].IsAggregable).IsFalse();
+        await Assert.That(byName["String"].StringValue).IsEqualTo("good");
+
+        await Assert.That(byName["MissingNumeric"].MetricKind).IsEqualTo("numeric");
+        await Assert.That(byName["MissingNumeric"].IsAggregable).IsFalse();
+
+        // PerMetricAverage only includes aggregable metrics — Numeric (0.7) + Boolean (1.0) → 2 entries.
+        await Assert.That(result.PerMetricAverage.Count).IsEqualTo(2);
+        await Assert.That(result.PerMetricAverage["Numeric"]).IsEqualTo(0.7);
+        await Assert.That(result.PerMetricAverage["Boolean"]).IsEqualTo(1.0);
+
+        var events = await ReadEvalEventsForSession(client, sessionId, startPos);
+        try {
+            // 1 EvalRunStarted + 4 SessionScored + 1 EvalRunCompleted = 6
+            await Assert.That(events.Count).IsEqualTo(6);
+            await Assert.That(events.Count(e => e.Type == "SessionScored")).IsEqualTo(4);
+        } finally {
+            foreach (var (_, doc) in events) doc.Dispose();
+        }
+    }
+
     /// <summary>
     /// Test double — records the call it received and returns a single
     /// <see cref="NumericMetric"/> with the configured score and name.
@@ -211,5 +265,29 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
             CallCount++;
             return ValueTask.FromResult(new EvaluationResult(new NumericMetric(metricName, score)));
         }
+    }
+
+    sealed class BooleanSessionEvaluator(bool value, string metricName) : IEvaluator {
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
+                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+            ValueTask.FromResult(new EvaluationResult(new BooleanMetric(metricName, value)));
+    }
+
+    sealed class StringSessionEvaluator(string value, string metricName) : IEvaluator {
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
+                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+            ValueTask.FromResult(new EvaluationResult(new StringMetric(metricName, value)));
+    }
+
+    sealed class NullNumericSessionEvaluator(string metricName) : IEvaluator {
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
+                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+            ValueTask.FromResult(new EvaluationResult(new NumericMetric(metricName)));
     }
 }
