@@ -109,10 +109,11 @@ var result = await evalRunner.RunAsync(
 );
 
 foreach (var scored in result.ScoredMetrics) {
+    var turn   = scored.Turn!; // RunAsync always populates Turn for per-turn results
     var rating = scored.InterpretationRating is null ? "" : $" [{scored.InterpretationRating}]";
-    Console.WriteLine($"  Turn {scored.Turn.Index} · {scored.MetricName}: {scored.Score:F2}{rating}");
-    Console.WriteLine($"    Input:  {scored.Turn.UserInput}");
-    Console.WriteLine($"    Output: {scored.Turn.AssistantOutput ?? "(empty)"}");
+    Console.WriteLine($"  Turn {turn.Index} · {scored.MetricName}: {scored.Score:F2}{rating}");
+    Console.WriteLine($"    Input:  {turn.UserInput}");
+    Console.WriteLine($"    Output: {turn.AssistantOutput ?? "(empty)"}");
 
     if (!string.IsNullOrEmpty(scored.Reason))
         Console.WriteLine($"    Reason: {scored.Reason}");

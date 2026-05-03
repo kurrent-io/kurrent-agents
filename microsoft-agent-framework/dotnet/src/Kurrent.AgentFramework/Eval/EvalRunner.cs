@@ -10,7 +10,10 @@ using Microsoft.Extensions.AI.Evaluation;
 namespace Kurrent.AgentFramework.Eval;
 
 /// <summary>
-/// One row of the eval output: a single <see cref="EvaluationMetric"/> against a single <see cref="Turn"/>.
+/// One row of the eval output: a single <see cref="EvaluationMetric"/>, optionally
+/// scoped to a single <see cref="Turn"/>. <see cref="Turn"/> is non-null when the
+/// row came from <see cref="EvalRunner.RunAsync"/> (per-turn) and null when it
+/// came from <see cref="EvalRunner.RunSessionAsync"/> (session-level).
 /// </summary>
 /// <param name="Score">
 /// The numeric value persisted on <c>TurnScored.score</c>. <c>0</c> when the metric has no numeric
@@ -23,7 +26,7 @@ namespace Kurrent.AgentFramework.Eval;
 /// content is preserved under <c>extensions.afw.eval</c> instead.
 /// </param>
 public sealed record ScoredMetric(
-        Turn                  Turn,
+        Turn?                 Turn,
         string                MetricName,
         double                Score,
         string                MetricKind,
@@ -204,16 +207,19 @@ public sealed class EvalRunner(KurrentDBClient client) {
     }
 
     static TurnScored BuildTurnScored(string sessionId, ScoredMetric scored) {
-        var evt = new TurnScored {
+        // BuildTurnScored is only reachable from RunAsync, which always passes a non-null Turn.
+        // Extracting the local once both proves the assertion and avoids repeating ! on every read.
+        var turn = scored.Turn!;
+        var evt  = new TurnScored {
             SessionId  = sessionId,
-            TurnIndex  = scored.Turn.Index,
+            TurnIndex  = turn.Index,
             Score      = scored.Score,
             ScoreLabel = scored.MetricName,
             Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
         };
-        if (scored.Turn.UserInput       is not null) evt.Input  = scored.Turn.UserInput;
-        if (scored.Turn.AssistantOutput is not null) evt.Output = scored.Turn.AssistantOutput;
-        if (scored.Reason               is not null) evt.Reason = scored.Reason;
+        if (turn.UserInput       is not null) evt.Input  = turn.UserInput;
+        if (turn.AssistantOutput is not null) evt.Output = turn.AssistantOutput;
+        if (scored.Reason        is not null) evt.Reason = scored.Reason;
 
         evt.Extensions["afw"] = BuildScoredExtension(scored);
 
