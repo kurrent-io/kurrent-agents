@@ -4,6 +4,7 @@
     <Project Path="samples/EvalDemo/EvalDemo.csproj" />
     <Project Path="samples/HybridEvalDemo/HybridEvalDemo.csproj" />
     <Project Path="samples/MultiAgentCoordination/MultiAgentCoordination.csproj" />
+    <Project Path="samples/SessionEvalDemo/SessionEvalDemo.csproj" />
     <Project Path="samples/WorkflowWithCheckpoints/WorkflowWithCheckpoints.csproj" />
   </Folder>
   <Folder Name="/src/">
