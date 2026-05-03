@@ -395,6 +395,29 @@ class TurnScored(_message.Message):
     extensions: _containers.MessageMap[str, _struct_pb2.Struct]
     def __init__(self, session_id: _Optional[str] = ..., turn_index: _Optional[int] = ..., input: _Optional[str] = ..., output: _Optional[str] = ..., score: _Optional[float] = ..., score_label: _Optional[str] = ..., reason: _Optional[str] = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., extensions: _Optional[_Mapping[str, _struct_pb2.Struct]] = ...) -> None: ...
 
+class SessionScored(_message.Message):
+    __slots__ = ("session_id", "score", "score_label", "reason", "timestamp", "extensions")
+    class ExtensionsEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: _struct_pb2.Struct
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    SCORE_FIELD_NUMBER: _ClassVar[int]
+    SCORE_LABEL_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    EXTENSIONS_FIELD_NUMBER: _ClassVar[int]
+    session_id: str
+    score: float
+    score_label: str
+    reason: str
+    timestamp: _timestamp_pb2.Timestamp
+    extensions: _containers.MessageMap[str, _struct_pb2.Struct]
+    def __init__(self, session_id: _Optional[str] = ..., score: _Optional[float] = ..., score_label: _Optional[str] = ..., reason: _Optional[str] = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., extensions: _Optional[_Mapping[str, _struct_pb2.Struct]] = ...) -> None: ...
+
 class EvalRunCompleted(_message.Message):
     __slots__ = ("session_id", "turns_scored", "average_score", "total_cost", "timestamp", "extensions")
     class ExtensionsEntry(_message.Message):

@@ -196,6 +196,22 @@ message TurnScored {
   map<string, google.protobuf.Struct> extensions = 9;
 }
 
+message SessionScored {
+  string session_id = 1;
+  // Numeric value persisted on score. 0 with extensions.afw.eval.value_missing=true
+  // when the metric has no numeric meaning (StringMetric, or NumericMetric with
+  // null Value) — same convention as TurnScored.
+  double score = 2;
+  // Metric name (e.g. "Helpfulness"). Mirrors TurnScored.score_label.
+  string score_label = 3;
+  string reason = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  // Framework-specific extension envelope keyed by slug.
+  // metric_kind / is_aggregable / interpretation / diagnostics / string_value
+  // live under extensions.afw.eval.* (mirrors TurnScored).
+  map<string, google.protobuf.Struct> extensions = 6;
+}
+
 message EvalRunCompleted {
   string session_id = 1;
   int32 turns_scored = 2;

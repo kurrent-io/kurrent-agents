@@ -122,8 +122,8 @@ var result = await new EvalRunner(kurrentDb).RunAsync(
     chatConfiguration: chatConfiguration
 );
 
-foreach (var grouped in result.ScoredMetrics.GroupBy(s => s.Turn.Index)) {
-    var turn = grouped.First().Turn;
+foreach (var grouped in result.ScoredMetrics.GroupBy(s => s.Turn!.Index)) {
+    var turn = grouped.First().Turn!;
     Console.WriteLine($"  Turn {turn.Index}");
     Console.WriteLine($"    Input:  {turn.UserInput}");
     Console.WriteLine($"    Output: {turn.AssistantOutput ?? "(empty)"}");

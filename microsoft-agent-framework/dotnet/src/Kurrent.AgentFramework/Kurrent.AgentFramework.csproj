@@ -4,6 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Kurrent.AgentFramework</RootNamespace>
+
+    <PackageId>Kurrent.AgentFramework</PackageId>
+    <Version>0.4.0</Version>
+    <Authors>Kurrent, Inc.</Authors>
+    <Description>KurrentDB-backed Microsoft Agent Framework integration: chat history, evals (per-turn and session-level), memory, and workflow checkpointing.</Description>
+    <PackageTags>kurrentdb;eventsourcing;agents;llm;maf;microsoft-agent-framework</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>

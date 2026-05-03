@@ -22,6 +22,7 @@ public static class EventTypeMap {
         ["ArtifactVersionCreated"]        = typeof(ArtifactVersionCreated),
         ["EvalRunStarted"]                = typeof(EvalRunStarted),
         ["TurnScored"]                    = typeof(TurnScored),
+        ["SessionScored"]                 = typeof(SessionScored),
         ["EvalRunCompleted"]              = typeof(EvalRunCompleted),
     };
 }

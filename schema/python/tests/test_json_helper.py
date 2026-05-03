@@ -26,6 +26,6 @@ def test_registry_contains_all_canonical_events() -> None:
         "ToolResultReceived", "InterruptIssued", "InterruptResolved",
         "SubagentStarted", "SubagentCompleted", "FactRetained",
         "ArtifactVersionCreated", "EvalRunStarted", "TurnScored",
-        "EvalRunCompleted",
+        "SessionScored", "EvalRunCompleted",
     }
     assert set(EVENT_TYPE_BY_NAME) == expected

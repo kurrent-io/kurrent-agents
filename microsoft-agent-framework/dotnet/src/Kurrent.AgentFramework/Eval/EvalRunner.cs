@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema;
 using Kurrent.Agent.Schema.Events;
@@ -10,7 +11,10 @@ using Microsoft.Extensions.AI.Evaluation;
 namespace Kurrent.AgentFramework.Eval;
 
 /// <summary>
-/// One row of the eval output: a single <see cref="EvaluationMetric"/> against a single <see cref="Turn"/>.
+/// One row of the eval output: a single <see cref="EvaluationMetric"/>, optionally
+/// scoped to a single <see cref="Turn"/>. <see cref="Turn"/> is non-null when the
+/// row came from <see cref="EvalRunner.RunAsync"/> (per-turn) and null when it
+/// came from <see cref="EvalRunner.RunSessionAsync"/> (session-level).
 /// </summary>
 /// <param name="Score">
 /// The numeric value persisted on <c>TurnScored.score</c>. <c>0</c> when the metric has no numeric
@@ -23,7 +27,7 @@ namespace Kurrent.AgentFramework.Eval;
 /// content is preserved under <c>extensions.afw.eval</c> instead.
 /// </param>
 public sealed record ScoredMetric(
-        Turn                  Turn,
+        Turn?                 Turn,
         string                MetricName,
         double                Score,
         string                MetricKind,
@@ -141,6 +145,171 @@ public sealed class EvalRunner(KurrentDBClient client) {
         );
     }
 
+    /// <summary>
+    /// Run an evaluation against a session as a single unit. The entire conversation is flattened
+    /// into one <c>IList&lt;ChatMessage&gt;</c> and passed to <paramref name="evaluator"/> exactly
+    /// once. Emits one <see cref="SessionScored"/> per metric returned, not per turn.
+    /// </summary>
+    /// <param name="sessionId">Session id whose stream provides the conversation.</param>
+    /// <param name="scorerName">Free-text scorer identifier persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="criteria">Free-text criteria description persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="evaluator">The evaluator to apply to the whole session. Wrap multiple evaluators in a <see cref="CompositeEvaluator"/>.</param>
+    /// <param name="chatConfiguration">Required when the evaluator uses an <see cref="IChatClient"/>; <c>null</c> for purely heuristic evaluators.</param>
+    /// <param name="additionalContext">Optional context for the evaluator (e.g. for <see cref="GroundednessEvaluator"/>).</param>
+    public async Task<EvalResult> RunSessionAsync(
+            string                          sessionId,
+            string                          scorerName,
+            string                          criteria,
+            IEvaluator                      evaluator,
+            ChatConfiguration?              chatConfiguration = null,
+            IEnumerable<EvaluationContext>? additionalContext = null,
+            CancellationToken               ct                = default
+        ) {
+        var (messages, response, inputTokens, outputTokens) =
+            await FlattenSessionAsync(client, sessionId, ct).ConfigureAwait(false);
+
+        var evalId = Guid.NewGuid().ToString("N");
+        var stream = StreamNames.EvalRun(evalId);
+        var now    = DateTimeOffset.UtcNow;
+
+        await AppendAsync(stream, new EvalRunStarted {
+            SessionId = sessionId,
+            Scorer    = scorerName,
+            Criteria  = criteria,
+            Timestamp = Timestamp.FromDateTimeOffset(now),
+        }, ct).ConfigureAwait(false);
+
+        var scoredMetrics = new List<ScoredMetric>();
+        var sums          = new Dictionary<string, (double Sum, int Count)>();
+
+        if (messages.Count > 0) {
+            var evalResult = await evaluator
+                .EvaluateAsync(messages, response, chatConfiguration, additionalContext, ct)
+                .ConfigureAwait(false);
+
+            var sessionEvents = new List<EventData>(evalResult.Metrics.Count);
+
+            foreach (var metric in evalResult.Metrics.Values) {
+                var scored = ToScoredMetric(turn: null, metric);
+                scoredMetrics.Add(scored);
+
+                if (scored.IsAggregable) {
+                    var prev = sums.GetValueOrDefault(metric.Name);
+                    sums[metric.Name] = (prev.Sum + scored.Score, prev.Count + 1);
+                }
+
+                sessionEvents.Add(EventSerializer.Serialize(BuildSessionScored(sessionId, scored)));
+            }
+
+            if (sessionEvents.Count > 0)
+                await client.AppendToStreamAsync(stream, StreamState.Any, sessionEvents, cancellationToken: ct)
+                    .ConfigureAwait(false);
+        }
+
+        var perMetricAverage = sums.ToDictionary(kv => kv.Key, kv => kv.Value.Sum / kv.Value.Count);
+
+        var completed = new EvalRunCompleted {
+            SessionId    = sessionId,
+            TurnsScored  = 0, // session-level run; turn count not meaningful here
+            AverageScore = perMetricAverage.Count == 1 ? perMetricAverage.Values.Single() : 0,
+            Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        if (perMetricAverage.Count > 0) completed.Extensions["afw"] = BuildCompletedExtension(perMetricAverage);
+        await AppendAsync(stream, completed, ct).ConfigureAwait(false);
+
+        return new(sessionId, scoredMetrics, perMetricAverage, inputTokens, outputTokens);
+    }
+
+    static async Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
+        FlattenSessionAsync(KurrentDBClient client, string sessionId, CancellationToken ct) {
+        var streamName = StreamNames.AgentSession(sessionId);
+        var messages   = new List<ChatMessage>();
+        long? inputTokens  = null;
+        long? outputTokens = null;
+        ChatMessage? lastAssistant = null;
+
+        try {
+            var events = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, cancellationToken: ct);
+            await foreach (var resolved in events.ConfigureAwait(false)) {
+                var domainEvent = EventSerializer.Deserialize(resolved);
+                if (domainEvent is null) continue;
+
+                switch (domainEvent) {
+                    case UserMessageReceived userMsg:
+                        if (userMsg.HasContent)
+                            messages.Add(new ChatMessage(ChatRole.User, userMsg.Content));
+                        break;
+
+                    case AssistantTextGenerated asstMsg:
+                        if (asstMsg.HasContent) {
+                            var msg = new ChatMessage(ChatRole.Assistant, asstMsg.Content);
+                            messages.Add(msg);
+                            lastAssistant = msg;
+                        } else {
+                            // A content-less AssistantTextGenerated signals turn-end without a final
+                            // text response. Clear lastAssistant so the response falls through to the
+                            // empty default rather than wrapping a prior tool-call message.
+                            lastAssistant = null;
+                        }
+                        ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+                        break;
+
+                    case AssistantToolCallsGenerated toolCalls:
+                        var toolMsg = new ChatMessage(ChatRole.Assistant, toolCalls.HasContent ? toolCalls.Content : null);
+                        foreach (var tc in toolCalls.ToolCalls) {
+                            // Use tc.CallId verbatim (even if empty) so it pairs with the
+                            // matching ToolResultReceived.CallId. Per-turn ToChat synthesises
+                            // call-{i} because Turn.ToolCall has no upstream id; canonical
+                            // ToolCallInfo does, so synthesising here would break pairing.
+                            toolMsg.Contents.Add(new FunctionCallContent(
+                                callId:    tc.CallId,
+                                name:      tc.ToolName,
+                                arguments: ParseToolArguments(StructToJson(tc.Arguments))));
+                        }
+                        messages.Add(toolMsg);
+                        lastAssistant = toolMsg;
+                        ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+                        break;
+
+                    case ToolResultReceived toolResult:
+                        if (toolResult.HasResult) {
+                            messages.Add(new ChatMessage(ChatRole.Tool, [
+                                new FunctionResultContent(
+                                    callId: toolResult.CallId,
+                                    result: toolResult.Result)
+                            ]));
+                        }
+                        break;
+                }
+            }
+        } catch (StreamNotFoundException) { }
+
+        var response = lastAssistant is null
+            ? new ChatResponse(new ChatMessage(ChatRole.Assistant, ""))
+            : new ChatResponse(lastAssistant);
+
+        return (messages, response, inputTokens, outputTokens);
+    }
+
+    static string? StructToJson(Struct? args) =>
+        args is null || args.Fields.Count == 0
+            ? null
+            : JsonFormatter.Default.Format(args);
+
+    static void ReadUsageFromMetadata(ResolvedEvent resolved, ref long? inputTokens, ref long? outputTokens) {
+        if (resolved.Event.Metadata.Length == 0) return;
+        try {
+            var meta = JsonSerializer.Deserialize<JsonElement>(resolved.Event.Metadata.Span);
+            if (!meta.TryGetProperty("$usage", out var usage)) return;
+
+            if (usage.TryGetProperty("input_tokens", out var inp) && inp.ValueKind == JsonValueKind.Number)
+                inputTokens = (inputTokens ?? 0) + inp.GetInt64();
+
+            if (usage.TryGetProperty("output_tokens", out var outp) && outp.ValueKind == JsonValueKind.Number)
+                outputTokens = (outputTokens ?? 0) + outp.GetInt64();
+        } catch { }
+    }
+
     static (IList<ChatMessage> Messages, ChatResponse Response) ToChat(Turn turn) {
         var messages = new List<ChatMessage> { new(ChatRole.User, turn.UserInput ?? "") };
 
@@ -176,7 +345,7 @@ public sealed class EvalRunner(KurrentDBClient client) {
         }
     }
 
-    static ScoredMetric ToScoredMetric(Turn turn, EvaluationMetric metric) {
+    static ScoredMetric ToScoredMetric(Turn? turn, EvaluationMetric metric) {
         var (score, kind, isAggregable, stringValue) = metric switch {
             NumericMetric { Value: { } v } => (v,                          "numeric", true,  (string?)null),
             NumericMetric                  => (0d,                         "numeric", false, (string?)null),
@@ -204,16 +373,33 @@ public sealed class EvalRunner(KurrentDBClient client) {
     }
 
     static TurnScored BuildTurnScored(string sessionId, ScoredMetric scored) {
-        var evt = new TurnScored {
+        // BuildTurnScored is only reachable from RunAsync, which always passes a non-null Turn.
+        // Extracting the local once both proves the assertion and avoids repeating ! on every read.
+        var turn = scored.Turn!;
+        var evt  = new TurnScored {
             SessionId  = sessionId,
-            TurnIndex  = scored.Turn.Index,
+            TurnIndex  = turn.Index,
             Score      = scored.Score,
             ScoreLabel = scored.MetricName,
             Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
         };
-        if (scored.Turn.UserInput       is not null) evt.Input  = scored.Turn.UserInput;
-        if (scored.Turn.AssistantOutput is not null) evt.Output = scored.Turn.AssistantOutput;
-        if (scored.Reason               is not null) evt.Reason = scored.Reason;
+        if (turn.UserInput       is not null) evt.Input  = turn.UserInput;
+        if (turn.AssistantOutput is not null) evt.Output = turn.AssistantOutput;
+        if (scored.Reason        is not null) evt.Reason = scored.Reason;
+
+        evt.Extensions["afw"] = BuildScoredExtension(scored);
+
+        return evt;
+    }
+
+    static SessionScored BuildSessionScored(string sessionId, ScoredMetric scored) {
+        var evt = new SessionScored {
+            SessionId  = sessionId,
+            Score      = scored.Score,
+            ScoreLabel = scored.MetricName,
+            Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        if (scored.Reason is not null) evt.Reason = scored.Reason;
 
         evt.Extensions["afw"] = BuildScoredExtension(scored);
 
@@ -223,6 +409,7 @@ public sealed class EvalRunner(KurrentDBClient client) {
     static Struct BuildScoredExtension(ScoredMetric scored) {
         var eval = new Struct();
         eval.Fields["metric_kind"] = Value.ForString(scored.MetricKind);
+        eval.Fields["is_aggregable"] = Value.ForBool(scored.IsAggregable);
 
         if (scored.StringValue is not null)
             eval.Fields["string_value"] = Value.ForString(scored.StringValue);

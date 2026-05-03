@@ -26,6 +26,7 @@ EVENT_TYPE_NAMES: dict[type[Message], str] = {
     _ev.ArtifactVersionCreated: "ArtifactVersionCreated",
     _ev.EvalRunStarted: "EvalRunStarted",
     _ev.TurnScored: "TurnScored",
+    _ev.SessionScored: "SessionScored",
     _ev.EvalRunCompleted: "EvalRunCompleted",
 }
 

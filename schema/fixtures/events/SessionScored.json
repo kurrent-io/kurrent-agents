@@ -1,0 +1,19 @@
+{
+  "session_id": "sess-eval-0001",
+  "score": 4.2,
+  "score_label": "Helpfulness",
+  "reason": "The agent maintained context across turns and produced a coherent final answer.",
+  "timestamp": "2026-04-21T12:00:15Z",
+  "extensions": {
+    "afw": {
+      "eval": {
+        "metric_kind": "numeric",
+        "is_aggregable": true,
+        "interpretation": {
+          "rating": "Good",
+          "failed": false
+        }
+      }
+    }
+  }
+}

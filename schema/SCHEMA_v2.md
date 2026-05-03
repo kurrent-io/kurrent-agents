@@ -236,7 +236,22 @@ See v1 §3.4.1 for the SDK-specific translation table — new integrations shoul
 
 ### 3.7 Memory, artifacts, evaluation (unchanged)
 
-`FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted` / `TurnScored` / `EvalRunCompleted` — identical to v1 §3.5–§3.7. Capacitor does not emit these today but is expected to adopt them as it grows beyond session tracing.
+`FactRetained`, `ArtifactVersionCreated`, `EvalRunStarted` / `TurnScored` / `EvalRunCompleted` — identical to v1 §3.5–§3.7. Capacitor does not emit these today but is expected to adopt them as it grows beyond session tracing. New: `SessionScored` (sibling to `TurnScored` for session-level evaluators; see below).
+
+#### `SessionScored`
+
+Emitted once per `(session, evaluation metric)` by a session-level eval runner. Sibling to `TurnScored` for evaluators that score the whole session as a unit (e.g. "did the agent stay on plan?", "were destructive operations justified?") rather than per turn.
+
+Fields:
+
+* `session_id` — the session being evaluated.
+* `score` — numeric value with the same `value_missing` convention as `TurnScored`. `0` with `extensions.afw.eval.value_missing = true` when the metric has no numeric meaning (`StringMetric`, or `NumericMetric` with null `Value`).
+* `score_label` — metric name. Mirrors `TurnScored.score_label`.
+* `reason` — human-readable rationale.
+* `timestamp` — emission time.
+* `extensions` — framework-specific envelope. `metric_kind`, `is_aggregable`, `interpretation`, `diagnostics`, `string_value` all live under `extensions.afw.eval.*` exactly like `TurnScored`.
+
+A single eval run emits either `TurnScored` events (per-turn evaluator) or `SessionScored` events (session-level evaluator), never mixed.
 
 ---
 
