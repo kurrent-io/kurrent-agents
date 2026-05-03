@@ -15,6 +15,7 @@ from kurrent_agent_schema._generated.kurrent.agent.v2.events_pb2 import (
     InterruptResolved,
     SessionContinuedAs,
     SessionEnded,
+    SessionScored,
     SessionStarted,
     SubagentCompleted,
     SubagentStarted,
@@ -67,6 +68,7 @@ __all__ = [
     "ArtifactVersionCreated",
     "EvalRunStarted",
     "TurnScored",
+    "SessionScored",
     "EvalRunCompleted",
     # Stream builders
     "agent_session_stream",
