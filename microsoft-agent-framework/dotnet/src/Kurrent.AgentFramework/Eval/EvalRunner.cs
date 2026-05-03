@@ -407,6 +407,7 @@ public sealed class EvalRunner(KurrentDBClient client) {
     static Struct BuildScoredExtension(ScoredMetric scored) {
         var eval = new Struct();
         eval.Fields["metric_kind"] = Value.ForString(scored.MetricKind);
+        eval.Fields["is_aggregable"] = Value.ForBool(scored.IsAggregable);
 
         if (scored.StringValue is not null)
             eval.Fields["string_value"] = Value.ForString(scored.StringValue);

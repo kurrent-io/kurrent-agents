@@ -8,6 +8,7 @@
     "afw": {
       "eval": {
         "metric_kind": "numeric",
+        "is_aggregable": true,
         "interpretation": {
           "rating": "Good",
           "failed": false
