@@ -290,4 +290,50 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
                 IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
             ValueTask.FromResult(new EvaluationResult(new NumericMetric(metricName)));
     }
+
+    sealed class ThrowingEvaluator(string metricName) : IEvaluator {
+        public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+        public ValueTask<EvaluationResult> EvaluateAsync(
+                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
+                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+            throw new InvalidOperationException("evaluator deliberately failed");
+    }
+
+    [Test]
+    public async Task RunSessionAsync_OneEvaluatorThrows_OthersStillEmitMetrics() {
+        using var client = db.CreateClient();
+        var sessionId    = Guid.NewGuid().ToString("N");
+
+        await SeedSessionAsync(client, sessionId,
+            EventFor(UserMsg("q", "m-1", 0)),
+            EventFor(AsstText("a", "m-2", 1)));
+
+        var composite = new CompositeEvaluator(
+            new FixedSessionEvaluator(0.5, "Good"),
+            new ThrowingEvaluator("Bad"),
+            new FixedSessionEvaluator(0.9, "AlsoGood"));
+
+        // CompositeEvaluator absorbs the throw internally: it emits a metric for "Bad" with
+        // InterpretationFailed=true (and an error diagnostic) rather than propagating the exception.
+        // The run must complete and the two healthy evaluators must produce their metrics.
+        var result = await new EvalRunner(client).RunSessionAsync(
+            sessionId, "test-scorer", "test", composite);
+
+        await Assert.That(result.ScoredMetrics.Count).IsEqualTo(3);
+        var byName = result.ScoredMetrics.ToDictionary(s => s.MetricName);
+
+        // Good and AlsoGood produce valid aggregable scores.
+        await Assert.That(byName).ContainsKey("Good");
+        await Assert.That(byName["Good"].Score).IsEqualTo(0.5);
+        await Assert.That(byName["Good"].IsAggregable).IsTrue();
+
+        await Assert.That(byName).ContainsKey("AlsoGood");
+        await Assert.That(byName["AlsoGood"].Score).IsEqualTo(0.9);
+        await Assert.That(byName["AlsoGood"].IsAggregable).IsTrue();
+
+        // Bad is present but reflects the failure — CompositeEvaluator absorbs the throw and
+        // emits a metric with an error diagnostic so the failure is visible without crashing the run.
+        await Assert.That(byName).ContainsKey("Bad");
+        await Assert.That(byName["Bad"].Diagnostics.Count).IsGreaterThan(0);
+    }
 }
