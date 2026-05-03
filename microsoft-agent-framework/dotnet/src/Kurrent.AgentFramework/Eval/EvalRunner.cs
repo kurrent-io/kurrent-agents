@@ -144,6 +144,67 @@ public sealed class EvalRunner(KurrentDBClient client) {
         );
     }
 
+    /// <summary>
+    /// Run an evaluation against a session as a single unit. The entire conversation is flattened
+    /// into one <c>IList&lt;ChatMessage&gt;</c> and passed to <paramref name="evaluator"/> exactly
+    /// once. Emits one <see cref="SessionScored"/> per metric returned, not per turn.
+    /// </summary>
+    /// <param name="sessionId">Session id whose stream provides the conversation.</param>
+    /// <param name="scorerName">Free-text scorer identifier persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="criteria">Free-text criteria description persisted on <see cref="EvalRunStarted"/>.</param>
+    /// <param name="evaluator">The evaluator to apply to the whole session. Wrap multiple evaluators in a <see cref="CompositeEvaluator"/>.</param>
+    /// <param name="chatConfiguration">Required when the evaluator uses an <see cref="IChatClient"/>; <c>null</c> for purely heuristic evaluators.</param>
+    /// <param name="additionalContext">Optional context for the evaluator (e.g. for <see cref="GroundednessEvaluator"/>).</param>
+    public async Task<EvalResult> RunSessionAsync(
+            string                          sessionId,
+            string                          scorerName,
+            string                          criteria,
+            IEvaluator                      evaluator,
+            ChatConfiguration?              chatConfiguration = null,
+            IEnumerable<EvaluationContext>? additionalContext = null,
+            CancellationToken               ct                = default
+        ) {
+        var (messages, response, inputTokens, outputTokens) =
+            await FlattenSessionAsync(client, sessionId, ct).ConfigureAwait(false);
+
+        var evalId = Guid.NewGuid().ToString("N");
+        var stream = StreamNames.EvalRun(evalId);
+        var now    = DateTimeOffset.UtcNow;
+
+        await AppendAsync(stream, new EvalRunStarted {
+            SessionId = sessionId,
+            Scorer    = scorerName,
+            Criteria  = criteria,
+            Timestamp = Timestamp.FromDateTimeOffset(now),
+        }, ct).ConfigureAwait(false);
+
+        var scoredMetrics    = new List<ScoredMetric>();
+        var perMetricAverage = new Dictionary<string, double>();
+
+        if (messages.Count > 0) {
+            // Body filled out in subsequent tasks (Task 6 onwards).
+        }
+
+        var completed = new EvalRunCompleted {
+            SessionId    = sessionId,
+            TurnsScored  = 0,
+            AverageScore = 0,
+            Timestamp    = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+        };
+        await AppendAsync(stream, completed, ct).ConfigureAwait(false);
+
+        return new(sessionId, scoredMetrics, perMetricAverage, inputTokens, outputTokens);
+    }
+
+    static Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
+        FlattenSessionAsync(KurrentDBClient client, string sessionId, CancellationToken ct) {
+        // Stub — full implementation in Task 6.
+        IList<ChatMessage> empty = new List<ChatMessage>();
+        return Task.FromResult<(IList<ChatMessage>, ChatResponse, long?, long?)>(
+            (empty, new ChatResponse(new ChatMessage(ChatRole.Assistant, "")), null, null)
+        );
+    }
+
     static (IList<ChatMessage> Messages, ChatResponse Response) ToChat(Turn turn) {
         var messages = new List<ChatMessage> { new(ChatRole.User, turn.UserInput ?? "") };
 
