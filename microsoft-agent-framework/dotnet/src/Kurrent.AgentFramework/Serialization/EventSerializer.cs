@@ -19,8 +19,7 @@ namespace Kurrent.AgentFramework.Serialization;
 public static class EventSerializer {
     const string SchemaVersionMetaKey = "$schema_version";
 
-    static readonly IReadOnlyDictionary<Type, string> NamesByType =
-        EventTypeMap.All.ToDictionary(p => p.Value, p => p.Key);
+    static readonly Dictionary<Type, string> NamesByType = EventTypeMap.All.ToDictionary(p => p.Value, p => p.Key);
 
     static readonly MethodInfo FromJsonGeneric =
         typeof(SchemaJsonOptions).GetMethod(nameof(SchemaJsonOptions.FromJson))!;

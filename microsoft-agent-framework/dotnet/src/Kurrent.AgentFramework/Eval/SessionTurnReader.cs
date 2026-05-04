@@ -48,11 +48,15 @@ public static class SessionTurnReader {
                         break;
 
                     case AssistantToolCallsGenerated toolCalls:
-                        currentTools.AddRange(toolCalls.ToolCalls.Select(tc => new ToolCall(
-                            tc.ToolName,
-                            StructToJson(tc.Arguments),
-                            null,
-                            false)));
+                        currentTools.AddRange(
+                            toolCalls.ToolCalls.Select(tc => new ToolCall(
+                                    tc.ToolName,
+                                    StructToJson(tc.Arguments),
+                                    null,
+                                    false
+                                )
+                            )
+                        );
 
                         ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
 

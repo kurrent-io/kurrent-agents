@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using KurrentDB.Client;
 using Microsoft.Agents.AI;
 using Microsoft.Agents.AI.Workflows;
@@ -40,7 +41,7 @@ public class KurrentDBGroupChatManager : GroupChatManager {
 
     static readonly JsonSerializerOptions JsonOptions = new() {
         PropertyNamingPolicy   = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     /// <summary>

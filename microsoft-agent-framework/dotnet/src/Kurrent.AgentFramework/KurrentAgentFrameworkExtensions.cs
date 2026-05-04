@@ -5,7 +5,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-
 namespace Kurrent.AgentFramework;
 
 public static class KurrentAgentFrameworkExtensions {
@@ -55,18 +54,19 @@ public static class KurrentAgentFrameworkExtensions {
         /// <paramref name="appName"/> and <paramref name="userId"/> are not needed.
         /// </param>
         public IServiceCollection AddKurrentAgentMemory(
-            string?                appName                = null,
-            string?                userId                 = null,
-            FactExtractor?         factExtractor          = null,
-            FactExtractionOptions? factExtractionOptions  = null,
-            string?                streamName             = null
-        ) {
+                string?                appName               = null,
+                string?                userId                = null,
+                FactExtractor?         factExtractor         = null,
+                FactExtractionOptions? factExtractionOptions = null,
+                string?                streamName            = null
+            ) {
             services.TryAddSingleton<IAgentMemory>(sp => new KurrentDBAgentMemory(
-                sp.GetRequiredService<KurrentDBClient>(),
-                appName,
-                userId,
-                streamName
-            ));
+                    sp.GetRequiredService<KurrentDBClient>(),
+                    appName,
+                    userId,
+                    streamName
+                )
+            );
             services.TryAddSingleton<AgentMemoryContextProvider>();
 
             if (factExtractor is not null) {
@@ -86,6 +86,5 @@ public static class KurrentAgentFrameworkExtensions {
 
             return services;
         }
-
     }
 }

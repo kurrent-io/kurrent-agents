@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using KurrentDB.Client;
 
 namespace Kurrent.AgentFramework.Workflows;
@@ -12,7 +13,7 @@ namespace Kurrent.AgentFramework.Workflows;
 public sealed class StreamCoordinator(KurrentDBClient client) {
     static readonly JsonSerializerOptions JsonOptions = new() {
         PropertyNamingPolicy   = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     /// <summary>

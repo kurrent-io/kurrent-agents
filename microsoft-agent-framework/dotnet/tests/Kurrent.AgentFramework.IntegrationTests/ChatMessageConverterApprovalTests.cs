@@ -1,4 +1,3 @@
-using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema.Events;
 using Kurrent.AgentFramework.Serialization;
 using Microsoft.Extensions.AI;
@@ -10,8 +9,11 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task BuildApprovalPrompt_SimpleArgs_RendersArgpacked() {
-        var fc = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice@x.com", ["subject"] = "hi" });
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice@x.com", ["subject"] = "hi" }
+        );
 
         var prompt = ChatMessageConverter.BuildApprovalPrompt(fc);
 
@@ -30,8 +32,12 @@ public class ChatMessageConverterApprovalTests {
     [Test]
     public async Task BuildApprovalPrompt_LongArgs_TruncatesWithEllipsis() {
         var bigValue = new string('x', 500);
-        var fc       = new FunctionCallContent("call-1", "huge",
-            new Dictionary<string, object?> { ["payload"] = bigValue });
+
+        var fc = new FunctionCallContent(
+            "call-1",
+            "huge",
+            new Dictionary<string, object?> { ["payload"] = bigValue }
+        );
 
         var prompt = ChatMessageConverter.BuildApprovalPrompt(fc);
 
@@ -53,8 +59,11 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task BuildAfwInterruptExtension_CallIdEqualsPairId_OmitsPairId() {
-        var fc = new FunctionCallContent("call-1", "ping",
-            new Dictionary<string, object?> { ["x"] = 1 });
+        var fc = new FunctionCallContent(
+            "call-1",
+            "ping",
+            new Dictionary<string, object?> { ["x"] = 1 }
+        );
 
         var ext = ChatMessageConverter.BuildAfwInterruptExtension(fc, approvalPairId: "call-1");
 
@@ -84,12 +93,19 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task ToEvents_AssistantTextAndApproval_EmitsTextAndInterrupt() {
-        var fc = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
-        var msg = new ChatMessage(ChatRole.Assistant, [
-            new TextContent("Drafting an email — needs your approval."),
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-msg-1" };
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
+
+        var msg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new TextContent("Drafting an email — needs your approval."),
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-1" };
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
@@ -105,16 +121,27 @@ public class ChatMessageConverterApprovalTests {
         await Assert.That(ii.ToolName).IsEqualTo("send_email");
         await Assert.That(ii.MessageId).IsEqualTo("asst-msg-1");
         await Assert.That(ii.Prompt.StartsWith("Approve calling send_email(")).IsTrue();
-        await Assert.That(ii.Extensions["afw"].Fields["interrupt"].StructValue
-            .Fields["proposed_call"].StructValue.Fields["name"].StringValue).IsEqualTo("send_email");
+
+        await Assert.That(
+                ii.Extensions["afw"]
+                    .Fields["interrupt"]
+                    .StructValue
+                    .Fields["proposed_call"]
+                    .StructValue.Fields["name"].StringValue
+            )
+            .IsEqualTo("send_email");
     }
 
     [Test]
     public async Task ToEvents_AssistantApprovalOnly_EmitsMarkerAndInterrupt() {
-        var fc  = new FunctionCallContent("call-1", "ping", arguments: null);
-        var msg = new ChatMessage(ChatRole.Assistant, [
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-msg-2" };
+        var fc = new FunctionCallContent("call-1", "ping", arguments: null);
+
+        var msg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-2" };
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
@@ -127,14 +154,21 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task ToEvents_AssistantMixedToolsAndApprovals_BothEmitted() {
-        var fc       = new FunctionCallContent("call-1", "lookup", arguments: null);
-        var approval = new ToolApprovalRequestContent(requestId: "call-2",
-            toolCall: new FunctionCallContent("call-2", "delete", arguments: null));
-        var msg = new ChatMessage(ChatRole.Assistant, [
-            new TextContent("Looking up; will need approval to delete."),
-            fc,
-            approval,
-        ]) { MessageId = "asst-msg-3" };
+        var fc = new FunctionCallContent("call-1", "lookup", arguments: null);
+
+        var approval = new ToolApprovalRequestContent(
+            requestId: "call-2",
+            toolCall: new FunctionCallContent("call-2", "delete", arguments: null)
+        );
+
+        var msg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new TextContent("Looking up; will need approval to delete."),
+                fc,
+                approval,
+            ]
+        ) { MessageId = "asst-msg-3" };
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
@@ -149,22 +183,30 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task ToEvents_ApprovalPairIdDifferent_StashedInExtensions() {
-        var fc  = new FunctionCallContent("call-1", "ping", arguments: null);
-        var msg = new ChatMessage(ChatRole.Assistant, [
-            new ToolApprovalRequestContent(requestId: "approval-pair-9", toolCall: fc),
-        ]) { MessageId = "asst-msg-4" };
+        var fc = new FunctionCallContent("call-1", "ping", arguments: null);
+
+        var msg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new ToolApprovalRequestContent(requestId: "approval-pair-9", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-4" };
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
-        var ii = (InterruptIssued)events.Last();
+        var ii        = (InterruptIssued)events.Last();
         var interrupt = ii.Extensions["afw"].Fields["interrupt"].StructValue;
         await Assert.That(interrupt.Fields["approval_pair_id"].StringValue).IsEqualTo("approval-pair-9");
     }
 
     [Test]
     public async Task ToEvents_UserApprovalResponse_EmitsMarkerAndResolved() {
-        var fc       = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
+
         var response = new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) {
             Reason = "Looks good.",
         };
@@ -180,8 +222,15 @@ public class ChatMessageConverterApprovalTests {
         await Assert.That(ir.Outcome).IsEqualTo("allow");
         await Assert.That(ir.Response).IsEqualTo("Looks good.");
         await Assert.That(ir.MessageId).IsEqualTo("user-msg-1");
-        await Assert.That(ir.Extensions["afw"].Fields["interrupt"].StructValue
-            .Fields["proposed_call"].StructValue.Fields["name"].StringValue).IsEqualTo("send_email");
+
+        await Assert.That(
+                ir.Extensions["afw"]
+                    .Fields["interrupt"]
+                    .StructValue
+                    .Fields["proposed_call"]
+                    .StructValue.Fields["name"].StringValue
+            )
+            .IsEqualTo("send_email");
     }
 
     [Test]
@@ -201,10 +250,14 @@ public class ChatMessageConverterApprovalTests {
     public async Task ToEvents_UserApprovalResponseWithText_EmitsBothEvents() {
         var fc       = new FunctionCallContent("call-1", "ping", arguments: null);
         var response = new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc);
-        var msg      = new ChatMessage(ChatRole.User, [
-            new TextContent("OK go ahead."),
-            response,
-        ]) { MessageId = "user-msg-2" };
+
+        var msg = new ChatMessage(
+            ChatRole.User,
+            [
+                new TextContent("OK go ahead."),
+                response,
+            ]
+        ) { MessageId = "user-msg-2" };
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 0, timestamp: Ts).ToList();
 
@@ -215,12 +268,19 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task MergeIntoChatMessage_AssistantTextAndInterrupt_RebuildsContents() {
-        var fc       = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
-        var original = new ChatMessage(ChatRole.Assistant, [
-            new TextContent("Drafting…"),
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-msg-1" };
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
+
+        var original = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new TextContent("Drafting…"),
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-1" };
 
         var events = ChatMessageConverter.ToEvents(original, messageIndex: 0, timestamp: Ts).ToList();
         var issued = events.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
@@ -241,14 +301,25 @@ public class ChatMessageConverterApprovalTests {
 
     [Test]
     public async Task MergeIntoChatMessage_UserResponse_RebuildsContentsViaCrossEventLookup() {
-        var fc           = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
-        var assistantMsg = new ChatMessage(ChatRole.Assistant, [
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-msg-1" };
-        var userMsg = new ChatMessage(ChatRole.User, [
-            new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc),
-        ]) { MessageId = "user-msg-2" };
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
+
+        var assistantMsg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-1" };
+
+        var userMsg = new ChatMessage(
+            ChatRole.User,
+            [
+                new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc),
+            ]
+        ) { MessageId = "user-msg-2" };
 
         var assistantEvents = ChatMessageConverter.ToEvents(assistantMsg, 0, Ts).ToList();
         var userEvents      = ChatMessageConverter.ToEvents(userMsg, 1, Ts).ToList();

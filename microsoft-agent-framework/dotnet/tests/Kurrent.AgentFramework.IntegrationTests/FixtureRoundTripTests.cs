@@ -48,8 +48,8 @@ public class FixtureRoundTripTests(KurrentDbFixture db) {
         var parsed = (IMessage)FromJsonGeneric.MakeGenericMethod(clrType).Invoke(null, [originalJson])!;
 
         // 2) Serialise via the MAF .NET write path and assert structural JSON parity with the fixture.
-        var ed           = EventSerializer.Serialize(parsed);
-        var writtenNode  = JsonNode.Parse(ed.Data.Span)!;
+        var ed          = EventSerializer.Serialize(parsed);
+        var writtenNode = JsonNode.Parse(ed.Data.Span)!;
         AssertStructurallyEqual(originalNode, writtenNode, $"{eventTypeName} (Serialize)");
 
         // 3) Append to KurrentDB and 4) read it back via the MAF .NET read path.
@@ -77,24 +77,29 @@ public class FixtureRoundTripTests(KurrentDbFixture db) {
     static void AssertStructurallyEqual(JsonNode expected, JsonNode actual, string context) {
         var expectedCanonical = CanonicaliseJson(expected);
         var actualCanonical   = CanonicaliseJson(actual);
+
         if (expectedCanonical != actualCanonical) {
             throw new InvalidOperationException(
-                $"Fixture drift for {context}:\nExpected:\n{expectedCanonical}\nActual:\n{actualCanonical}");
+                $"Fixture drift for {context}:\nExpected:\n{expectedCanonical}\nActual:\n{actualCanonical}"
+            );
         }
     }
 
     static string CanonicaliseJson(JsonNode node) {
         var opts = new JsonSerializerOptions { WriteIndented = false };
+
         return Canonicalise(node)?.ToJsonString(opts) ?? "null";
     }
 
     static JsonNode? Canonicalise(JsonNode? node) => node switch {
-        null            => null,
-        JsonObject obj  => new JsonObject(obj.OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                                             .Select(kv => KeyValuePair.Create(kv.Key, Canonicalise(kv.Value)))),
-        JsonArray arr   => new JsonArray(arr.Select(Canonicalise).ToArray()),
-        JsonValue val   => CanonicaliseValue(val),
-        _               => node.DeepClone()
+        null => null,
+        JsonObject obj => new JsonObject(
+            obj.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                .Select(kv => KeyValuePair.Create(kv.Key, Canonicalise(kv.Value)))
+        ),
+        JsonArray arr => new JsonArray(arr.Select(Canonicalise).ToArray()),
+        JsonValue val => CanonicaliseValue(val),
+        _             => node.DeepClone()
     };
 
     // Cross-language number parity: proto3 JSON canonical form lets language
@@ -103,26 +108,34 @@ public class FixtureRoundTripTests(KurrentDbFixture db) {
     // a single textual form by collapsing integer-valued doubles to long.
     static JsonNode CanonicaliseValue(JsonValue val) {
         var element = val.GetValue<JsonElement>();
+
         if (element.ValueKind == JsonValueKind.Number) {
             if (element.TryGetInt64(out var i64)) return JsonValue.Create(i64);
+
             if (element.TryGetDouble(out var d)) {
                 if (!double.IsNaN(d) && !double.IsInfinity(d) && d == Math.Truncate(d)
-                    && d >= long.MinValue && d <= long.MaxValue) {
+                 && d is >= long.MinValue and <= long.MaxValue) {
                     return JsonValue.Create((long)d);
                 }
+
                 return JsonValue.Create(d);
             }
         }
+
         return JsonNode.Parse(val.ToJsonString())!;
     }
 
     static string LocateFixturesRoot() {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
+
         while (dir is not null) {
             var candidate = Path.Combine(dir.FullName, "schema", "fixtures");
+
             if (Directory.Exists(candidate)) return candidate;
+
             dir = dir.Parent;
         }
+
         throw new DirectoryNotFoundException("Could not locate schema/fixtures relative to test assembly.");
     }
 }

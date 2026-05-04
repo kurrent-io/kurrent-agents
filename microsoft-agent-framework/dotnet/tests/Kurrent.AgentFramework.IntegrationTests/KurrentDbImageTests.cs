@@ -43,6 +43,7 @@ public class KurrentDbImageTests {
     [Test]
     public async Task TagTable_CoversBothSupportedArches() {
         await Assert.That(KurrentDbImage.Tags.Keys).IsEquivalentTo(new[] { Architecture.Arm64, Architecture.X64 });
+
         foreach (var tag in KurrentDbImage.Tags.Values) {
             await Assert.That(tag).StartsWith("kurrentplatform/kurrentdb:");
         }

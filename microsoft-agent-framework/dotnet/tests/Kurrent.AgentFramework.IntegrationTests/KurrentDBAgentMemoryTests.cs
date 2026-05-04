@@ -1,6 +1,4 @@
-using Kurrent.AgentFramework;
 using Kurrent.AgentFramework.Memory;
-using KurrentDB.Client;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kurrent.AgentFramework.IntegrationTests;
@@ -15,14 +13,15 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     static async Task<List<string>> Collect(IAsyncEnumerable<string> source) {
         var list = new List<string>();
         await foreach (var item in source) list.Add(item);
+
         return list;
     }
 
     [Test]
     public async Task Retain_ThenRecall_ReturnsFactsNewestFirst() {
-        using var client       = db.CreateClient();
-        var (appName, userId)  = NewIds();
-        var memory             = new KurrentDBAgentMemory(client, appName, userId);
+        await using var client = db.CreateClient();
+        var (appName, userId) = NewIds();
+        var memory = new KurrentDBAgentMemory(client, appName, userId);
 
         await memory.RetainAsync("first");
         await memory.RetainAsync("second");
@@ -35,9 +34,9 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
 
     [Test]
     public async Task Recall_OnMissingStream_ReturnsEmpty() {
-        using var client       = db.CreateClient();
-        var (appName, userId)  = NewIds();
-        var memory             = new KurrentDBAgentMemory(client, appName, userId);
+        await using var client = db.CreateClient();
+        var (appName, userId) = NewIds();
+        var memory = new KurrentDBAgentMemory(client, appName, userId);
 
         var recalled = await Collect(memory.RecallAsync("ignored"));
 
@@ -46,9 +45,9 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
 
     [Test]
     public async Task Retain_WhitespaceFact_IsIgnored() {
-        using var client       = db.CreateClient();
-        var (appName, userId)  = NewIds();
-        var memory             = new KurrentDBAgentMemory(client, appName, userId);
+        await using var client = db.CreateClient();
+        var (appName, userId) = NewIds();
+        var memory = new KurrentDBAgentMemory(client, appName, userId);
 
         await memory.RetainAsync("   ");
         await memory.RetainAsync("");
@@ -61,9 +60,9 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
 
     [Test]
     public async Task Recall_IgnoresQueryText() {
-        using var client       = db.CreateClient();
-        var (appName, userId)  = NewIds();
-        var memory             = new KurrentDBAgentMemory(client, appName, userId);
+        await using var client = db.CreateClient();
+        var (appName, userId) = NewIds();
+        var memory = new KurrentDBAgentMemory(client, appName, userId);
 
         await memory.RetainAsync("alpha");
         await memory.RetainAsync("beta");
@@ -79,10 +78,10 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     public async Task DefaultStream_FollowsCanonicalConvention() {
         // SCHEMA_v2 §2.1: facts land in AgentMemory-{app}-{user}. Two memory
         // instances with different userIds must not see each other's facts.
-        using var client = db.CreateClient();
-        var appName      = $"app-{Guid.NewGuid():N}";
-        var userA        = $"user-{Guid.NewGuid():N}";
-        var userB        = $"user-{Guid.NewGuid():N}";
+        await using var client  = db.CreateClient();
+        var             appName = $"app-{Guid.NewGuid():N}";
+        var             userA   = $"user-{Guid.NewGuid():N}";
+        var             userB   = $"user-{Guid.NewGuid():N}";
 
         var memoryA = new KurrentDBAgentMemory(client, appName, userA);
         var memoryB = new KurrentDBAgentMemory(client, appName, userB);
@@ -105,7 +104,7 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     public async Task EmptyIdentifiers_Rejected(string appName, string userId) {
         // Blank identifiers would collapse tenant isolation into AgentMemory--
         // style streams — reject at the boundary rather than silently sharing.
-        using var client = db.CreateClient();
+        await using var client = db.CreateClient();
 
         await Assert.That(() => new KurrentDBAgentMemory(client, appName, userId))
             .Throws<ArgumentException>();
@@ -115,7 +114,7 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     public async Task MissingIdentifiers_Rejected_WithoutStreamNameOverride() {
         // Without a streamName override, both ids must be supplied — otherwise we'd
         // build a degenerate canonical stream.
-        using var client = db.CreateClient();
+        await using var client = db.CreateClient();
 
         await Assert.That(() => new KurrentDBAgentMemory(client))
             .Throws<ArgumentException>();
@@ -128,7 +127,7 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     public async Task StreamName_BlankOverride_Rejected(string blankStreamName) {
         // Fail fast at the boundary rather than pushing a blank stream name through
         // to KurrentDB where it surfaces as an opaque error on first append.
-        using var client = db.CreateClient();
+        await using var client = db.CreateClient();
 
         await Assert.That(() => new KurrentDBAgentMemory(client, streamName: blankStreamName))
             .Throws<ArgumentException>();
@@ -138,8 +137,8 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
     public async Task StreamName_Override_BypassesIdentifierValidation() {
         // The override is the escape hatch for deliberately shared / cross-tenant
         // memory; appName/userId are irrelevant once it's set.
-        using var client = db.CreateClient();
-        var streamName   = $"AgentMemory-override-{Guid.NewGuid():N}";
+        await using var client     = db.CreateClient();
+        var             streamName = $"AgentMemory-override-{Guid.NewGuid():N}";
 
         var memory = new KurrentDBAgentMemory(client, streamName: streamName);
         await memory.RetainAsync("scoped fact");
@@ -153,15 +152,15 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
         // Regression for the DI-vs-docs mismatch: the extension must allow registering
         // a shared / cross-tenant memory instance using only streamName, matching the
         // constructor's escape-hatch semantics.
-        using var client = db.CreateClient();
-        var streamName   = $"AgentMemory-shared-{Guid.NewGuid():N}";
+        await using var client     = db.CreateClient();
+        var             streamName = $"AgentMemory-shared-{Guid.NewGuid():N}";
 
         var services = new ServiceCollection();
         services.AddSingleton(client);
         services.AddKurrentAgentMemory(streamName: streamName);
 
-        await using var sp = services.BuildServiceProvider();
-        var memory         = sp.GetRequiredService<IAgentMemory>();
+        await using var sp     = services.BuildServiceProvider();
+        var             memory = sp.GetRequiredService<IAgentMemory>();
 
         await memory.RetainAsync("shared fact");
         var recalled = await Collect(memory.RecallAsync(""));
@@ -171,11 +170,11 @@ public class KurrentDBAgentMemoryTests(KurrentDbFixture db) {
 
     [Test]
     public async Task StreamName_Override_IsolatesFromCanonicalDefault() {
-        using var client      = db.CreateClient();
+        await using var client = db.CreateClient();
         var (appName, userId) = NewIds();
-        var overrideStream    = $"AgentMemory-override-{Guid.NewGuid():N}";
+        var overrideStream = $"AgentMemory-override-{Guid.NewGuid():N}";
 
-        var canonical = new KurrentDBAgentMemory(client, appName, userId);
+        var canonical  = new KurrentDBAgentMemory(client, appName, userId);
         var overridden = new KurrentDBAgentMemory(client, appName, userId, streamName: overrideStream);
 
         await canonical.RetainAsync("in-canonical");

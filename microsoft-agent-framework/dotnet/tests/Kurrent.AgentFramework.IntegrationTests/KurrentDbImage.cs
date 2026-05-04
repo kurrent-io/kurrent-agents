@@ -31,6 +31,7 @@ public static class KurrentDbImage {
     internal static string Resolve(Architecture arch, string? envOverride) {
         if (!string.IsNullOrEmpty(envOverride)) return envOverride;
         if (Images.TryGetValue(arch, out var tag)) return tag;
+
         throw new PlatformNotSupportedException($"Unsupported CPU arch for KurrentDB image: {arch}. Set {EnvVar} to override.");
     }
 
