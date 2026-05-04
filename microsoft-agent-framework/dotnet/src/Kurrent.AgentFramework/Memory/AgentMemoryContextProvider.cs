@@ -27,16 +27,19 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
             CancellationToken cancellationToken = default
         ) {
         var userMessage = context.AIContext.Messages?
-            .LastOrDefault(m => m.Role == ChatRole.User)?.Text;
+            .LastOrDefault(m => m.Role == ChatRole.User)
+            ?.Text;
 
         if (string.IsNullOrWhiteSpace(userMessage))
             return new();
 
         var facts = new List<string>();
+
         await foreach (var fact in memory.RecallAsync(userMessage, cancellationToken).ConfigureAwait(false))
             facts.Add(fact);
 
         var instructions = BuildMemoryInstructions(facts);
+
         return instructions is null ? new() : new() { Instructions = instructions };
     }
 
@@ -51,8 +54,10 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
 
     internal static string? BuildMemoryInstructions(IReadOnlyList<string> facts) {
         var bullets = new List<string>(facts.Count);
+
         foreach (var fact in facts) {
             var normalised = NormaliseFact(fact);
+
             if (normalised.Length > 0)
                 bullets.Add(normalised);
         }
@@ -66,9 +71,11 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
         var sb = new StringBuilder();
         sb.Append(RecallHeader).Append('\n');
         sb.Append(fence).Append("text").Append('\n');
+
         foreach (var fact in bullets)
             sb.Append("- ").Append(fact).Append('\n');
         sb.Append(fence);
+
         return sb.ToString();
     }
 
@@ -77,8 +84,10 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
 
     static string BuildSafeFence(IReadOnlyList<string> bullets) {
         var longestRun = 0;
+
         foreach (var bullet in bullets) {
             var current = 0;
+
             foreach (var ch in bullet) {
                 if (ch == '`') {
                     if (++current > longestRun) longestRun = current;
@@ -87,6 +96,7 @@ public sealed class AgentMemoryContextProvider(IAgentMemory memory) : AIContextP
                 }
             }
         }
-        return new string('`', Math.Max(3, longestRun + 1));
+
+        return new('`', Math.Max(3, longestRun + 1));
     }
 }

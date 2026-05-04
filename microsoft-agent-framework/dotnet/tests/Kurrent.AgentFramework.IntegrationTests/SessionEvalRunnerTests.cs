@@ -46,24 +46,29 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await foreach (var e in client.ReadAllAsync(Direction.Backwards, Position.End, maxCount: 1)) {
             return e.OriginalPosition ?? Position.Start;
         }
+
         return Position.Start;
     }
 
     static async Task<List<(string Type, JsonDocument Payload)>> ReadEvalEventsForSession(
-        KurrentDBClient client, string sessionId, Position fromPosition
-    ) {
+            KurrentDBClient client,
+            string          sessionId,
+            Position        fromPosition
+        ) {
         var found = new List<(string, JsonDocument)>();
 
         await foreach (var e in client.ReadAllAsync(Direction.Forwards, fromPosition)) {
             if (!e.Event.EventStreamId.StartsWith("EvalRun-")) continue;
             if (e.Event.EventType is not ("EvalRunStarted" or "SessionScored" or "EvalRunCompleted")) continue;
 
-            var doc          = JsonDocument.Parse(e.Event.Data.ToArray());
-            var matchesThis  = doc.RootElement.TryGetProperty("session_id", out var sid)
-                            && sid.GetString() == sessionId;
+            var doc = JsonDocument.Parse(e.Event.Data.ToArray());
+
+            var matchesThis = doc.RootElement.TryGetProperty("session_id", out var sid)
+             && sid.GetString() == sessionId;
 
             if (matchesThis) {
                 found.Add((e.Event.EventType, doc));
+
                 if (e.Event.EventType == "EvalRunCompleted") break;
             } else {
                 doc.Dispose();
@@ -75,8 +80,8 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_EmptySession_AppendsStartedAndCompletedNoSessionScored() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
         // Note: stream not seeded — the AgentSession-{id} stream does not exist.
 
         var startPos = await SnapshotAllEndAsync(client);
@@ -87,7 +92,8 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
             sessionId,
             scorerName: "test-scorer",
             criteria: "test",
-            evaluator: evaluator);
+            evaluator: evaluator
+        );
 
         await Assert.That(result.SessionId).IsEqualTo(sessionId);
         await Assert.That(result.ScoredMetrics).IsEmpty();
@@ -95,6 +101,7 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(evaluator.CallCount).IsEqualTo(0);
 
         var events = await ReadEvalEventsForSession(client, sessionId, startPos);
+
         try {
             await Assert.That(events.Count).IsEqualTo(2);
             await Assert.That(events[0].Type).IsEqualTo("EvalRunStarted");
@@ -106,19 +113,26 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_FlattenedMessages_PreservesUserAssistantOrder() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("first user", "m-1", 0)),
             EventFor(AsstText("first assistant", "m-2", 1)),
             EventFor(UserMsg("second user", "m-3", 2)),
-            EventFor(AsstText("second assistant", "m-4", 3)));
+            EventFor(AsstText("second assistant", "m-4", 3))
+        );
 
         var evaluator = new FixedSessionEvaluator(1.0, "Helpfulness");
 
         await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", evaluator);
+            sessionId,
+            "test-scorer",
+            "test",
+            evaluator
+        );
 
         await Assert.That(evaluator.CallCount).IsEqualTo(1);
         await Assert.That(evaluator.LastMessages).IsNotNull();
@@ -142,19 +156,26 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_NumericMetric_EmitsOneSessionScoredWithCorrectScore() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("question", "m-1", 0)),
-            EventFor(AsstText("answer", "m-2", 1)));
+            EventFor(AsstText("answer", "m-2", 1))
+        );
 
         var startPos = await SnapshotAllEndAsync(client);
 
         var evaluator = new FixedSessionEvaluator(0.75, "Helpfulness");
 
         var result = await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", evaluator);
+            sessionId,
+            "test-scorer",
+            "test",
+            evaluator
+        );
 
         await Assert.That(result.ScoredMetrics.Count).IsEqualTo(1);
         var scored = result.ScoredMetrics[0];
@@ -168,6 +189,7 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(result.PerMetricAverage["Helpfulness"]).IsEqualTo(0.75);
 
         var events = await ReadEvalEventsForSession(client, sessionId, startPos);
+
         try {
             await Assert.That(events.Count).IsEqualTo(3);
             await Assert.That(events[0].Type).IsEqualTo("EvalRunStarted");
@@ -190,23 +212,31 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_CompositeEvaluator_MixedMetricKinds_AllPersistedCorrectly() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("q", "m-1", 0)),
-            EventFor(AsstText("a", "m-2", 1)));
+            EventFor(AsstText("a", "m-2", 1))
+        );
 
         var startPos = await SnapshotAllEndAsync(client);
 
         var composite = new CompositeEvaluator(
-            new FixedSessionEvaluator(0.7,  "Numeric"),
+            new FixedSessionEvaluator(0.7, "Numeric"),
             new BooleanSessionEvaluator(true, "Boolean"),
             new StringSessionEvaluator("good", "String"),
-            new NullNumericSessionEvaluator("MissingNumeric"));
+            new NullNumericSessionEvaluator("MissingNumeric")
+        );
 
         var result = await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", composite);
+            sessionId,
+            "test-scorer",
+            "test",
+            composite
+        );
 
         await Assert.That(result.ScoredMetrics.Count).IsEqualTo(4);
 
@@ -233,6 +263,7 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
         await Assert.That(result.PerMetricAverage["Boolean"]).IsEqualTo(1.0);
 
         var events = await ReadEvalEventsForSession(client, sessionId, startPos);
+
         try {
             // 1 EvalRunStarted + 4 SessionScored + 1 EvalRunCompleted = 6
             await Assert.That(events.Count).IsEqualTo(6);
@@ -244,25 +275,32 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_TokenTotals_SumUsageMetadataAcrossAssistantEvents() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
         var usageMeta1 = new Dictionary<string, object?> {
             ["$usage"] = new Dictionary<string, object?> { ["input_tokens"] = 100L, ["output_tokens"] = 50L }
         };
+
         var usageMeta2 = new Dictionary<string, object?> {
             ["$usage"] = new Dictionary<string, object?> { ["input_tokens"] = 200L, ["output_tokens"] = 75L }
         };
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("q1", "m-1", 0)),
             EventFor(AsstText("a1", "m-2", 1), usageMeta1),
             EventFor(UserMsg("q2", "m-3", 2)),
-            EventFor(AsstText("a2", "m-4", 3), usageMeta2));
+            EventFor(AsstText("a2", "m-4", 3), usageMeta2)
+        );
 
         var result = await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test",
-            new FixedSessionEvaluator(1.0, "Helpfulness"));
+            sessionId,
+            "test-scorer",
+            "test",
+            new FixedSessionEvaluator(1.0, "Helpfulness")
+        );
 
         await Assert.That(result.TotalInputTokens).IsEqualTo(300L);
         await Assert.That(result.TotalOutputTokens).IsEqualTo(125L);
@@ -270,16 +308,23 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_AssistantOnlySession_StillFlattens() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
-            EventFor(AsstText("standalone", "m-1", 0)));
+        await SeedSessionAsync(
+            client,
+            sessionId,
+            EventFor(AsstText("standalone", "m-1", 0))
+        );
 
         var evaluator = new FixedSessionEvaluator(0.5, "Helpfulness");
 
         await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", evaluator);
+            sessionId,
+            "test-scorer",
+            "test",
+            evaluator
+        );
 
         await Assert.That(evaluator.LastMessages).IsNotNull();
         await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(1);
@@ -289,16 +334,23 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_UserOnlySession_LastResponseIsEmpty() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
-            EventFor(UserMsg("just a question", "m-1", 0)));
+        await SeedSessionAsync(
+            client,
+            sessionId,
+            EventFor(UserMsg("just a question", "m-1", 0))
+        );
 
         var evaluator = new FixedSessionEvaluator(0.5, "Helpfulness");
 
         await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", evaluator);
+            sessionId,
+            "test-scorer",
+            "test",
+            evaluator
+        );
 
         await Assert.That(evaluator.LastMessages).IsNotNull();
         await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(1);
@@ -308,28 +360,40 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RunSessionAsync_FlattensToolCallsAndResults_PairsCallIds() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = Pts };
+        var toolCalls = new AssistantToolCallsGenerated {
+            MessageIndex = 1,
+            Timestamp    = Pts
+        };
         toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-x", ToolName = "GetWeather" });
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("get the weather", "m-1", 0)),
             EventFor(toolCalls),
-            EventFor(new ToolResultReceived {
-                CallId       = "call-x",
-                ToolName     = "GetWeather",
-                Result       = "Sunny",
-                MessageIndex = 2,
-                Timestamp    = Pts,
-            }),
-            EventFor(AsstText("the weather is sunny", "m-4", 3)));
+            EventFor(
+                new ToolResultReceived {
+                    CallId       = "call-x",
+                    ToolName     = "GetWeather",
+                    Result       = "Sunny",
+                    MessageIndex = 2,
+                    Timestamp    = Pts,
+                }
+            ),
+            EventFor(AsstText("the weather is sunny", "m-4", 3))
+        );
 
         var evaluator = new FixedSessionEvaluator(1.0, "Helpfulness");
 
         await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", evaluator);
+            sessionId,
+            "test-scorer",
+            "test",
+            evaluator
+        );
 
         await Assert.That(evaluator.LastMessages).IsNotNull();
         await Assert.That(evaluator.LastMessages!.Count).IsEqualTo(4);
@@ -368,61 +432,90 @@ public class SessionEvalRunnerTests(KurrentDbFixture db) {
             LastMessages = messages.ToList();
             LastResponse = modelResponse;
             CallCount++;
+
             return ValueTask.FromResult(new EvaluationResult(new NumericMetric(metricName, score)));
         }
     }
 
     sealed class BooleanSessionEvaluator(bool value, string metricName) : IEvaluator {
         public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+
         public ValueTask<EvaluationResult> EvaluateAsync(
-                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
-                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+                IEnumerable<ChatMessage>        _,
+                ChatResponse                    __,
+                ChatConfiguration?              ___   = null,
+                IEnumerable<EvaluationContext>? ____  = null,
+                CancellationToken               _____ = default
+            ) =>
             ValueTask.FromResult(new EvaluationResult(new BooleanMetric(metricName, value)));
     }
 
     sealed class StringSessionEvaluator(string value, string metricName) : IEvaluator {
         public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+
         public ValueTask<EvaluationResult> EvaluateAsync(
-                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
-                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+                IEnumerable<ChatMessage>        _,
+                ChatResponse                    __,
+                ChatConfiguration?              ___   = null,
+                IEnumerable<EvaluationContext>? ____  = null,
+                CancellationToken               _____ = default
+            ) =>
             ValueTask.FromResult(new EvaluationResult(new StringMetric(metricName, value)));
     }
 
     sealed class NullNumericSessionEvaluator(string metricName) : IEvaluator {
         public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+
         public ValueTask<EvaluationResult> EvaluateAsync(
-                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
-                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+                IEnumerable<ChatMessage>        _,
+                ChatResponse                    __,
+                ChatConfiguration?              ___   = null,
+                IEnumerable<EvaluationContext>? ____  = null,
+                CancellationToken               _____ = default
+            ) =>
             ValueTask.FromResult(new EvaluationResult(new NumericMetric(metricName)));
     }
 
     sealed class ThrowingEvaluator(string metricName) : IEvaluator {
         public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [metricName];
+
         public ValueTask<EvaluationResult> EvaluateAsync(
-                IEnumerable<ChatMessage> _, ChatResponse __, ChatConfiguration? ___ = null,
-                IEnumerable<EvaluationContext>? ____ = null, CancellationToken _____ = default) =>
+                IEnumerable<ChatMessage>        _,
+                ChatResponse                    __,
+                ChatConfiguration?              ___   = null,
+                IEnumerable<EvaluationContext>? ____  = null,
+                CancellationToken               _____ = default
+            ) =>
             throw new InvalidOperationException("evaluator deliberately failed");
     }
 
     [Test]
     public async Task RunSessionAsync_OneEvaluatorThrows_OthersStillEmitMetrics() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
 
-        await SeedSessionAsync(client, sessionId,
+        await SeedSessionAsync(
+            client,
+            sessionId,
             EventFor(UserMsg("q", "m-1", 0)),
-            EventFor(AsstText("a", "m-2", 1)));
+            EventFor(AsstText("a", "m-2", 1))
+        );
 
         var composite = new CompositeEvaluator(
             new FixedSessionEvaluator(0.5, "Good"),
             new ThrowingEvaluator("Bad"),
-            new FixedSessionEvaluator(0.9, "AlsoGood"));
+            new FixedSessionEvaluator(0.9, "AlsoGood")
+        );
 
         // CompositeEvaluator absorbs the throw internally: it emits a metric for "Bad" with
         // InterpretationFailed=true (and an error diagnostic) rather than propagating the exception.
         // The run must complete and the two healthy evaluators must produce their metrics.
         var result = await new EvalRunner(client).RunSessionAsync(
-            sessionId, "test-scorer", "test", composite);
+            sessionId,
+            "test-scorer",
+            "test",
+            composite
+        );
 
         await Assert.That(result.ScoredMetrics.Count).IsEqualTo(3);
         var byName = result.ScoredMetrics.ToDictionary(s => s.MetricName);

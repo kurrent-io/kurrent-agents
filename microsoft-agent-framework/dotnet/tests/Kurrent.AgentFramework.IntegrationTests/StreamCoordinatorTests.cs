@@ -12,10 +12,10 @@ public class StreamCoordinatorTests(KurrentDbFixture db) {
 
     [Test]
     public async Task PublishAsync_AppendsEventWithTypeAndPayload() {
-        using var client = db.CreateClient();
-        var coord        = new StreamCoordinator(client);
-        var stream       = NewStream();
-        var item         = new WorkItem("t-1", "do-thing");
+        await using var client = db.CreateClient();
+        var             coord  = new StreamCoordinator(client);
+        var             stream = NewStream();
+        var             item   = new WorkItem("t-1", "do-thing");
 
         await coord.PublishAsync(stream, "WorkItemAssigned", item);
 
@@ -24,18 +24,20 @@ public class StreamCoordinatorTests(KurrentDbFixture db) {
             .SingleAsync();
 
         await Assert.That(read.Event.EventType).IsEqualTo("WorkItemAssigned");
+
         var decoded = JsonSerializer.Deserialize<WorkItem>(
             read.Event.Data.Span,
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower }
+        );
         await Assert.That(decoded).IsEqualTo(item);
     }
 
     [Test]
     public async Task PublishResultAsync_StoresCorrelationIdInMetadata() {
-        using var client   = db.CreateClient();
-        var coord          = new StreamCoordinator(client);
-        var stream         = NewStream();
-        var correlationId  = Guid.NewGuid().ToString("N");
+        await using var client        = db.CreateClient();
+        var             coord         = new StreamCoordinator(client);
+        var             stream        = NewStream();
+        var             correlationId = Guid.NewGuid().ToString("N");
 
         await coord.PublishResultAsync(stream, correlationId, new { ok = true });
 
@@ -50,34 +52,47 @@ public class StreamCoordinatorTests(KurrentDbFixture db) {
 
     [Test]
     public async Task SubscribeAsync_DeliversEventsToHandlerInOrder() {
-        using var client = db.CreateClient();
-        var coord        = new StreamCoordinator(client);
-        var stream       = NewStream();
-        var received     = new List<(string Type, WorkItem Payload)>();
+        await using var client   = db.CreateClient();
+        var             coord    = new StreamCoordinator(client);
+        var             stream   = NewStream();
+        var             received = new List<(string Type, WorkItem Payload)>();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
         // Start the subscription in the background — it runs until we cancel.
-        var subscriptionTask = Task.Run(async () => {
-            try {
-                await coord.SubscribeAsync<WorkItem>(stream, (payload, eventType, _) => {
-                    lock (received) received.Add((eventType, payload));
-                    return Task.CompletedTask;
-                }, cts.Token);
-            } catch (OperationCanceledException) { }
-        }, cts.Token);
+        var subscriptionTask = Task.Run(
+            async () => {
+                try {
+                    await coord.SubscribeAsync<WorkItem>(
+                        stream,
+                        (payload, eventType, _) => {
+                            lock (received) received.Add((eventType, payload));
 
-        await coord.PublishAsync(stream, "Assigned", new WorkItem("t-1", "one"));
-        await coord.PublishAsync(stream, "Assigned", new WorkItem("t-2", "two"));
-        await coord.PublishAsync(stream, "Completed", new WorkItem("t-3", "three"));
+                            return Task.CompletedTask;
+                        },
+                        cts.Token
+                    );
+                } catch (OperationCanceledException) { }
+            },
+            cts.Token
+        );
+
+        await coord.PublishAsync(stream, "Assigned", new WorkItem("t-1", "one"), cts.Token);
+        await coord.PublishAsync(stream, "Assigned", new WorkItem("t-2", "two"), cts.Token);
+        await coord.PublishAsync(stream, "Completed", new WorkItem("t-3", "three"), cts.Token);
 
         var deadline = DateTime.UtcNow.AddSeconds(10);
+
         while (DateTime.UtcNow < deadline) {
-            lock (received) if (received.Count >= 3) break;
+            lock (received) {
+                if (received.Count >= 3)
+                    break;
+            }
+
             await Task.Delay(100, cts.Token);
         }
 
-        cts.Cancel();
+        await cts.CancelAsync();
         try { await subscriptionTask; } catch { }
 
         List<(string Type, WorkItem Payload)> snapshot;
@@ -92,9 +107,9 @@ public class StreamCoordinatorTests(KurrentDbFixture db) {
 
     [Test]
     public async Task PublishAsync_MultipleEvents_PreservesOrder() {
-        using var client = db.CreateClient();
-        var coord        = new StreamCoordinator(client);
-        var stream       = NewStream();
+        await using var client = db.CreateClient();
+        var             coord  = new StreamCoordinator(client);
+        var             stream = NewStream();
 
         for (var i = 0; i < 5; i++) {
             await coord.PublishAsync(stream, "Tick", new { n = i });
@@ -105,6 +120,7 @@ public class StreamCoordinatorTests(KurrentDbFixture db) {
             .ToListAsync();
 
         await Assert.That(events.Count).IsEqualTo(5);
+
         for (var i = 0; i < 5; i++) {
             var doc = JsonDocument.Parse(events[i].Event.Data);
             await Assert.That(doc.RootElement.GetProperty("n").GetInt32()).IsEqualTo(i);

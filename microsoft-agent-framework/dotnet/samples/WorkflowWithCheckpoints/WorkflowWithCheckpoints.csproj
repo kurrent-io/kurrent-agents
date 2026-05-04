@@ -9,7 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+    <PackageReference Include="Kurrent.Agent.Schema" Version="0.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
   </ItemGroup>
 
   <ItemGroup>

@@ -20,10 +20,10 @@ public sealed class KurrentDbFixture : IAsyncInitializer, IAsyncDisposable {
         // does not publish a multi-arch manifest list; set KURRENTDB_IMAGE to
         // override in CI or for custom registries.
         _container = new KurrentDbBuilder(KurrentDbImage.Resolve())
-            .WithEnvironment("KURRENTDB_CLUSTER_SIZE",              "1")
-            .WithEnvironment("KURRENTDB_RUN_PROJECTIONS",           "None")
+            .WithEnvironment("KURRENTDB_CLUSTER_SIZE", "1")
+            .WithEnvironment("KURRENTDB_RUN_PROJECTIONS", "None")
             .WithEnvironment("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true")
-            .WithEnvironment("KURRENTDB_INSECURE",                  "true")
+            .WithEnvironment("KURRENTDB_INSECURE", "true")
             .WithWaitStrategy(
                 Wait.ForUnixContainer()
                     .UntilHttpRequestIsSucceeded(
