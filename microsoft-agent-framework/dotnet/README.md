@@ -68,7 +68,11 @@ dotnet add package Microsoft.Agents.AI.Abstractions
 dotnet add package Microsoft.Agents.AI.Workflows  # if using workflows
 ```
 
-Add a project reference to `Kurrent.AgentFramework` (not yet published as a NuGet package). The integration transitively pulls in [`Kurrent.Agent.Schema`](../../schema/dotnet/) for the canonical event vocabulary (schema v2).
+```bash
+dotnet add package Kurrent.AgentFramework
+```
+
+The integration transitively pulls in [`Kurrent.Agent.Schema`](../../schema/dotnet/) for the canonical event vocabulary (schema v2).
 
 ### 3. Configure
 
@@ -425,6 +429,6 @@ Stream names are built with the shared `Kurrent.Agent.Schema.StreamNames` helper
 ## Dependencies
 
 - [KurrentDB.Client](https://www.nuget.org/packages/KurrentDB.Client) 1.3.1
-- [Microsoft.Agents.AI](https://www.nuget.org/packages/Microsoft.Agents.AI) 1.0.0
-- [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows) 1.0.0
-- [Kurrent.Agent.Schema](https://www.nuget.org/packages/Kurrent.Agent.Schema) 0.3.0 — canonical event records, `StreamNames`, `SchemaJsonOptions`, `EventTypeMap`, `TokenUsage`, `SchemaVersion` (schema v2, Edition 2024 protos). Source: [`schema/dotnet/`](../../schema/dotnet/).
+- [Microsoft.Agents.AI](https://www.nuget.org/packages/Microsoft.Agents.AI) 1.3.0
+- [Microsoft.Agents.AI.Workflows](https://www.nuget.org/packages/Microsoft.Agents.AI.Workflows) 1.3.0
+- [Kurrent.Agent.Schema](https://www.nuget.org/packages/Kurrent.Agent.Schema) 0.4.0 — canonical event records, `StreamNames`, `SchemaJsonOptions`, `EventTypeMap`, `TokenUsage`, `SchemaVersion` (schema v2, Edition 2024 protos). Source: [`schema/dotnet/`](../../schema/dotnet/).

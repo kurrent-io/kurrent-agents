@@ -51,5 +51,5 @@ dotnet test
 
 ## Version
 
-- Package: `0.2.0` (Protobuf-generated source; see [`Kurrent.Agent.Schema/CHANGELOG.md`](./Kurrent.Agent.Schema/CHANGELOG.md) for breaking changes).
+- Package: `0.4.0` (Protobuf-generated source; see [`Kurrent.Agent.Schema/CHANGELOG.md`](./Kurrent.Agent.Schema/CHANGELOG.md) for breaking changes).
 - Schema: `SchemaVersion.Current = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.
