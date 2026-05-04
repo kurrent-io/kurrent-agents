@@ -230,6 +230,22 @@ public sealed class EvalRunner(KurrentDBClient client) {
         return new(sessionId, scoredMetrics, perMetricAverage, inputTokens, outputTokens);
     }
 
+    /// <summary>
+    /// Read an agent session and project its canonical events into a flat
+    /// <see cref="ChatMessage"/> sequence — the same projection
+    /// <see cref="RunSessionAsync"/> uses internally. Exposed for callers that
+    /// want to drive an evaluator directly or feed downstream summarisers
+    /// (e.g. retrospective builders) without rerunning the full eval pipeline.
+    /// </summary>
+    public static async Task<IList<ChatMessage>> ReadSessionMessagesAsync(
+            KurrentDBClient   client,
+            string            sessionId,
+            CancellationToken ct = default
+        ) {
+        var (messages, _, _, _) = await FlattenSessionAsync(client, sessionId, ct).ConfigureAwait(false);
+        return messages;
+    }
+
     static async Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
         FlattenSessionAsync(KurrentDBClient client, string sessionId, CancellationToken ct) {
         var          streamName    = StreamNames.AgentSession(sessionId);
