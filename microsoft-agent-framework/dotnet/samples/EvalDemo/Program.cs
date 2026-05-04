@@ -43,6 +43,7 @@ Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
 var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = pNow };
+
 toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "GetWeather" });
 
 var events = new List<EventData> {
@@ -51,10 +52,15 @@ var events = new List<EventData> {
     // Turn 1: good response
     EventSerializer.Serialize(UserMsg("What's the weather in London?", 0)),
     EventSerializer.Serialize(toolCalls),
-    EventSerializer.Serialize(new ToolResultReceived {
-        CallId = "call-1", ToolName = "GetWeather", Result = "Sunny, 22°C",
-        MessageIndex = 2, Timestamp = pNow,
-    }),
+    EventSerializer.Serialize(
+        new ToolResultReceived {
+            CallId       = "call-1",
+            ToolName     = "GetWeather",
+            Result       = "Sunny, 22°C",
+            MessageIndex = 2,
+            Timestamp    = pNow,
+        }
+    ),
     EventSerializer.Serialize(AsstText("The weather in London is sunny at 22°C.", 3)),
 
     // Turn 2: poor response (empty)
@@ -121,6 +127,7 @@ foreach (var scored in result.ScoredMetrics) {
 }
 
 Console.WriteLine("  Per-metric averages:");
+
 foreach (var (name, value) in result.PerMetricAverage)
     Console.WriteLine($"    {name}: {value:F2}");
 Console.WriteLine($"  Total tokens:  {result.TotalInputTokens ?? 0} in / {result.TotalOutputTokens ?? 0} out");

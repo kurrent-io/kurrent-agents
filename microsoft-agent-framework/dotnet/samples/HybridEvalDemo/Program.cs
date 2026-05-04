@@ -45,19 +45,17 @@ var streamName = StreamNames.AgentSession(sessionId);
 var now        = DateTimeOffset.UtcNow;
 var pNow       = Timestamp.FromDateTimeOffset(now);
 
-UserMessageReceived UserMsg(string content, int idx) =>
-    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
+UserMessageReceived UserMsg(string content, int idx) => new() { Content = content, MessageIndex = idx, Timestamp = pNow };
 
-AssistantTextGenerated AsstText(string content, int idx) =>
-    new() { Content = content, MessageIndex = idx, Timestamp = pNow };
+AssistantTextGenerated AsstText(string content, int idx) => new() { Content = content, MessageIndex = idx, Timestamp = pNow };
 
 Console.WriteLine("========================================");
 Console.WriteLine("Creating synthetic agent session");
 Console.WriteLine($"Stream: {streamName}");
 Console.WriteLine("========================================\n");
 
-var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp = pNow };
-toolCalls.ToolCalls.Add(new ToolCallInfo { CallId = "call-1", ToolName = "GetWeather" });
+var toolCalls = new AssistantToolCallsGenerated { MessageIndex = 1, Timestamp       = pNow };
+toolCalls.ToolCalls.Add(new ToolCallInfo { CallId              = "call-1", ToolName = "GetWeather" });
 
 var events = new List<EventData> {
     Serialize(new SessionStarted { AgentName = "HybridEvalAgent", Model = "test-model", Timestamp = pNow }),
@@ -65,10 +63,12 @@ var events = new List<EventData> {
     // Turn 0 — confident pass: long answer + correct tool call
     Serialize(UserMsg("What's the weather in London?", 0)),
     Serialize(toolCalls),
-    Serialize(new ToolResultReceived {
-        CallId = "call-1", ToolName = "GetWeather", Result = "Sunny, 22°C",
-        MessageIndex = 2, Timestamp = pNow,
-    }),
+    Serialize(
+        new ToolResultReceived {
+            CallId       = "call-1", ToolName = "GetWeather", Result = "Sunny, 22°C",
+            MessageIndex = 2, Timestamp       = pNow,
+        }
+    ),
     Serialize(AsstText("The weather in London is sunny at around 22°C right now.", 3)),
 
     // Turn 1 — confident fail: empty response
@@ -99,10 +99,11 @@ Console.WriteLine($"  Written {events.Count} events\n");
 const string criteria = "Response is helpful, factually correct, and uses tools when appropriate.";
 
 var stats = new ScorerStats();
+
 var hybrid = new HybridEvaluator(
     heuristic: new DemoHeuristicEvaluator(),
     onEscalation: () => stats.Escalated++,
-    onConfident:  () => stats.HeuristicOnly++,
+    onConfident: () => stats.HeuristicOnly++,
     new RelevanceEvaluator(),
     new CoherenceEvaluator()
 );
@@ -133,10 +134,12 @@ foreach (var grouped in result.ScoredMetrics.GroupBy(s => s.Turn!.Index)) {
         var reason = string.IsNullOrEmpty(scored.Reason) ? "" : $" — {scored.Reason}";
         Console.WriteLine($"    {scored.MetricName}: {scored.Score:F2}{rating}{reason}");
     }
+
     Console.WriteLine();
 }
 
 Console.WriteLine("  Per-metric averages:");
+
 foreach (var (name, value) in result.PerMetricAverage)
     Console.WriteLine($"    {name}: {value:F2}");
 Console.WriteLine($"  Heuristic-only:   {stats.HeuristicOnly} turn(s)");

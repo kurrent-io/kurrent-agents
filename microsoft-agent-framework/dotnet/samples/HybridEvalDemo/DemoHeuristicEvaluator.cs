@@ -14,14 +14,14 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
     public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [MetricNameValue];
 
     public ValueTask<EvaluationResult> EvaluateAsync(
-            IEnumerable<ChatMessage>            messages,
-            ChatResponse                        modelResponse,
-            ChatConfiguration?                  chatConfiguration = null,
-            IEnumerable<EvaluationContext>?     additionalContext = null,
-            CancellationToken                   cancellationToken = default
+            IEnumerable<ChatMessage>        messages,
+            ChatResponse                    modelResponse,
+            ChatConfiguration?              chatConfiguration = null,
+            IEnumerable<EvaluationContext>? additionalContext = null,
+            CancellationToken               cancellationToken = default
         ) {
         var assistant = modelResponse.Messages.FirstOrDefault(m => m.Role == ChatRole.Assistant);
-        var output    = assistant?.Text ?? "";
+        var output    = assistant?.Text                                             ?? "";
         var userText  = messages.FirstOrDefault(m => m.Role == ChatRole.User)?.Text ?? "";
 
         var toolCalls   = assistant?.Contents.OfType<FunctionCallContent>().ToArray()   ?? [];
@@ -39,10 +39,12 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
             case < 10:
                 score = 0.5;
                 reasons.Add("very short response");
+
                 break;
             case < 40:
                 score = 0.6;
                 reasons.Add("short response");
+
                 break;
         }
 
@@ -52,7 +54,7 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
         }
 
         var needsTool = userText.Contains("weather", StringComparison.OrdinalIgnoreCase)
-         || userText.Contains("time",                StringComparison.OrdinalIgnoreCase);
+         || userText.Contains("time", StringComparison.OrdinalIgnoreCase);
 
         if (needsTool && toolCalls.Length == 0) {
             score = Math.Min(score, 0.55);
@@ -62,9 +64,9 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
         score = Math.Clamp(score, 0.0, 1.0);
 
         var (rating, failed) = score switch {
-            >= 0.85 => (EvaluationRating.Good,    false),
+            >= 0.85 => (EvaluationRating.Good, false),
             >= 0.5  => (EvaluationRating.Average, false),
-            _       => (EvaluationRating.Poor,    true),
+            _       => (EvaluationRating.Poor, true),
         };
 
         return Done(score, rating, failed, reasons.Count == 0 ? null : string.Join("; ", reasons));
@@ -74,6 +76,7 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
         var metric = new NumericMetric(MetricNameValue, score, reason) {
             Interpretation = new(rating, failed),
         };
+
         return ValueTask.FromResult(new EvaluationResult(metric));
     }
 }

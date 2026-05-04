@@ -39,7 +39,7 @@ public sealed class DemoSessionEvaluator : IEvaluator {
             IEnumerable<EvaluationContext>? additionalContext = null,
             CancellationToken               cancellationToken = default
         ) {
-        var msgList = messages.ToList();
+        var msgList           = messages.ToList();
         var assistantMessages = msgList.Where(m => m.Role == ChatRole.Assistant).ToList();
         var userMessageCount  = msgList.Count(m => m.Role == ChatRole.User);
 
@@ -57,18 +57,25 @@ public sealed class DemoSessionEvaluator : IEvaluator {
         var assistantTextLength = assistantMessages.Sum(m => (m.Text ?? "").Length);
 
         string verdict;
-        if (assistantMessages.Count == 0)              verdict = "stalled";
-        else if (toolCalls == 0 && userMessageCount > 0) verdict = "no tools used";
-        else if (assistantTextLength < 50)             verdict = "thin output";
-        else                                           verdict = "looked productive";
 
-        var ratio = new NumericMetric(ToolUsageRatioMetric, toolUsageRatio,
-            $"{toolCalls} tool call(s) across {userMessageCount} user message(s)") {
-            Interpretation = new(toolUsageRatio switch {
-                0d            => EvaluationRating.Average,  // no tools — context-dependent
-                <= 3d         => EvaluationRating.Good,
-                _             => EvaluationRating.Poor      // > 3 tools per turn — likely thrashing
-            }, failed: false),
+        if (assistantMessages.Count == 0) verdict                = "stalled";
+        else if (toolCalls == 0 && userMessageCount > 0) verdict = "no tools used";
+        else if (assistantTextLength < 50) verdict               = "thin output";
+        else verdict                                             = "looked productive";
+
+        var ratio = new NumericMetric(
+            ToolUsageRatioMetric,
+            toolUsageRatio,
+            $"{toolCalls} tool call(s) across {userMessageCount} user message(s)"
+        ) {
+            Interpretation = new(
+                toolUsageRatio switch {
+                    0d    => EvaluationRating.Average, // no tools — context-dependent
+                    <= 3d => EvaluationRating.Good,
+                    _     => EvaluationRating.Poor // > 3 tools per turn — likely thrashing
+                },
+                failed: false
+            ),
         };
 
         var summary = new StringMetric(OverallVerdictMetric, verdict);

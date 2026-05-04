@@ -13,10 +13,10 @@ namespace HybridEvalDemo;
 /// <see cref="CompositeEvaluator"/> or their own escalation policy.
 /// </summary>
 public sealed class HybridEvaluator(
-        IEvaluator              heuristic,
-        Action                  onEscalation,
-        Action                  onConfident,
-        params IEvaluator[]     escalationEvaluators
+        IEvaluator          heuristic,
+        Action              onEscalation,
+        Action              onConfident,
+        params IEvaluator[] escalationEvaluators
     ) : IEvaluator {
     public IReadOnlyCollection<string> EvaluationMetricNames { get; } = heuristic.EvaluationMetricNames
         .Concat(escalationEvaluators.SelectMany(e => e.EvaluationMetricNames))
@@ -24,19 +24,17 @@ public sealed class HybridEvaluator(
         .ToArray();
 
     public async ValueTask<EvaluationResult> EvaluateAsync(
-            IEnumerable<ChatMessage>            messages,
-            ChatResponse                        modelResponse,
-            ChatConfiguration?                  chatConfiguration = null,
-            IEnumerable<EvaluationContext>?     additionalContext = null,
-            CancellationToken                   cancellationToken = default
+            IEnumerable<ChatMessage>        messages,
+            ChatResponse                    modelResponse,
+            ChatConfiguration?              chatConfiguration = null,
+            IEnumerable<EvaluationContext>? additionalContext = null,
+            CancellationToken               cancellationToken = default
         ) {
         // Materialize once — additionalContext / messages may be enumerated more than once.
         var messageList = messages as IList<ChatMessage> ?? [.. messages];
         var contextList = additionalContext?.ToArray();
 
-        var heuristicResult = await heuristic
-            .EvaluateAsync(messageList, modelResponse, chatConfiguration, contextList, cancellationToken)
-            .ConfigureAwait(false);
+        var heuristicResult = await heuristic.EvaluateAsync(messageList, modelResponse, chatConfiguration, contextList, cancellationToken);
 
         var heuristicScore = heuristicResult.Metrics.Values.OfType<NumericMetric>()
             .Select(m => m.Value ?? 0)
@@ -45,6 +43,7 @@ public sealed class HybridEvaluator(
 
         if (heuristicScore is >= 0.85 or <= 0.15) {
             onConfident();
+
             return heuristicResult;
         }
 
@@ -53,8 +52,8 @@ public sealed class HybridEvaluator(
         var combined = new Dictionary<string, EvaluationMetric>(heuristicResult.Metrics);
 
         foreach (var ev in escalationEvaluators) {
-            var r = await ev.EvaluateAsync(messageList, modelResponse, chatConfiguration, contextList, cancellationToken)
-                .ConfigureAwait(false);
+            var r = await ev.EvaluateAsync(messageList, modelResponse, chatConfiguration, contextList, cancellationToken);
+
             foreach (var (name, metric) in r.Metrics) combined[name] = metric;
         }
 

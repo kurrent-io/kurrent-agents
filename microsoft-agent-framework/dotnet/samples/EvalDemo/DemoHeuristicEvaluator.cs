@@ -14,19 +14,19 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
     public IReadOnlyCollection<string> EvaluationMetricNames { get; } = [MetricNameValue];
 
     public ValueTask<EvaluationResult> EvaluateAsync(
-            IEnumerable<ChatMessage>            messages,
-            ChatResponse                        modelResponse,
-            ChatConfiguration?                  chatConfiguration = null,
-            IEnumerable<EvaluationContext>?     additionalContext = null,
-            CancellationToken                   cancellationToken = default
+            IEnumerable<ChatMessage>        messages,
+            ChatResponse                    modelResponse,
+            ChatConfiguration?              chatConfiguration = null,
+            IEnumerable<EvaluationContext>? additionalContext = null,
+            CancellationToken               cancellationToken = default
         ) {
         var assistant = modelResponse.Messages.FirstOrDefault(m => m.Role == ChatRole.Assistant);
-        var output    = assistant?.Text ?? "";
+        var output    = assistant?.Text                                             ?? "";
         var userText  = messages.FirstOrDefault(m => m.Role == ChatRole.User)?.Text ?? "";
 
-        var toolCalls    = assistant?.Contents.OfType<FunctionCallContent>().ToArray()         ?? [];
-        var toolResults  = assistant?.Contents.OfType<FunctionResultContent>().ToArray()       ?? [];
-        var toolErrors   = toolResults.Count(r => r.Exception is not null);
+        var toolCalls   = assistant?.Contents.OfType<FunctionCallContent>().ToArray()   ?? [];
+        var toolResults = assistant?.Contents.OfType<FunctionResultContent>().ToArray() ?? [];
+        var toolErrors  = toolResults.Count(r => r.Exception is not null);
 
         var score   = 1.0;
         var reasons = new List<string>();
@@ -45,7 +45,7 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
         }
 
         var needsTool = userText.Contains("weather", StringComparison.OrdinalIgnoreCase)
-         || userText.Contains("time",                StringComparison.OrdinalIgnoreCase);
+         || userText.Contains("time", StringComparison.OrdinalIgnoreCase);
 
         if (needsTool && toolCalls.Length == 0) {
             score -= 0.3;
@@ -55,9 +55,9 @@ public sealed class DemoHeuristicEvaluator : IEvaluator {
         score = Math.Clamp(score, 0.0, 1.0);
 
         var (rating, failed) = score switch {
-            >= 0.8 => (EvaluationRating.Good,     false),
-            >= 0.5 => (EvaluationRating.Average,  false),
-            _      => (EvaluationRating.Poor,     true),
+            >= 0.8 => (EvaluationRating.Good, false),
+            >= 0.5 => (EvaluationRating.Average, false),
+            _      => (EvaluationRating.Poor, true),
         };
 
         var metric = new NumericMetric(MetricNameValue, score, reasons.Count == 0 ? null : string.Join("; ", reasons)) {
