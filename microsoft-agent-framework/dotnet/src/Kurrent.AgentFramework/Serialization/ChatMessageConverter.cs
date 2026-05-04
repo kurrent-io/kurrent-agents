@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Google.Protobuf.Collections;
 using Google.Protobuf.WellKnownTypes;
 using Kurrent.Agent.Schema.Events;
 using Microsoft.Extensions.AI;
@@ -14,9 +15,10 @@ public static class ChatMessageConverter {
     /// Decompose a ChatMessage into one or more typed domain events.
     /// </summary>
     public static IEnumerable<object> ToEvents(ChatMessage message, int messageIndex, DateTimeOffset timestamp) {
-        if (message.Role == ChatRole.User)      return ToUserEvents(message, messageIndex, timestamp);
+        if (message.Role == ChatRole.User) return ToUserEvents(message, messageIndex, timestamp);
         if (message.Role == ChatRole.Assistant) return ToAssistantEvents(message, messageIndex, timestamp);
-        if (message.Role == ChatRole.Tool)      return ToToolEvents(message, messageIndex, timestamp);
+        if (message.Role == ChatRole.Tool) return ToToolEvents(message, messageIndex, timestamp);
+
         return [];
     }
 
@@ -37,10 +39,11 @@ public static class ChatMessageConverter {
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (text    is { Length: > 0 } t) evt.Content    = t;
-            if (msgId   is not null)          evt.MessageId  = msgId;
-            if (author  is not null)          evt.AuthorName = author;
-            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (text is { Length: > 0 } t) evt.Content = t;
+            if (msgId is not null) evt.MessageId       = msgId;
+            if (author is not null) evt.AuthorName     = author;
+            if (created is { } c) evt.CreatedAt        = Timestamp.FromDateTimeOffset(c);
+
             yield return evt;
         }
 
@@ -64,10 +67,11 @@ public static class ChatMessageConverter {
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
             evt.ToolCalls.AddRange(functionCalls.Select(BuildToolCallInfo));
-            if (text    is { Length: > 0 } t) evt.Content    = t;
-            if (msgId   is not null)          evt.MessageId  = msgId;
-            if (author  is not null)          evt.AuthorName = author;
-            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (text is { Length: > 0 }) evt.Content = text;
+            if (msgId is not null) evt.MessageId     = msgId;
+            if (author is not null) evt.AuthorName   = author;
+            if (created is { } c) evt.CreatedAt      = Timestamp.FromDateTimeOffset(c);
+
             yield return evt;
         } else if (text is { Length: > 0 } || approvals.Count > 0) {
             // Emit AssistantTextGenerated as the message_index carrier, even when text is empty
@@ -77,10 +81,11 @@ public static class ChatMessageConverter {
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (text    is { Length: > 0 } t) evt.Content    = t;
-            if (msgId   is not null)          evt.MessageId  = msgId;
-            if (author  is not null)          evt.AuthorName = author;
-            if (created is { } c)             evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (text is { Length: > 0 }) evt.Content = text;
+            if (msgId is not null) evt.MessageId     = msgId;
+            if (author is not null) evt.AuthorName   = author;
+            if (created is { } c) evt.CreatedAt      = Timestamp.FromDateTimeOffset(c);
+
             yield return evt;
         }
 
@@ -100,10 +105,11 @@ public static class ChatMessageConverter {
                 MessageIndex = messageIndex,
                 Timestamp    = Timestamp.FromDateTimeOffset(timestamp),
             };
-            if (result.Result?.ToString() is { } r) evt.Result     = r;
-            if (msgId   is not null)                evt.MessageId  = msgId;
-            if (author  is not null)                evt.AuthorName = author;
-            if (created is { } c)                   evt.CreatedAt  = Timestamp.FromDateTimeOffset(c);
+            if (result.Result?.ToString() is { } r) evt.Result = r;
+            if (msgId is not null) evt.MessageId               = msgId;
+            if (author is not null) evt.AuthorName             = author;
+            if (created is { } c) evt.CreatedAt                = Timestamp.FromDateTimeOffset(c);
+
             yield return evt;
         }
     }
@@ -113,30 +119,34 @@ public static class ChatMessageConverter {
         // wraps a FunctionCallContent. If a future MAF version emits a different
         // ToolCallContent subtype here, fail loudly rather than silently emit a
         // schema-invalid event with an empty extensions.afw struct.
-        var fc  = (FunctionCallContent)ta.ToolCall;
+        var fc = (FunctionCallContent)ta.ToolCall;
+
         var evt = new InterruptIssued {
             RequestId = fc.CallId ?? "",
             Kind      = "approval",
             Prompt    = BuildApprovalPrompt(fc),
             Timestamp = Timestamp.FromDateTimeOffset(ts),
         };
-        if (!string.IsNullOrEmpty(fc.Name))  evt.ToolName  = fc.Name;
-        if (carrier.MessageId is { } mid)    evt.MessageId = mid;
+        if (!string.IsNullOrEmpty(fc.Name)) evt.ToolName = fc.Name;
+        if (carrier.MessageId is { } mid) evt.MessageId  = mid;
         evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, ta.RequestId);
+
         return evt;
     }
 
     static InterruptResolved BuildInterruptResolved(ToolApprovalResponseContent tr, ChatMessage carrier, DateTimeOffset ts) {
         // Hard cast: MAF's approval flow always wraps a FunctionCallContent here. See BuildInterruptIssued for rationale.
-        var fc  = (FunctionCallContent)tr.ToolCall;
+        var fc = (FunctionCallContent)tr.ToolCall;
+
         var evt = new InterruptResolved {
             RequestId = fc.CallId ?? "",
             Outcome   = tr.Approved ? "allow" : "deny",
             Timestamp = Timestamp.FromDateTimeOffset(ts),
         };
-        if (carrier.MessageId is { } mid)              evt.MessageId = mid;
-        if (!string.IsNullOrWhiteSpace(tr.Reason))     evt.Response  = tr.Reason;
+        if (carrier.MessageId is { } mid) evt.MessageId         = mid;
+        if (!string.IsNullOrWhiteSpace(tr.Reason)) evt.Response = tr.Reason;
         evt.Extensions["afw"] = BuildAfwInterruptExtension(fc, tr.RequestId);
+
         return evt;
     }
 
@@ -145,62 +155,70 @@ public static class ChatMessageConverter {
     /// Returns null when the group contains no chat-shaped events.
     /// </summary>
     public static ChatMessage? MergeIntoChatMessage(
-        IReadOnlyList<object> events,
-        IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId) {
-
+            IReadOnlyList<object>                        events,
+            IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId
+        ) {
         if (events.Count == 0) return null;
 
         var role = DetermineRole(events);
+
         if (role is null) return null;
 
-        var contents   = new List<AIContent>();
-        string? msgId  = null;
-        string? author = null;
-        DateTimeOffset? created = null;
+        var             contents = new List<AIContent>();
+        string?         msgId    = null;
+        string?         author   = null;
+        DateTimeOffset? created  = null;
 
         foreach (var ev in events) {
             switch (ev) {
                 case UserMessageReceived u:
                     if (u.HasContent && !string.IsNullOrEmpty(u.Content)) contents.Add(new TextContent(u.Content));
-                    msgId   ??= u.HasMessageId  ? u.MessageId  : null;
+                    msgId   ??= u.HasMessageId ? u.MessageId : null;
                     author  ??= u.HasAuthorName ? u.AuthorName : null;
                     created ??= u.CreatedAt?.ToDateTimeOffset();
+
                     break;
 
                 case AssistantTextGenerated at:
                     if (at.HasContent && !string.IsNullOrEmpty(at.Content)) contents.Add(new TextContent(at.Content));
-                    msgId   ??= at.HasMessageId  ? at.MessageId  : null;
+                    msgId   ??= at.HasMessageId ? at.MessageId : null;
                     author  ??= at.HasAuthorName ? at.AuthorName : null;
                     created ??= at.CreatedAt?.ToDateTimeOffset();
+
                     break;
 
                 case AssistantToolCallsGenerated ac:
                     if (ac.HasContent && !string.IsNullOrEmpty(ac.Content)) contents.Add(new TextContent(ac.Content));
+
                     contents.AddRange(
                         from tc in ac.ToolCalls
                         let args = StructToArguments(tc.Arguments)
                         select new FunctionCallContent(tc.CallId, tc.ToolName, args)
                     );
-                    msgId   ??= ac.HasMessageId  ? ac.MessageId  : null;
+                    msgId   ??= ac.HasMessageId ? ac.MessageId : null;
                     author  ??= ac.HasAuthorName ? ac.AuthorName : null;
                     created ??= ac.CreatedAt?.ToDateTimeOffset();
+
                     break;
 
                 case ToolResultReceived tr:
                     contents.Add(new FunctionResultContent(tr.CallId, tr.HasResult ? tr.Result : null));
-                    msgId   ??= tr.HasMessageId  ? tr.MessageId  : null;
+                    msgId   ??= tr.HasMessageId ? tr.MessageId : null;
                     author  ??= tr.HasAuthorName ? tr.AuthorName : null;
                     created ??= tr.CreatedAt?.ToDateTimeOffset();
+
                     break;
 
                 case InterruptIssued ii:
                     contents.Add(BuildApprovalRequestContent(ii));
                     msgId ??= ii.HasMessageId ? ii.MessageId : null;
+
                     break;
 
                 case InterruptResolved ir:
                     if (BuildApprovalResponseContent(ir, issuedByRequestId) is { } far) contents.Add(far);
                     msgId ??= ir.HasMessageId ? ir.MessageId : null;
+
                     break;
             }
         }
@@ -228,22 +246,24 @@ public static class ChatMessageConverter {
                     return ChatRole.Tool;
             }
         }
+
         return null;
     }
 
     static ToolApprovalRequestContent BuildApprovalRequestContent(InterruptIssued ii) {
         var (fcCallId, fcName, fcArgs) = ReadProposedCall(ii.Extensions, ii.RequestId, ii.HasToolName ? ii.ToolName : null);
-        var fc                          = new FunctionCallContent(fcCallId, fcName ?? "", fcArgs);
-        var pairId                      = ReadApprovalPairId(ii.Extensions) ?? ii.RequestId;
-        return new ToolApprovalRequestContent(pairId, fc);
+        var fc     = new FunctionCallContent(fcCallId, fcName ?? "", fcArgs);
+        var pairId = ReadApprovalPairId(ii.Extensions) ?? ii.RequestId;
+
+        return new(pairId, fc);
     }
 
     static ToolApprovalResponseContent? BuildApprovalResponseContent(
-        InterruptResolved ir,
-        IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId) {
-
-        string? toolName;
-        string callId;
+            InterruptResolved                            ir,
+            IReadOnlyDictionary<string, InterruptIssued> issuedByRequestId
+        ) {
+        string?                       toolName;
+        string                        callId;
         IDictionary<string, object?>? args;
 
         if (issuedByRequestId.TryGetValue(ir.RequestId, out var ii)) {
@@ -260,53 +280,65 @@ public static class ChatMessageConverter {
         var fc     = new FunctionCallContent(callId, toolName ?? "", args);
         var pairId = ReadApprovalPairId(ir.Extensions) ?? ir.RequestId;
         var resp   = new ToolApprovalResponseContent(pairId, ir.Outcome == "allow", fc);
+
         if (ir.HasResponse) resp.Reason = ir.Response;
+
         return resp;
     }
 
     static (string CallId, string? Name, IDictionary<string, object?>? Args) ReadProposedCall(
-        Google.Protobuf.Collections.MapField<string, Struct> extensions,
-        string fallbackCallId,
-        string? fallbackName) {
+            MapField<string, Struct> extensions,
+            string                   fallbackCallId,
+            string?                  fallbackName
+        ) {
         return TryReadProposedCall(extensions, fallbackCallId, out var c, out var n, out var a)
             ? (c, n, a)
             : (fallbackCallId, fallbackName, null);
     }
 
     static bool TryReadProposedCall(
-        Google.Protobuf.Collections.MapField<string, Struct> extensions,
-        string fallbackCallId,
-        out string callId,
-        out string? toolName,
-        out IDictionary<string, object?>? arguments) {
-
+            MapField<string, Struct>          extensions,
+            string                            fallbackCallId,
+            out string                        callId,
+            out string?                       toolName,
+            out IDictionary<string, object?>? arguments
+        ) {
         callId    = fallbackCallId;
         toolName  = null;
         arguments = null;
 
         if (!extensions.TryGetValue("afw", out var afw)) return false;
+
         if (!afw.Fields.TryGetValue("interrupt", out var interruptValue)
-            || interruptValue.KindCase != Value.KindOneofCase.StructValue) return false;
+         || interruptValue.KindCase != Value.KindOneofCase.StructValue) return false;
+
         var interrupt = interruptValue.StructValue;
+
         if (!interrupt.Fields.TryGetValue("proposed_call", out var proposedValue)
-            || proposedValue.KindCase != Value.KindOneofCase.StructValue) return false;
+         || proposedValue.KindCase != Value.KindOneofCase.StructValue) return false;
+
         var proposed = proposedValue.StructValue;
 
-        if (proposed.Fields.TryGetValue("id",   out var idVal)   && idVal.KindCase   == Value.KindOneofCase.StringValue) callId   = idVal.StringValue;
+        if (proposed.Fields.TryGetValue("id", out var idVal)     && idVal.KindCase   == Value.KindOneofCase.StringValue) callId   = idVal.StringValue;
         if (proposed.Fields.TryGetValue("name", out var nameVal) && nameVal.KindCase == Value.KindOneofCase.StringValue) toolName = nameVal.StringValue;
+
         if (proposed.Fields.TryGetValue("arguments", out var argsVal) && argsVal.KindCase == Value.KindOneofCase.StructValue) {
             arguments = StructToArguments(argsVal.StructValue);
         }
+
         return true;
     }
 
     static string? ReadApprovalPairId(Google.Protobuf.Collections.MapField<string, Struct> extensions) {
         if (!extensions.TryGetValue("afw", out var afw)) return null;
+
         if (!afw.Fields.TryGetValue("interrupt", out var interruptValue)
-            || interruptValue.KindCase != Value.KindOneofCase.StructValue) return null;
+         || interruptValue.KindCase != Value.KindOneofCase.StructValue) return null;
+
         var interrupt = interruptValue.StructValue;
+
         return interrupt.Fields.TryGetValue("approval_pair_id", out var v)
-            && v.KindCase == Value.KindOneofCase.StringValue
+         && v.KindCase == Value.KindOneofCase.StringValue
                 ? v.StringValue
                 : null;
     }
@@ -325,14 +357,14 @@ public static class ChatMessageConverter {
 
     static ChatMessage FromUser(UserMessageReceived e) =>
         new(ChatRole.User, e.HasContent ? e.Content : null) {
-            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            MessageId  = e.HasMessageId ? e.MessageId : null,
             AuthorName = e.HasAuthorName ? e.AuthorName : null,
             CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
 
     static ChatMessage FromAssistantText(AssistantTextGenerated e) =>
         new(ChatRole.Assistant, e.HasContent ? e.Content : null) {
-            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            MessageId  = e.HasMessageId ? e.MessageId : null,
             AuthorName = e.HasAuthorName ? e.AuthorName : null,
             CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
@@ -351,7 +383,7 @@ public static class ChatMessageConverter {
         );
 
         return new(ChatRole.Assistant, contents) {
-            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            MessageId  = e.HasMessageId ? e.MessageId : null,
             AuthorName = e.HasAuthorName ? e.AuthorName : null,
             CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
@@ -361,7 +393,7 @@ public static class ChatMessageConverter {
         var result = new FunctionResultContent(e.CallId, e.HasResult ? e.Result : null);
 
         return new(ChatRole.Tool, [result]) {
-            MessageId  = e.HasMessageId  ? e.MessageId  : null,
+            MessageId  = e.HasMessageId ? e.MessageId : null,
             AuthorName = e.HasAuthorName ? e.AuthorName : null,
             CreatedAt  = e.CreatedAt?.ToDateTimeOffset(),
         };
@@ -372,10 +404,12 @@ public static class ChatMessageConverter {
             CallId   = fc.CallId ?? "",
             ToolName = fc.Name   ?? "",
         };
+
         if (fc.Arguments is { Count: > 0 }) {
             // Free-form JSON arguments fold into the canonical Struct shape.
             info.Arguments = JsonElementToStruct(JsonSerializer.SerializeToElement(fc.Arguments));
         }
+
         return info;
     }
 
@@ -393,18 +427,19 @@ public static class ChatMessageConverter {
         Value.KindOneofCase.BoolValue   => value.BoolValue,
         Value.KindOneofCase.NumberValue => value.NumberValue,
         Value.KindOneofCase.StringValue => value.StringValue,
-        Value.KindOneofCase.StructValue => value.StructValue.Fields
-            .ToDictionary(kv => kv.Key, kv => (object?)ValueToObject(kv.Value)),
-        Value.KindOneofCase.ListValue   => value.ListValue.Values
-            .Select(ValueToObject).ToList(),
-        _ => null,
+        Value.KindOneofCase.StructValue => value.StructValue.Fields.ToDictionary(kv => kv.Key, kv => ValueToObject(kv.Value)),
+        Value.KindOneofCase.ListValue   => value.ListValue.Values.Select(ValueToObject).ToList(),
+        _                               => null,
     };
 
     internal static Struct JsonElementToStruct(JsonElement element) {
         var s = new Struct();
+
         if (element.ValueKind != JsonValueKind.Object) return s;
+
         foreach (var prop in element.EnumerateObject())
             s.Fields[prop.Name] = JsonElementToValue(prop.Value);
+
         return s;
     }
 
@@ -422,20 +457,29 @@ public static class ChatMessageConverter {
         var proposed = new Struct();
         proposed.Fields["id"]   = Value.ForString(fc.CallId ?? "");
         proposed.Fields["name"] = Value.ForString(fc.Name   ?? "");
+
         if (fc.Arguments is { Count: > 0 }) {
             proposed.Fields["arguments"] = Value.ForStruct(JsonElementToStruct(JsonSerializer.SerializeToElement(fc.Arguments)));
         } else {
             proposed.Fields["arguments"] = Value.ForStruct(new Struct());
         }
 
-        var interrupt = new Struct();
-        interrupt.Fields["proposed_call"] = Value.ForStruct(proposed);
+        var interrupt = new Struct {
+            Fields = {
+                ["proposed_call"] = Value.ForStruct(proposed)
+            }
+        };
+
         if (!string.IsNullOrEmpty(approvalPairId) && approvalPairId != fc.CallId) {
             interrupt.Fields["approval_pair_id"] = Value.ForString(approvalPairId);
         }
 
-        var afw = new Struct();
-        afw.Fields["interrupt"] = Value.ForStruct(interrupt);
+        var afw = new Struct {
+            Fields = {
+                ["interrupt"] = Value.ForStruct(interrupt)
+            }
+        };
+
         return afw;
     }
 
@@ -446,22 +490,25 @@ public static class ChatMessageConverter {
         var head = $"Approve calling {name}";
 
         var withoutArgs = $"{head}?";
+
         if (fc.Arguments is not { Count: > 0 }) {
-            if (withoutArgs.Length > ApprovalPromptMaxLength) return withoutArgs[..ApprovalPromptMaxLength];
-            return withoutArgs;
+            return withoutArgs.Length > ApprovalPromptMaxLength ? withoutArgs[..ApprovalPromptMaxLength] : withoutArgs;
         }
 
-        var argsRendered = string.Join(", ", fc.Arguments.Select(kv =>
-            $"{kv.Key}={JsonSerializer.Serialize(kv.Value)}"));
+        var argsRendered = string.Join(
+            ", ",
+            fc.Arguments.Select(kv => $"{kv.Key}={JsonSerializer.Serialize(kv.Value)}")
+        );
 
         var full = $"{head}({argsRendered})?";
+
         if (full.Length <= ApprovalPromptMaxLength) return full;
 
         if (withoutArgs.Length >= ApprovalPromptMaxLength) return withoutArgs[..ApprovalPromptMaxLength];
 
         // Truncate args, append … then close.
         var available = ApprovalPromptMaxLength - $"{head}(…)?".Length;
-        if (available <= 0) return withoutArgs;
-        return $"{head}({argsRendered[..available]}…)?";
+
+        return available <= 0 ? withoutArgs : $"{head}({argsRendered[..available]}…)?";
     }
 }

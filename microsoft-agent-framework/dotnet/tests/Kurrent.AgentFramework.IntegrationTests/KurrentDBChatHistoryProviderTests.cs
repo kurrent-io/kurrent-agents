@@ -19,9 +19,9 @@ namespace Kurrent.AgentFramework.IntegrationTests;
 public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
     [Test]
     public async Task EndSessionAsync_AppendsSessionEndedToSessionStream() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var provider     = new KurrentDBChatHistoryProvider(client, sessionId);
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
+        var             provider  = new KurrentDBChatHistoryProvider(client, sessionId);
 
         await provider.EndSessionAsync("completed");
 
@@ -37,9 +37,9 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
     [Test]
     public async Task EndSessionAsync_WithNullReason_StillAppends() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var provider     = new KurrentDBChatHistoryProvider(client, sessionId);
+        await using var client    = db.CreateClient();
+        var             sessionId = Guid.NewGuid().ToString("N");
+        var             provider  = new KurrentDBChatHistoryProvider(client, sessionId);
 
         await provider.EndSessionAsync();
 
@@ -66,25 +66,31 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
     [Test]
     public async Task ReadNextMessageIndex_OnMissingStream_ReturnsZero() {
-        using var client = db.CreateClient();
+        await using var client = db.CreateClient();
 
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(
-            client, Guid.NewGuid().ToString("N"));
+            client,
+            Guid.NewGuid().ToString("N")
+        );
 
         await Assert.That(next).IsEqualTo(0);
     }
 
     [Test]
     public async Task ReadNextMessageIndex_ReturnsHighestChatIndexPlusOne() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamNames.AgentSession(sessionId);
+        await using var client     = db.CreateClient();
+        var             sessionId  = Guid.NewGuid().ToString("N");
+        var             streamName = StreamNames.AgentSession(sessionId);
 
-        await client.AppendToStreamAsync(streamName, StreamState.NoStream, [
-            EventSerializer.Serialize(UserMsg("q", "m-1", 0)),
-            EventSerializer.Serialize(AsstText("a", "m-2", 1)),
-            EventSerializer.Serialize(UserMsg("q2", "m-3", 2)),
-        ]);
+        await client.AppendToStreamAsync(
+            streamName,
+            StreamState.NoStream,
+            [
+                EventSerializer.Serialize(UserMsg("q", "m-1", 0)),
+                EventSerializer.Serialize(AsstText("a", "m-2", 1)),
+                EventSerializer.Serialize(UserMsg("q2", "m-3", 2)),
+            ]
+        );
 
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(client, sessionId);
 
@@ -94,15 +100,19 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
     [Test]
     public async Task ReadNextMessageIndex_IgnoresNonChatEvents() {
         // SessionStarted / SessionEnded have no message_index; they must not reset the counter.
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamNames.AgentSession(sessionId);
+        await using var client     = db.CreateClient();
+        var             sessionId  = Guid.NewGuid().ToString("N");
+        var             streamName = StreamNames.AgentSession(sessionId);
 
-        await client.AppendToStreamAsync(streamName, StreamState.NoStream, [
-            EventSerializer.Serialize(new SessionStarted { AgentName = "a", Model = "m", Timestamp = IndexPts }),
-            EventSerializer.Serialize(UserMsg("hi", "m-1", 5)),
-            EventSerializer.Serialize(new SessionEnded { Reason = "done", Timestamp = IndexPts }),
-        ]);
+        await client.AppendToStreamAsync(
+            streamName,
+            StreamState.NoStream,
+            [
+                EventSerializer.Serialize(new SessionStarted { AgentName = "a", Model = "m", Timestamp = IndexPts }),
+                EventSerializer.Serialize(UserMsg("hi", "m-1", 5)),
+                EventSerializer.Serialize(new SessionEnded { Reason = "done", Timestamp = IndexPts }),
+            ]
+        );
 
         var next = await KurrentDBChatHistoryProvider.ReadNextMessageIndexAsync(client, sessionId);
 
@@ -111,18 +121,25 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
     [Test]
     public async Task ApprovalRequestRoundTripsThroughKurrentDB() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamNames.AgentSession(sessionId);
-        var now          = DateTimeOffset.UtcNow;
+        await using var client     = db.CreateClient();
+        var             sessionId  = Guid.NewGuid().ToString("N");
+        var             streamName = StreamNames.AgentSession(sessionId);
+        var             now        = DateTimeOffset.UtcNow;
 
-        var fc       = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
         var approval = new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc);
-        var carrier  = new ChatMessage(ChatRole.Assistant, [
-            new TextContent("Drafting…"),
-            approval,
-        ]) { MessageId = "asst-msg-1" };
+
+        var carrier = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new TextContent("Drafting…"),
+                approval,
+            ]
+        ) { MessageId = "asst-msg-1" };
 
         var events = ChatMessageConverter.ToEvents(carrier, messageIndex: 0, timestamp: now)
             .Select(e => EventSerializer.Serialize(e))
@@ -131,41 +148,58 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
         // Read back via the converter path the provider uses internally — same grouping, same merge.
         var resolved = new List<object>();
+
         await foreach (var re in client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start)) {
             if (EventSerializer.Deserialize(re) is { } e) resolved.Add(e);
         }
 
-        var issued   = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
-        var rebuilt  = ChatMessageConverter.MergeIntoChatMessage(resolved, issued);
+        var issued  = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+        var rebuilt = ChatMessageConverter.MergeIntoChatMessage(resolved, issued);
 
         await Assert.That(rebuilt).IsNotNull();
         await Assert.That(rebuilt!.Role).IsEqualTo(ChatRole.Assistant);
         await Assert.That(rebuilt.MessageId).IsEqualTo("asst-msg-1");
         await Assert.That(rebuilt.Contents.OfType<TextContent>().Single().Text).IsEqualTo("Drafting…");
-        await Assert.That(((FunctionCallContent)rebuilt.Contents.OfType<ToolApprovalRequestContent>().Single()
-            .ToolCall).Name).IsEqualTo("send_email");
+
+        await Assert.That(
+                ((FunctionCallContent)rebuilt.Contents.OfType<ToolApprovalRequestContent>()
+                    .Single()
+                    .ToolCall).Name
+            )
+            .IsEqualTo("send_email");
     }
 
     [Test]
     public async Task ReadNextMessageIndex_AfterApprovalOnlyTurns_ContinuesCorrectly() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamNames.AgentSession(sessionId);
-        var now          = DateTimeOffset.UtcNow;
+        using var client     = db.CreateClient();
+        var       sessionId  = Guid.NewGuid().ToString("N");
+        var       streamName = StreamNames.AgentSession(sessionId);
+        var       now        = DateTimeOffset.UtcNow;
 
-        var fc = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
 
         // Index 0: regular user text.
         var turn0 = new ChatMessage(ChatRole.User, "Send the email.") { MessageId = "user-0" };
+
         // Index 1: assistant approval-only (no text).
-        var turn1 = new ChatMessage(ChatRole.Assistant, [
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-1" };
+        var turn1 = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-1" };
+
         // Index 2: user approval-only response.
-        var turn2 = new ChatMessage(ChatRole.User, [
-            new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc),
-        ]) { MessageId = "user-2" };
+        var turn2 = new ChatMessage(
+            ChatRole.User,
+            [
+                new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc),
+            ]
+        ) { MessageId = "user-2" };
 
         var events = ChatMessageConverter.ToEvents(turn0, messageIndex: 0, timestamp: now)
             .Concat(ChatMessageConverter.ToEvents(turn1, messageIndex: 1, timestamp: now))
@@ -182,19 +216,30 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
     [Test]
     public async Task ApprovalResponseRoundTripsThroughKurrentDB() {
-        using var client = db.CreateClient();
-        var sessionId    = Guid.NewGuid().ToString("N");
-        var streamName   = StreamNames.AgentSession(sessionId);
-        var now          = DateTimeOffset.UtcNow;
+        await using var client     = db.CreateClient();
+        var             sessionId  = Guid.NewGuid().ToString("N");
+        var             streamName = StreamNames.AgentSession(sessionId);
+        var             now        = DateTimeOffset.UtcNow;
 
-        var fc       = new FunctionCallContent("call-1", "send_email",
-            new Dictionary<string, object?> { ["to"] = "alice" });
-        var assistant = new ChatMessage(ChatRole.Assistant, [
-            new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
-        ]) { MessageId = "asst-msg-1" };
-        var userMsg = new ChatMessage(ChatRole.User, [
-            new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) { Reason = "Looks good." },
-        ]) { MessageId = "user-msg-2" };
+        var fc = new FunctionCallContent(
+            "call-1",
+            "send_email",
+            new Dictionary<string, object?> { ["to"] = "alice" }
+        );
+
+        var assistant = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new ToolApprovalRequestContent(requestId: "call-1", toolCall: fc),
+            ]
+        ) { MessageId = "asst-msg-1" };
+
+        var userMsg = new ChatMessage(
+            ChatRole.User,
+            [
+                new ToolApprovalResponseContent(requestId: "call-1", approved: true, toolCall: fc) { Reason = "Looks good." },
+            ]
+        ) { MessageId = "user-msg-2" };
 
         var events = ChatMessageConverter.ToEvents(assistant, messageIndex: 0, timestamp: now)
             .Concat(ChatMessageConverter.ToEvents(userMsg, messageIndex: 1, timestamp: now))
@@ -204,6 +249,7 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
 
         // Read back via the same converter path the provider uses internally.
         var resolved = new List<object>();
+
         await foreach (var re in client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start)) {
             if (EventSerializer.Deserialize(re) is { } e) resolved.Add(e);
         }
@@ -212,17 +258,19 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
         var groups        = new List<List<object>>();
         var byMessageId   = new Dictionary<string, int>();
         var issuedByReqId = resolved.OfType<InterruptIssued>().ToDictionary(e => e.RequestId);
+
         foreach (var ev in resolved) {
             string? key = ev switch {
-                UserMessageReceived         x => x.HasMessageId ? x.MessageId : null,
-                AssistantTextGenerated      x => x.HasMessageId ? x.MessageId : null,
+                UserMessageReceived x         => x.HasMessageId ? x.MessageId : null,
+                AssistantTextGenerated x      => x.HasMessageId ? x.MessageId : null,
                 AssistantToolCallsGenerated x => x.HasMessageId ? x.MessageId : null,
-                AssistantThinkingGenerated  x => x.HasMessageId ? x.MessageId : null,
-                ToolResultReceived          x => x.HasMessageId ? x.MessageId : null,
-                InterruptIssued             x => x.HasMessageId ? x.MessageId : null,
-                InterruptResolved           x => x.HasMessageId ? x.MessageId : null,
+                AssistantThinkingGenerated x  => x.HasMessageId ? x.MessageId : null,
+                ToolResultReceived x          => x.HasMessageId ? x.MessageId : null,
+                InterruptIssued x             => x.HasMessageId ? x.MessageId : null,
+                InterruptResolved x           => x.HasMessageId ? x.MessageId : null,
                 _                             => null,
             };
+
             if (key is { } k && byMessageId.TryGetValue(k, out var gi)) groups[gi].Add(ev);
             else {
                 groups.Add([ev]);

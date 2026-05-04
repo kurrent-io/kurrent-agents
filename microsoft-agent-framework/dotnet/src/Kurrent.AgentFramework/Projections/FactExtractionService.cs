@@ -56,8 +56,10 @@ public sealed partial class FactExtractionService(
                         throw;
                     } catch (Exception ex) {
                         logger.LogWarning(
-                            ex, "Fact extraction failed for {Stream}/{EventNumber}, nacking for retry",
-                            resolvedEvent.Event.EventStreamId, resolvedEvent.Event.EventNumber
+                            ex,
+                            "Fact extraction failed for {Stream}/{EventNumber}, nacking for retry",
+                            resolvedEvent.Event.EventStreamId,
+                            resolvedEvent.Event.EventNumber
                         );
                         await subscription.Nack(PersistentSubscriptionNakEventAction.Retry, ex.Message, resolvedEvent).ConfigureAwait(false);
                     }
@@ -84,6 +86,7 @@ public sealed partial class FactExtractionService(
     async Task EnsureSubscription(CancellationToken ct) {
         try {
             await client.GetInfoToAllAsync(options.GroupName, cancellationToken: ct).ConfigureAwait(false);
+
             return;
         } catch (PersistentSubscriptionNotFoundException) {
             // fall through to create
@@ -93,11 +96,12 @@ public sealed partial class FactExtractionService(
 
         try {
             await client.CreateToAllAsync(
-                options.GroupName,
-                StreamFilter.Prefix(StreamPrefix),
-                settings,
-                cancellationToken: ct
-            ).ConfigureAwait(false);
+                    options.GroupName,
+                    StreamFilter.Prefix(StreamPrefix),
+                    settings,
+                    cancellationToken: ct
+                )
+                .ConfigureAwait(false);
             LogCreatedPersistentSubscriptionGroup(options.GroupName, StreamPrefix);
         } catch (RpcException ex) when (ex.StatusCode == StatusCode.AlreadyExists) {
             // Another instance created it concurrently — safe to proceed.

@@ -17,9 +17,9 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task CreateCheckpoint_ReturnsInfoWithSessionAndCheckpointId() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
         var info = await store.CreateCheckpointAsync(sessionId, Payload(new { step = 1 }));
 
@@ -29,9 +29,9 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveCheckpoint_ReturnsOriginalPayload() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
         var payload = Payload(new { step = 42, label = "midway" });
         var info    = await store.CreateCheckpointAsync(sessionId, payload);
@@ -44,9 +44,9 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveCheckpoint_UnknownId_ThrowsKeyNotFound() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
         // Stream must exist for the scan to reach the "not found among events" path.
         await store.CreateCheckpointAsync(sessionId, Payload(new { step = 1 }));
@@ -59,9 +59,9 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveIndex_ReturnsAllCheckpointsForSession() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
         var a = await store.CreateCheckpointAsync(sessionId, Payload(new { step = 1 }));
         var b = await store.CreateCheckpointAsync(sessionId, Payload(new { step = 2 }));
@@ -77,9 +77,9 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveIndex_WithParent_ReturnsOnlyChildrenOfThatParent() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
         var root    = await store.CreateCheckpointAsync(sessionId, Payload(new { step = "root" }));
         var childA  = await store.CreateCheckpointAsync(sessionId, Payload(new { step = "a" }), parent: root);
@@ -98,8 +98,8 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveIndex_UnknownSession_ReturnsEmpty() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
+        await using var client = db.CreateClient();
+        var             store  = new KurrentDBCheckpointStore(client);
 
         var empty = await store.RetrieveIndexAsync(NewSessionId());
 
@@ -108,13 +108,13 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task CreateCheckpoint_SeparateSessions_AreIsolated() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionA     = NewSessionId();
-        var sessionB     = NewSessionId();
+        await using var client   = db.CreateClient();
+        var             store    = new KurrentDBCheckpointStore(client);
+        var             sessionA = NewSessionId();
+        var             sessionB = NewSessionId();
 
         var a = await store.CreateCheckpointAsync(sessionA, Payload(new { who = "a" }));
-        _     = await store.CreateCheckpointAsync(sessionB, Payload(new { who = "b" }));
+        _ = await store.CreateCheckpointAsync(sessionB, Payload(new { who = "b" }));
 
         var indexA = (await store.RetrieveIndexAsync(sessionA)).ToList();
 
@@ -124,15 +124,17 @@ public class KurrentDBCheckpointStoreTests(KurrentDbFixture db) {
 
     [Test]
     public async Task RetrieveCheckpoint_PreservesComplexJsonStructure() {
-        using var client = db.CreateClient();
-        var store        = new KurrentDBCheckpointStore(client);
-        var sessionId    = NewSessionId();
+        await using var client    = db.CreateClient();
+        var             store     = new KurrentDBCheckpointStore(client);
+        var             sessionId = NewSessionId();
 
-        var nested = Payload(new {
-            counter = 7,
-            items   = new[] { "x", "y", "z" },
-            inner   = new { name = "deep", flag = true },
-        });
+        var nested = Payload(
+            new {
+                counter = 7,
+                items   = (string[])["x", "y", "z"],
+                inner   = new { name = "deep", flag = true },
+            }
+        );
 
         var info      = await store.CreateCheckpointAsync(sessionId, nested);
         var retrieved = await store.RetrieveCheckpointAsync(sessionId, info);

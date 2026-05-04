@@ -104,6 +104,7 @@ public class AgentMemoryContextProviderTests {
         var result = AgentMemoryContextProvider.BuildMemoryInstructions(["multi\nline\nfact"])!;
 
         await Assert.That(result).Contains("- multi line fact");
+
         var bulletLineCount = result
             .Split('\n')
             .Count(line => line.StartsWith("- "));

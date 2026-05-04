@@ -83,19 +83,24 @@ public sealed class EvalRunner(KurrentDBClient client) {
         var stream = StreamNames.EvalRun(evalId);
         var now    = DateTimeOffset.UtcNow;
 
-        await AppendAsync(stream, new EvalRunStarted {
-            SessionId = sessionId,
-            Scorer    = scorerName,
-            Criteria  = criteria,
-            Timestamp = Timestamp.FromDateTimeOffset(now),
-        }, ct).ConfigureAwait(false);
+        await AppendAsync(
+                stream,
+                new EvalRunStarted {
+                    SessionId = sessionId,
+                    Scorer    = scorerName,
+                    Criteria  = criteria,
+                    Timestamp = Timestamp.FromDateTimeOffset(now),
+                },
+                ct
+            )
+            .ConfigureAwait(false);
 
         var scoredMetrics = new List<ScoredMetric>();
         var sums          = new Dictionary<string, (double Sum, int Count)>();
 
         foreach (var turn in turns) {
             var (messages, response) = ToChat(turn);
-            var context              = additionalContext?.Invoke(turn);
+            var context = additionalContext?.Invoke(turn);
 
             var evalResult = await evaluator
                 .EvaluateAsync(messages, response, chatConfiguration, context, ct)
@@ -172,12 +177,17 @@ public sealed class EvalRunner(KurrentDBClient client) {
         var stream = StreamNames.EvalRun(evalId);
         var now    = DateTimeOffset.UtcNow;
 
-        await AppendAsync(stream, new EvalRunStarted {
-            SessionId = sessionId,
-            Scorer    = scorerName,
-            Criteria  = criteria,
-            Timestamp = Timestamp.FromDateTimeOffset(now),
-        }, ct).ConfigureAwait(false);
+        await AppendAsync(
+                stream,
+                new EvalRunStarted {
+                    SessionId = sessionId,
+                    Scorer    = scorerName,
+                    Criteria  = criteria,
+                    Timestamp = Timestamp.FromDateTimeOffset(now),
+                },
+                ct
+            )
+            .ConfigureAwait(false);
 
         var scoredMetrics = new List<ScoredMetric>();
         var sums          = new Dictionary<string, (double Sum, int Count)>();
@@ -222,22 +232,25 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
     static async Task<(IList<ChatMessage> Messages, ChatResponse Response, long? InputTokens, long? OutputTokens)>
         FlattenSessionAsync(KurrentDBClient client, string sessionId, CancellationToken ct) {
-        var streamName = StreamNames.AgentSession(sessionId);
-        var messages   = new List<ChatMessage>();
-        long? inputTokens  = null;
-        long? outputTokens = null;
+        var          streamName    = StreamNames.AgentSession(sessionId);
+        var          messages      = new List<ChatMessage>();
+        long?        inputTokens   = null;
+        long?        outputTokens  = null;
         ChatMessage? lastAssistant = null;
 
         try {
             var events = client.ReadStreamAsync(Direction.Forwards, streamName, StreamPosition.Start, cancellationToken: ct);
+
             await foreach (var resolved in events.ConfigureAwait(false)) {
                 var domainEvent = EventSerializer.Deserialize(resolved);
+
                 if (domainEvent is null) continue;
 
                 switch (domainEvent) {
                     case UserMessageReceived userMsg:
                         if (userMsg.HasContent)
                             messages.Add(new ChatMessage(ChatRole.User, userMsg.Content));
+
                         break;
 
                     case AssistantTextGenerated asstMsg:
@@ -251,34 +264,49 @@ public sealed class EvalRunner(KurrentDBClient client) {
                             // empty default rather than wrapping a prior tool-call message.
                             lastAssistant = null;
                         }
+
                         ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+
                         break;
 
                     case AssistantToolCallsGenerated toolCalls:
                         var toolMsg = new ChatMessage(ChatRole.Assistant, toolCalls.HasContent ? toolCalls.Content : null);
+
                         foreach (var tc in toolCalls.ToolCalls) {
                             // Use tc.CallId verbatim (even if empty) so it pairs with the
                             // matching ToolResultReceived.CallId. Per-turn ToChat synthesises
                             // call-{i} because Turn.ToolCall has no upstream id; canonical
                             // ToolCallInfo does, so synthesising here would break pairing.
-                            toolMsg.Contents.Add(new FunctionCallContent(
-                                callId:    tc.CallId,
-                                name:      tc.ToolName,
-                                arguments: ParseToolArguments(StructToJson(tc.Arguments))));
+                            toolMsg.Contents.Add(
+                                new FunctionCallContent(
+                                    callId: tc.CallId,
+                                    name: tc.ToolName,
+                                    arguments: ParseToolArguments(StructToJson(tc.Arguments))
+                                )
+                            );
                         }
+
                         messages.Add(toolMsg);
                         lastAssistant = toolMsg;
                         ReadUsageFromMetadata(resolved, ref inputTokens, ref outputTokens);
+
                         break;
 
                     case ToolResultReceived toolResult:
                         if (toolResult.HasResult) {
-                            messages.Add(new ChatMessage(ChatRole.Tool, [
-                                new FunctionResultContent(
-                                    callId: toolResult.CallId,
-                                    result: toolResult.Result)
-                            ]));
+                            messages.Add(
+                                new(
+                                    ChatRole.Tool,
+                                    [
+                                        new FunctionResultContent(
+                                            callId: toolResult.CallId,
+                                            result: toolResult.Result
+                                        )
+                                    ]
+                                )
+                            );
                         }
+
                         break;
                 }
             }
@@ -298,8 +326,10 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
     static void ReadUsageFromMetadata(ResolvedEvent resolved, ref long? inputTokens, ref long? outputTokens) {
         if (resolved.Event.Metadata.Length == 0) return;
+
         try {
             var meta = JsonSerializer.Deserialize<JsonElement>(resolved.Event.Metadata.Span);
+
             if (!meta.TryGetProperty("$usage", out var usage)) return;
 
             if (usage.TryGetProperty("input_tokens", out var inp) && inp.ValueKind == JsonValueKind.Number)
@@ -322,22 +352,28 @@ public sealed class EvalRunner(KurrentDBClient client) {
             var tc     = turn.ToolCalls[i];
             var callId = $"call-{i}";
 
-            assistant.Contents.Add(new FunctionCallContent(
-                callId:    callId,
-                name:      tc.Name,
-                arguments: ParseToolArguments(tc.Arguments)));
+            assistant.Contents.Add(
+                new FunctionCallContent(
+                    callId: callId,
+                    name: tc.Name,
+                    arguments: ParseToolArguments(tc.Arguments)
+                )
+            );
 
             if (tc.Result is not null)
-                assistant.Contents.Add(new FunctionResultContent(callId: callId, result: tc.Result) {
-                    Exception = tc.IsError ? new InvalidOperationException(tc.Result) : null,
-                });
+                assistant.Contents.Add(
+                    new FunctionResultContent(callId: callId, result: tc.Result) {
+                        Exception = tc.IsError ? new InvalidOperationException(tc.Result) : null,
+                    }
+                );
         }
 
-        return (messages, new ChatResponse(assistant));
+        return (messages, new(assistant));
     }
 
     static IDictionary<string, object?>? ParseToolArguments(string? json) {
         if (string.IsNullOrWhiteSpace(json)) return null;
+
         try {
             return JsonSerializer.Deserialize<Dictionary<string, object?>>(json);
         } catch (JsonException) {
@@ -347,15 +383,15 @@ public sealed class EvalRunner(KurrentDBClient client) {
 
     static ScoredMetric ToScoredMetric(Turn? turn, EvaluationMetric metric) {
         var (score, kind, isAggregable, stringValue) = metric switch {
-            NumericMetric { Value: { } v } => (v,                          "numeric", true,  (string?)null),
-            NumericMetric                  => (0d,                         "numeric", false, (string?)null),
-            BooleanMetric b                => (b.Value == true ? 1d : 0d,  "boolean", true,  (string?)null),
-            StringMetric s                 => (0d,                         "string",  false, s.Value),
-            _                              => (0d,                         "none",    false, (string?)null),
+            NumericMetric { Value: { } v } => (v, "numeric", true, null),
+            NumericMetric                  => (0d, "numeric", false, null),
+            BooleanMetric b                => (b.Value == true ? 1d : 0d, "boolean", true, null),
+            StringMetric s                 => (0d, "string", false, s.Value),
+            _                              => (0d, "none", false, (string?)null),
         };
 
         var diagnostics = metric.Diagnostics is null
-            ? Array.Empty<string>()
+            ? []
             : metric.Diagnostics.Select(d => $"[{d.Severity}] {d.Message}").ToArray();
 
         return new(
@@ -376,16 +412,17 @@ public sealed class EvalRunner(KurrentDBClient client) {
         // BuildTurnScored is only reachable from RunAsync, which always passes a non-null Turn.
         // Extracting the local once both proves the assertion and avoids repeating ! on every read.
         var turn = scored.Turn!;
-        var evt  = new TurnScored {
+
+        var evt = new TurnScored {
             SessionId  = sessionId,
             TurnIndex  = turn.Index,
             Score      = scored.Score,
             ScoreLabel = scored.MetricName,
             Timestamp  = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
         };
-        if (turn.UserInput       is not null) evt.Input  = turn.UserInput;
+        if (turn.UserInput is not null) evt.Input        = turn.UserInput;
         if (turn.AssistantOutput is not null) evt.Output = turn.AssistantOutput;
-        if (scored.Reason        is not null) evt.Reason = scored.Reason;
+        if (scored.Reason is not null) evt.Reason        = scored.Reason;
 
         evt.Extensions["afw"] = BuildScoredExtension(scored);
 
@@ -407,9 +444,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
     }
 
     static Struct BuildScoredExtension(ScoredMetric scored) {
-        var eval = new Struct();
-        eval.Fields["metric_kind"] = Value.ForString(scored.MetricKind);
-        eval.Fields["is_aggregable"] = Value.ForBool(scored.IsAggregable);
+        var eval = new Struct {
+            Fields = {
+                ["metric_kind"]   = Value.ForString(scored.MetricKind),
+                ["is_aggregable"] = Value.ForBool(scored.IsAggregable)
+            }
+        };
 
         if (scored.StringValue is not null)
             eval.Fields["string_value"] = Value.ForString(scored.StringValue);
@@ -420,9 +460,12 @@ public sealed class EvalRunner(KurrentDBClient client) {
             eval.Fields["value_missing"] = Value.ForBool(true);
 
         if (scored.InterpretationRating is not null) {
-            var interp = new Struct();
-            interp.Fields["rating"] = Value.ForString(scored.InterpretationRating);
-            interp.Fields["failed"] = Value.ForBool(scored.InterpretationFailed);
+            var interp = new Struct {
+                Fields = {
+                    ["rating"] = Value.ForString(scored.InterpretationRating),
+                    ["failed"] = Value.ForBool(scored.InterpretationFailed)
+                }
+            };
             eval.Fields["interpretation"] = Value.ForStruct(interp);
         }
 
@@ -432,21 +475,31 @@ public sealed class EvalRunner(KurrentDBClient client) {
             );
         }
 
-        var afw = new Struct();
-        afw.Fields["eval"] = Value.ForStruct(eval);
+        var afw = new Struct {
+            Fields = {
+                ["eval"] = Value.ForStruct(eval)
+            }
+        };
 
         return afw;
     }
 
     static Struct BuildCompletedExtension(IReadOnlyDictionary<string, double> perMetricAverage) {
         var averages = new Struct();
+
         foreach (var (name, value) in perMetricAverage) averages.Fields[name] = Value.ForNumber(value);
 
-        var eval = new Struct();
-        eval.Fields["per_metric_average"] = Value.ForStruct(averages);
+        var eval = new Struct {
+            Fields = {
+                ["per_metric_average"] = Value.ForStruct(averages)
+            }
+        };
 
-        var afw = new Struct();
-        afw.Fields["eval"] = Value.ForStruct(eval);
+        var afw = new Struct {
+            Fields = {
+                ["eval"] = Value.ForStruct(eval)
+            }
+        };
 
         return afw;
     }

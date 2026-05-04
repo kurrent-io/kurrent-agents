@@ -42,10 +42,14 @@ public class ChatMessageConverterTests {
     [Test]
     public async Task ToEvents_AssistantWithFunctionCall_EmitsToolCallsEvent() {
         var args = new Dictionary<string, object?> { ["city"] = "Paris" };
-        var msg  = new ChatMessage(ChatRole.Assistant, [
-            new TextContent("looking it up"),
-            new FunctionCallContent("call-1", "get_weather", args),
-        ]);
+
+        var msg = new ChatMessage(
+            ChatRole.Assistant,
+            [
+                new TextContent("looking it up"),
+                new FunctionCallContent("call-1", "get_weather", args),
+            ]
+        );
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 2, timestamp: Ts).ToList();
 
@@ -61,10 +65,13 @@ public class ChatMessageConverterTests {
 
     [Test]
     public async Task ToEvents_ToolResult_EmitsOneToolResultPerFunctionResultContent() {
-        var msg = new ChatMessage(ChatRole.Tool, [
-            new FunctionResultContent("call-1", "sunny"),
-            new FunctionResultContent("call-2", "72F"),
-        ]);
+        var msg = new ChatMessage(
+            ChatRole.Tool,
+            [
+                new FunctionResultContent("call-1", "sunny"),
+                new FunctionResultContent("call-2", "72F"),
+            ]
+        );
 
         var events = ChatMessageConverter.ToEvents(msg, messageIndex: 4, timestamp: Ts).ToList();
 
@@ -109,8 +116,10 @@ public class ChatMessageConverterTests {
     [Test]
     public async Task ToChatMessage_AssistantToolCalls_ReconstructsFunctionCallContent() {
         var args = ChatMessageConverter.JsonElementToStruct(
-            JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" }));
-        var e    = new AssistantToolCallsGenerated {
+            JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["city"] = "Paris" })
+        );
+
+        var e = new AssistantToolCallsGenerated {
             Content      = "looking",
             MessageIndex = 0,
             Timestamp    = Pts,

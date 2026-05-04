@@ -13,18 +13,18 @@ public class EventTypeMapTests {
     /// by <c>FixtureRoundTripTests</c> in the schema package.
     /// </summary>
     public static IEnumerable<(Type ClrType, string Name)> KnownEventTypes() => [
-        (typeof(SessionStarted),              "SessionStarted"),
-        (typeof(SessionEnded),                "SessionEnded"),
-        (typeof(UserMessageReceived),         "UserMessageReceived"),
-        (typeof(AssistantTextGenerated),      "AssistantTextGenerated"),
+        (typeof(SessionStarted), "SessionStarted"),
+        (typeof(SessionEnded), "SessionEnded"),
+        (typeof(UserMessageReceived), "UserMessageReceived"),
+        (typeof(AssistantTextGenerated), "AssistantTextGenerated"),
         (typeof(AssistantToolCallsGenerated), "AssistantToolCallsGenerated"),
-        (typeof(ToolResultReceived),          "ToolResultReceived"),
-        (typeof(InterruptIssued),             "InterruptIssued"),
-        (typeof(InterruptResolved),           "InterruptResolved"),
-        (typeof(FactRetained),                "FactRetained"),
-        (typeof(EvalRunStarted),              "EvalRunStarted"),
-        (typeof(TurnScored),                  "TurnScored"),
-        (typeof(EvalRunCompleted),            "EvalRunCompleted"),
+        (typeof(ToolResultReceived), "ToolResultReceived"),
+        (typeof(InterruptIssued), "InterruptIssued"),
+        (typeof(InterruptResolved), "InterruptResolved"),
+        (typeof(FactRetained), "FactRetained"),
+        (typeof(EvalRunStarted), "EvalRunStarted"),
+        (typeof(TurnScored), "TurnScored"),
+        (typeof(EvalRunCompleted), "EvalRunCompleted"),
     ];
 
     [Test]

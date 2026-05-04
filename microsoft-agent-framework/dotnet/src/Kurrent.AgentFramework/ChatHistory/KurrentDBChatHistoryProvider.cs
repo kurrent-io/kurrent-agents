@@ -26,7 +26,6 @@ public sealed class KurrentDBChatHistoryProvider(
         string?         userId       = null,
         string?         tenantId     = null
     ) : ChatHistoryProvider {
-
     readonly ProviderSessionState<SessionState> _sessionState = new(
         stateInitializer: _ => new() { SessionId = sessionId },
         stateKey: nameof(KurrentDBChatHistoryProvider)
@@ -65,15 +64,17 @@ public sealed class KurrentDBChatHistoryProvider(
                 _sessionStarted = true;
 
                 var domainEvent = EventSerializer.Deserialize(resolvedEvent);
+
                 if (domainEvent is null) continue;
 
-                var idx = GetMessageIndex(domainEvent);
+                var idx                      = GetMessageIndex(domainEvent);
                 if (idx > maxIndex) maxIndex = idx;
 
                 if (domainEvent is InterruptIssued ii) issuedByReqId[ii.RequestId] = ii;
 
                 var key = GetGroupingKey(domainEvent);
-                if (key is { } k && byMessageId.TryGetValue(k, out var gi)) {
+
+                if (key != null && byMessageId.TryGetValue(key, out var gi)) {
                     groups[gi].Add(domainEvent);
                 } else {
                     groups.Add([domainEvent]);
@@ -115,11 +116,11 @@ public sealed class KurrentDBChatHistoryProvider(
             var started = new SessionStarted {
                 Timestamp = Timestamp.FromDateTimeOffset(now),
             };
-            if (appName is not null)                       started.AppName   = appName;
+            if (appName is not null) started.AppName                          = appName;
             if ((agentName ?? context.Agent.Name) is { } a) started.AgentName = a;
-            if (modelName is not null)                     started.Model     = modelName;
-            if (tenantId is not null)                      started.TenantId  = tenantId;
-            if (userId is not null)                        started.UserId    = userId;
+            if (modelName is not null) started.Model                          = modelName;
+            if (tenantId is not null) started.TenantId                        = tenantId;
+            if (userId is not null) started.UserId                            = userId;
             events.Add(EventSerializer.Serialize(started));
             _sessionStarted = true;
         }
@@ -165,14 +166,16 @@ public sealed class KurrentDBChatHistoryProvider(
         var streamName = StreamNames.AgentSession(sessionId);
 
         var ended = new SessionEnded { Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
+
         if (reason is not null) ended.Reason = reason;
 
         await client.AppendToStreamAsync(
-            streamName,
-            StreamState.Any,
-            [EventSerializer.Serialize(ended)],
-            cancellationToken: cancellationToken
-        ).ConfigureAwait(false);
+                streamName,
+                StreamState.Any,
+                [EventSerializer.Serialize(ended)],
+                cancellationToken: cancellationToken
+            )
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -208,6 +211,7 @@ public sealed class KurrentDBChatHistoryProvider(
                 if (domainEvent is null) continue;
 
                 var idx = GetMessageIndex(domainEvent);
+
                 if (idx > maxIndex) maxIndex = idx;
             }
         } catch (StreamNotFoundException) {
@@ -227,13 +231,13 @@ public sealed class KurrentDBChatHistoryProvider(
     };
 
     static string? GetGroupingKey(object domainEvent) => domainEvent switch {
-        UserMessageReceived         x => x.HasMessageId ? x.MessageId : null,
-        AssistantTextGenerated      x => x.HasMessageId ? x.MessageId : null,
+        UserMessageReceived x         => x.HasMessageId ? x.MessageId : null,
+        AssistantTextGenerated x      => x.HasMessageId ? x.MessageId : null,
         AssistantToolCallsGenerated x => x.HasMessageId ? x.MessageId : null,
-        AssistantThinkingGenerated  x => x.HasMessageId ? x.MessageId : null,
-        ToolResultReceived          x => x.HasMessageId ? x.MessageId : null,
-        InterruptIssued             x => x.HasMessageId ? x.MessageId : null,
-        InterruptResolved           x => x.HasMessageId ? x.MessageId : null,
+        AssistantThinkingGenerated x  => x.HasMessageId ? x.MessageId : null,
+        ToolResultReceived x          => x.HasMessageId ? x.MessageId : null,
+        InterruptIssued x             => x.HasMessageId ? x.MessageId : null,
+        InterruptResolved x           => x.HasMessageId ? x.MessageId : null,
         _                             => null,
     };
 
@@ -258,7 +262,7 @@ public sealed class KurrentDBChatHistoryProvider(
     }
 
     sealed class SessionState {
-        public string SessionId         { get; set; } = "";
-        public int    NextMessageIndex  { get; set; }
+        public string SessionId        { get; set; } = "";
+        public int    NextMessageIndex { get; set; }
     }
 }

@@ -34,6 +34,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
 
         public Task RetainAsync(string fact, CancellationToken ct = default) {
             lock (_facts) _facts.Add(fact);
+
             return Task.CompletedTask;
         }
 
@@ -44,31 +45,24 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
 #pragma warning restore CS1998
     }
 
-    sealed class Harness : IAsyncDisposable {
-        public KurrentDBClient                        Client          { get; }
-        public KurrentDBPersistentSubscriptionsClient PsClient        { get; }
-        public FactExtractionService                  Service         { get; }
-        public InMemoryMemory                         Memory          { get; }
-        public List<string>                           ExtractorCalls  { get; }
-
-        public Harness(
+    sealed class Harness(
             KurrentDBClient                        client,
             KurrentDBPersistentSubscriptionsClient psClient,
             FactExtractionService                  service,
             InMemoryMemory                         memory,
             List<string>                           calls
-        ) {
-            Client         = client;
-            PsClient       = psClient;
-            Service        = service;
-            Memory         = memory;
-            ExtractorCalls = calls;
-        }
+        )
+        : IAsyncDisposable {
+        public KurrentDBClient                        Client         { get; } = client;
+        public KurrentDBPersistentSubscriptionsClient PsClient       { get; } = psClient;
+        public FactExtractionService                  Service        { get; } = service;
+        public InMemoryMemory                         Memory         { get; } = memory;
+        public List<string>                           ExtractorCalls { get; } = calls;
 
         public async ValueTask DisposeAsync() {
             await Service.StopAsync(CancellationToken.None);
-            Client.Dispose();
-            PsClient.Dispose();
+            await Client.DisposeAsync();
+            await PsClient.DisposeAsync();
         }
     }
 
@@ -81,16 +75,22 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         var memory   = new InMemoryMemory();
         var calls    = new List<string>();
 
-        FactExtractor extractor = content => {
-            lock (calls) calls.Add(content);
-            return content.Contains(marker) ? [content] : [];
-        };
-
         var service = new FactExtractionService(
-            psClient, memory, extractor, UniqueOptions(), NullLogger<FactExtractionService>.Instance
+            psClient,
+            memory,
+            Extractor,
+            UniqueOptions(),
+            NullLogger<FactExtractionService>.Instance
         );
         await service.StartAsync(CancellationToken.None);
+
         return new Harness(client, psClient, service, memory, calls);
+
+        IEnumerable<string> Extractor(string content) {
+            lock (calls) calls.Add(content);
+
+            return content.Contains(marker) ? [content] : [];
+        }
     }
 
     static IReadOnlyList<string> SnapshotCalls(List<string> calls) {
@@ -99,28 +99,34 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
 
     static async Task<bool> WaitUntil(Func<bool> predicate, TimeSpan timeout) {
         var deadline = DateTime.UtcNow + timeout;
+
         while (DateTime.UtcNow < deadline) {
             if (predicate()) return true;
+
             await Task.Delay(100);
         }
+
         return predicate();
     }
 
     static async Task AppendAsync(KurrentDBClient client, string streamName, params object[] events) {
         await client.AppendToStreamAsync(
-            streamName, StreamState.Any, events.Select(e => EventSerializer.Serialize(e)));
+            streamName,
+            StreamState.Any,
+            events.Select(e => EventSerializer.Serialize(e))
+        );
     }
 
     [Test]
     public async Task UserMessage_TriggersFactRetention() {
-        var marker        = $"[M-{Guid.NewGuid():N}]";
-        var streamName    = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+        var marker     = $"[M-{Guid.NewGuid():N}]";
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
 
         await using var h = await StartService(marker);
 
         var content = $"{marker} user fact content";
-        await AppendAsync(h.Client, streamName,
-            UserMsg(content, "m-1", 0));
+
+        await AppendAsync(h.Client, streamName, UserMsg(content, "m-1", 0));
 
         var ok = await WaitUntil(() => h.Memory.Snapshot().Contains(content), WaitBudget);
 
@@ -129,15 +135,17 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
 
     [Test]
     public async Task NonUserMessageEvents_AreIgnored() {
-        var marker       = $"[M-{Guid.NewGuid():N}]";
-        var streamName   = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
-        var sentinel     = $"{marker} sentinel";
+        var marker     = $"[M-{Guid.NewGuid():N}]";
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+        var sentinel   = $"{marker} sentinel";
 
         await using var h = await StartService(marker);
 
         // SessionStarted + AssistantTextGenerated embed the marker but aren't
         // UserMessageReceived, so the service must not route them to the extractor.
-        await AppendAsync(h.Client, streamName,
+        await AppendAsync(
+            h.Client,
+            streamName,
             new SessionStarted { AgentName = $"{marker} agent", Model = "model", Timestamp = Pts },
             new AssistantTextGenerated {
                 Content      = $"{marker} assistant",
@@ -147,7 +155,8 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
                 MessageIndex = 0,
                 Timestamp    = Pts,
             },
-            UserMsg(sentinel, "m-2", 1));
+            UserMsg(sentinel, "m-2", 1)
+        );
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -170,10 +179,13 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // Two whitespace variants + a sentinel we can wait for. Once the sentinel is
         // observed in memory, any earlier events in the same stream must have already
         // been processed (KurrentDB preserves order within a single stream on $all).
-        await AppendAsync(h.Client, streamName,
+        await AppendAsync(
+            h.Client,
+            streamName,
             UserMsg("", "m-1", 0),
             UserMsg("   ", "m-2", 1),
-            UserMsg(sentinel, "m-3", 2));
+            UserMsg(sentinel, "m-3", 2)
+        );
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -196,11 +208,9 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         // This event matches the event type and contains the marker, but the stream
         // prefix is outside "AgentSession-", so the server-side StreamFilter.Prefix
         // must suppress it.
-        await AppendAsync(h.Client, outsidePrefix,
-            UserMsg(outsideContent, "m-1", 0));
+        await AppendAsync(h.Client, outsidePrefix, UserMsg(outsideContent, "m-1", 0));
 
-        await AppendAsync(h.Client, agentStream,
-            UserMsg(sentinelContent, "m-2", 0));
+        await AppendAsync(h.Client, agentStream, UserMsg(sentinelContent, "m-2", 0));
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinelContent), WaitBudget);
 
@@ -224,9 +234,12 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         var nonMatching = "unrelated content";
         var sentinel    = $"{marker} proof of life";
 
-        await AppendAsync(h.Client, streamName,
+        await AppendAsync(
+            h.Client,
+            streamName,
             UserMsg(nonMatching, "m-1", 0),
-            UserMsg(sentinel, "m-2", 1));
+            UserMsg(sentinel, "m-2", 1)
+        );
 
         await WaitUntil(() => h.Memory.Snapshot().Contains(sentinel), WaitBudget);
 
@@ -242,53 +255,50 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
         var psClient = db.CreatePersistentClient();
         var memory   = new InMemoryMemory();
 
-        // Extractor returns a whitespace fact alongside a real one — the service must
-        // drop the whitespace one.
-        FactExtractor extractor = content => content.Contains(marker)
-            ? ["   ", content]
-            : [];
-
         var service = new FactExtractionService(
-            psClient, memory, extractor, UniqueOptions(), NullLogger<FactExtractionService>.Instance
+            psClient,
+            memory,
+            Extractor,
+            UniqueOptions(),
+            NullLogger<FactExtractionService>.Instance
         );
         await service.StartAsync(CancellationToken.None);
 
         try {
             var content = $"{marker} real fact";
-            await AppendAsync(client, streamName,
-                UserMsg(content, "m-1", 0));
+
+            await AppendAsync(client, streamName, UserMsg(content, "m-1", 0));
 
             await WaitUntil(() => memory.Snapshot().Contains(content), WaitBudget);
 
             await Assert.That(memory.Snapshot()).DoesNotContain("   ");
         } finally {
             await service.StopAsync(CancellationToken.None);
-            client.Dispose();
-            psClient.Dispose();
+            await client.DisposeAsync();
+            await psClient.DisposeAsync();
         }
+
+        return;
+
+        // Extractor returns a whitespace fact alongside a real one — the service must
+        // drop the whitespace one.
+        IEnumerable<string> Extractor(string content) => content.Contains(marker) ? ["   ", content] : [];
     }
 
     [Test]
     public async Task PersistentSubscription_SurvivesServiceRestart() {
-        var marker      = $"[M-{Guid.NewGuid():N}]";
-        var streamName  = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
-        var options     = UniqueOptions();
+        var marker     = $"[M-{Guid.NewGuid():N}]";
+        var streamName = StreamNames.AgentSession(Guid.NewGuid().ToString("N"));
+        var options    = UniqueOptions();
 
         var client   = db.CreateClient();
         var psClient = db.CreatePersistentClient();
 
-        async Task<(InMemoryMemory Memory, FactExtractionService Service)> StartOnce() {
-            var mem = new InMemoryMemory();
-            FactExtractor ex = content => content.Contains(marker) ? [content] : [];
-            var svc = new FactExtractionService(psClient, mem, ex, options, NullLogger<FactExtractionService>.Instance);
-            await svc.StartAsync(CancellationToken.None);
-            return (mem, svc);
-        }
-
         try {
             // First run: consume and ack the initial fact.
-            var first   = $"{marker} first";
+            var first = $"{marker} first";
             var (mem1, svc1) = await StartOnce();
+
             try {
                 await AppendAsync(client, streamName, UserMsg(first, "m-1", 0));
                 await WaitUntil(() => mem1.Snapshot().Contains(first), WaitBudget);
@@ -301,6 +311,7 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
             // while still delivering a new event appended after the restart.
             var second = $"{marker} second";
             var (mem2, svc2) = await StartOnce();
+
             try {
                 await AppendAsync(client, streamName, UserMsg(second, "m-2", 1));
                 await WaitUntil(() => mem2.Snapshot().Contains(second), WaitBudget);
@@ -310,8 +321,20 @@ public class FactExtractionServiceTests(KurrentDbFixture db) {
                 await svc2.StopAsync(CancellationToken.None);
             }
         } finally {
-            client.Dispose();
-            psClient.Dispose();
+            await client.DisposeAsync();
+            await psClient.DisposeAsync();
+        }
+
+        return;
+
+        async Task<(InMemoryMemory Memory, FactExtractionService Service)> StartOnce() {
+            var mem = new InMemoryMemory();
+            var svc = new FactExtractionService(psClient, mem, FactExtractor, options, NullLogger<FactExtractionService>.Instance);
+            await svc.StartAsync(CancellationToken.None);
+
+            return (mem, svc);
+
+            IEnumerable<string> FactExtractor(string content) => content.Contains(marker) ? [content] : [];
         }
     }
 }
