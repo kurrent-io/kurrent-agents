@@ -17,7 +17,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-
 OPENAI_EXTENSION_KEY: str = "openai"
 """Slug under which OpenAI-specific fields ride on canonical events'
 ``extensions`` map. See ``schema/SCHEMA_v2.md §5``."""

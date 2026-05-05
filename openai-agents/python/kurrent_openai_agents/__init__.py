@@ -10,8 +10,8 @@ from ._openai_events import OPENAI_EXTENSION_KEY, OpenAIItem
 from .session import KurrentDBSession
 
 __all__ = [
+    "OPENAI_EXTENSION_KEY",
     "KurrentDBSession",
     "OpenAIItem",
-    "OPENAI_EXTENSION_KEY",
     "client",
 ]

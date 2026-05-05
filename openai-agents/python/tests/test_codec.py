@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 
 import pytest
-
 from google.protobuf.json_format import MessageToDict
 from kurrent_agent_schema import (
     AssistantTextGenerated,
@@ -21,7 +19,6 @@ from kurrent_agent_schema import (
 from kurrent_openai_agents import _serialization
 from kurrent_openai_agents._codec import canonical_to_items, items_to_canonical
 from kurrent_openai_agents._openai_events import OPENAI_EXTENSION_KEY, OpenAIItem
-
 
 TS = datetime(2026, 4, 19, 12, 0, tzinfo=UTC)
 
@@ -41,7 +38,6 @@ def test_for_session_normalises_unsafe_chars() -> None:
 
 
 def test_for_session_rejects_empty() -> None:
-    import pytest
     from kurrent_openai_agents._stream_names import for_session
     with pytest.raises(ValueError):
         for_session("")
@@ -164,9 +160,10 @@ class TestRoundTrip:
 
 def test_serialize_stamps_schema_version() -> None:
     import json as _json
-    from datetime import UTC, datetime as _dt
+    from datetime import UTC
+    from datetime import datetime as _dt
+
     from kurrent_agent_schema import UserMessageReceived
-    from kurrent_openai_agents import _serialization
 
     event = UserMessageReceived(message_index=0)
     event.timestamp.FromDatetime(_dt(2026, 5, 5, tzinfo=UTC))
@@ -183,8 +180,9 @@ def test_serialize_stamps_schema_version() -> None:
 
 def test_serialize_pydantic_openai_item() -> None:
     import json as _json
-    from datetime import UTC, datetime as _dt
-    from kurrent_openai_agents import _serialization
+    from datetime import UTC
+    from datetime import datetime as _dt
+
     from kurrent_openai_agents._openai_events import OpenAIItem
 
     item = OpenAIItem(
