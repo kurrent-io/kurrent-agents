@@ -790,7 +790,13 @@ def _map_function_call(
     args = _parse_arguments(item.get("arguments"))
     if args is not None:
         # Empty-dict args are preserved by design (schema commit ff1540d).
-        tc.arguments.update(args)
+        # ``Struct.update({})`` does NOT set the has-bit; route through
+        # MergeFrom on a fresh Struct so ``HasField("arguments") == True``
+        # even when args is an empty dict — distinguishing "explicitly empty"
+        # from "absent".
+        s = Struct()
+        s.update(args)
+        tc.arguments.MergeFrom(s)
     evt.tool_calls.append(tc)
 
     _set_openai_extension(evt, {"raw_item": dict(item), "item_type": "function_call"})
