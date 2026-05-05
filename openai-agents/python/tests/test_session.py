@@ -154,3 +154,66 @@ class TestNonCanonical:
         await session.add_items([original])
         [restored] = await session.get_items()
         assert restored == original
+
+
+class TestThinking:
+    async def test_plaintext_reasoning_round_trips(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        session = KurrentDBSession(
+            session_id=sid, client=kurrentdb_client, app_name=app, user_id=user
+        )
+        original = {
+            "type": "reasoning",
+            "id": "r1",
+            "content": [{"type": "reasoning_text", "text": "thinking..."}],
+        }
+        await session.add_items([original])
+        [restored] = await session.get_items()
+        assert restored == original
+
+    async def test_encrypted_reasoning_round_trips(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        session = KurrentDBSession(
+            session_id=sid, client=kurrentdb_client, app_name=app, user_id=user
+        )
+        original = {
+            "type": "reasoning",
+            "id": "r2",
+            "encrypted_content": "AAA-OPAQUE-AAA",
+            "signature": "sig-deadbeef",
+        }
+        await session.add_items([original])
+        [restored] = await session.get_items()
+        assert restored == original
+
+
+class TestMcpApprovals:
+    async def test_mcp_approval_pair_round_trips(
+        self, kurrentdb_client: AsyncKurrentDBClient
+    ) -> None:
+        app, user, sid = _ids()
+        session = KurrentDBSession(
+            session_id=sid, client=kurrentdb_client, app_name=app, user_id=user
+        )
+        items = [
+            {
+                "type": "mcp_approval_request",
+                "id": "req-1",
+                "name": "publish_post",
+                "arguments": '{"title": "hi"}',
+                "server_label": "blog-mcp",
+            },
+            {
+                "type": "mcp_approval_response",
+                "approval_request_id": "req-1",
+                "approve": True,
+                "reason": "looks fine",
+            },
+        ]
+        await session.add_items(items)
+        restored = await session.get_items()
+        assert restored == items

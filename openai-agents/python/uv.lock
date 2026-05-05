@@ -630,6 +630,22 @@ wheels = [
 ]
 
 [[package]]
+name = "kurrent-agent-schema"
+version = "0.4.0"
+source = { editable = "../../schema/python" }
+dependencies = [
+    { name = "protobuf" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "protobuf", specifier = ">=6.32.1,<8" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "kurrent-agents-testing"
 version = "0.0.1"
 source = { editable = "../../testing" }
@@ -653,8 +669,10 @@ name = "kurrent-openai-agents"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "kurrent-agent-schema" },
     { name = "kurrentdbclient" },
     { name = "openai-agents" },
+    { name = "protobuf" },
     { name = "pydantic" },
 ]
 
@@ -668,9 +686,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "kurrent-agent-schema", editable = "../../schema/python" },
     { name = "kurrent-agents-testing", marker = "extra == 'dev'", editable = "../../testing" },
     { name = "kurrentdbclient", specifier = ">=1.2.0" },
     { name = "openai-agents", specifier = ">=0.2.0" },
+    { name = "protobuf", specifier = ">=6.32.1,<8" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
