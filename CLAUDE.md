@@ -6,7 +6,7 @@ Guidance for agents working in this repo. Start here; follow the links for vendo
 
 A monorepo of KurrentDB integrations for AI agent SDKs. Every integration writes to the **same canonical event schema**, so a session produced by one framework is readable by another.
 
-**Source of truth for the schema:** [`schema/SCHEMA.md`](./schema/SCHEMA.md). Read before writing any code that emits or consumes events. Field names, stream naming (`AgentSession-{session_id}`, `AgentMemory-{app}-{user}`), `$usage` metadata shim rules, and `extensions.<framework>` conventions all live there.
+**Source of truth for the schema:** [`schema/SCHEMA_v2.md`](./schema/SCHEMA_v2.md). Read before writing any code that emits or consumes events. Field names, stream naming (`AgentSession-{session_id}`, `AgentMemory-{app}-{user}`), `$usage` metadata shim rules, and `extensions.<framework>` conventions all live there.
 
 ## Per-integration design docs (progressive disclosure)
 
@@ -18,14 +18,14 @@ Each package has its own `DESIGN.md` with the full spec — plug-points, storage
 | MS Agent Framework (.NET) | [`microsoft-agent-framework/dotnet/README.md`](./microsoft-agent-framework/dotnet/README.md) | typed canonical events via shared `Kurrent.Agent.Schema` (.NET); MAF-specific fields under `extensions.afw` |
 | MS Agent Framework (Python) | [`microsoft-agent-framework/python/README.md`](./microsoft-agent-framework/python/README.md) | typed canonical events via shared `kurrent-agent-schema` (Python); MAF-specific fields under `extensions.afw`; canonical-payload parity with MAF .NET (structural, not raw-byte) |
 | Strands (Python) | [`strands/python/DESIGN.md`](./strands/python/DESIGN.md) | snapshot-to-events on each turn; canonical types from shared `kurrent-agent-schema` (Python); reasoning emits `AssistantThinkingGenerated`, tool-approval pauses emit `InterruptIssued`/`InterruptResolved`; Strands-specific payload extras under `extensions.strands` + framework-specific `StrandsAgentState` for runtime state |
-| OpenAI Agents (Python) | [`openai-agents/python/DESIGN.md`](./openai-agents/python/DESIGN.md) | decompose items to canonical events; full original dict in `extensions.openai.raw_item` for lossless round-trip; non-canonical items wrap as `OpenAIItem` |
+| OpenAI Agents (Python) | [`openai-agents/python/DESIGN.md`](./openai-agents/python/DESIGN.md) | typed canonical events via shared `kurrent-agent-schema` (Python); decompose items to canonical events (incl. `reasoning` → `AssistantThinkingGenerated`, `mcp_approval_*` → `InterruptIssued`/`InterruptResolved`); full original dict in `extensions.openai.raw_item` for lossless round-trip; non-canonical items wrap as `OpenAIItem`. |
 | Claude Agent SDK (Python) | [`claude-agent-sdk/python/DESIGN.md`](./claude-agent-sdk/python/DESIGN.md) | **verbatim-only** mirror of opaque CLI entries (`ClaudeSDKEntry`) on schema v2 via shared `kurrent-agent-schema`; local disk remains source of truth. Read-side decomposer for canonical reads lives in the same package. |
 
 ## Cross-cutting conventions
 
-- **Canonical events are lingua franca.** `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived` must match `SCHEMA.md §3` exactly. Framework-specific shapes go in `extensions.<framework>.*` or in a distinct event type (`OpenAIItem`, `ClaudeSDKEntry`, `StrandsAgentState`, …).
-- **`app_name` / `user_id` are constructor kwargs.** SDKs that don't have these concepts (Strands, OpenAI Agents, Claude SDK) take them as explicit configuration. See `SCHEMA.md §5.3`.
-- **Token usage rides on `$usage` KurrentDB event metadata**, not in payload. Field-name shims (e.g. Strands' `inputTokens` → canonical `input_tokens`) live in each integration's write path. When adding a new integration, fold known upstream keys into canonical `$usage` slots (`cached_input_tokens`, `reasoning_tokens`, …) — `additional_counts` is for counters with no canonical home, not a dumping ground. See `SCHEMA.md §3.4.1` for the per-SDK translation table.
+- **Canonical events are lingua franca.** `UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived` must match `SCHEMA_v2.md §3` exactly. Framework-specific shapes go in `extensions.<framework>.*` or in a distinct event type (`OpenAIItem`, `ClaudeSDKEntry`, `StrandsAgentState`, …).
+- **`app_name` / `user_id` are constructor kwargs.** SDKs that don't have these concepts (Strands, OpenAI Agents, Claude SDK) take them as explicit configuration. See `SCHEMA_v2.md §2.1` and `§3.1`.
+- **Token usage rides on `$usage` KurrentDB event metadata**, not in payload. Field-name shims (e.g. Strands' `inputTokens` → canonical `input_tokens`) live in each integration's write path. When adding a new integration, fold known upstream keys into canonical `$usage` slots (`cached_input_tokens`, `reasoning_tokens`, …) — `additional_counts` is for counters with no canonical home, not a dumping ground. See `SCHEMA_v2.md §3.6`.
 - **Sync vs async clients.** ADK uses `AsyncKurrentDBClient` (ADK is async-native). Strands uses sync `KurrentDBClient` (its `SessionManager` hooks are sync). Follow the upstream SDK's style.
 - **Concurrency.** Only ADK implements optimistic-concurrency today (last-seen-revision + one retry on `WrongExpectedVersion`). Other integrations use `StreamState.ANY` until a concrete contention case appears.
 
@@ -45,4 +45,4 @@ Add a new entry here when:
 - A *cross-cutting convention* changes (new canonical field, stream-naming rule, usage-metadata shape).
 - A *non-obvious gotcha* would otherwise cost the next agent a debugging session.
 
-Keep this file short. Depth belongs in `SCHEMA.md` and per-package `DESIGN.md`.
+Keep this file short. Depth belongs in `SCHEMA_v2.md` and per-package `DESIGN.md`.
