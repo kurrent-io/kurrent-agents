@@ -4,7 +4,7 @@ KurrentDB integration for the [OpenAI Agents SDK (Python)](https://github.com/op
 
 **Status: alpha.** `KurrentDBSession` implements the SDK's `Session` protocol (`get_items` / `add_items` / `pop_item` / `clear_session`) so it drops into `Runner(..., session=...)` unchanged. Items are decomposed into canonical events on write and reconstructed (with the original `raw_item` preserved under `extensions.openai`) on read.
 
-Shares the canonical schema with the rest of the monorepo — see [`schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md). A session written by an OpenAI Agents SDK agent is readable by ADK / AFW / Strands agents for the conversational parts.
+Reads and writes the canonical schema defined in [`../../schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md), via the shared [`kurrent-agent-schema`](../../schema/python) Python package. OpenAI-specific items (reasoning, MCP approvals) decompose into the canonical event vocabulary — `reasoning` output maps to `AssistantThinkingGenerated`, `mcp_approval_request` / `mcp_approval_response` map to `InterruptIssued` / `InterruptResolved` — with the original Responses API dict preserved verbatim under `extensions.openai.raw_item`; non-canonical items (handoffs, computer/shell calls) ride as the framework-specific `OpenAIItem` event. A session written by an OpenAI Agents SDK agent is readable by ADK / AFW / Strands agents for the conversational parts.
 
 ## Design
 
