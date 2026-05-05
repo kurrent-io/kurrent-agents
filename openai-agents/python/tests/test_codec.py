@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from google.protobuf.json_format import MessageToDict
@@ -196,6 +197,66 @@ def test_serialize_pydantic_openai_item() -> None:
     payload = _json.loads(new_event.data)
     assert payload["item_type"] == "computer_call"
     assert payload["raw_item"] == {"type": "computer_call", "id": "x"}
+
+
+class TestDeserializeTolerance:
+    """One bad event must not block the whole session — see Qodo review on PR #54."""
+
+    def _record(self, *, type: str, data: bytes) -> Any:
+        from uuid import uuid4
+
+        from kurrentdbclient import RecordedEvent
+
+        return RecordedEvent(
+            type=type,
+            data=data,
+            metadata=b"",
+            content_type="application/json",
+            id=uuid4(),
+            stream_name="AgentSession-test",
+            stream_position=0,
+            commit_position=0,
+            prepare_position=0,
+        )
+
+    def test_invalid_json_for_known_canonical_type_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        recorded = self._record(type="UserMessageReceived", data=b"{not json")
+        with caplog.at_level("WARNING", logger="kurrent_openai_agents._serialization"):
+            assert _serialization.deserialize(recorded) is None
+        assert "UserMessageReceived" in caplog.text
+
+    def test_invalid_utf8_for_known_canonical_type_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        recorded = self._record(type="UserMessageReceived", data=b"\xff\xfe\x00bad")
+        with caplog.at_level("WARNING", logger="kurrent_openai_agents._serialization"):
+            assert _serialization.deserialize(recorded) is None
+        assert "UserMessageReceived" in caplog.text
+
+    def test_invalid_json_for_known_pydantic_type_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        recorded = self._record(type="OpenAIItem", data=b"{not json")
+        with caplog.at_level("WARNING", logger="kurrent_openai_agents._serialization"):
+            assert _serialization.deserialize(recorded) is None
+        assert "OpenAIItem" in caplog.text
+
+    def test_schema_violation_for_known_pydantic_type_returns_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Valid JSON but missing required fields (item_type, raw_item, …).
+        recorded = self._record(type="OpenAIItem", data=b'{"unrelated": 1}')
+        with caplog.at_level("WARNING", logger="kurrent_openai_agents._serialization"):
+            assert _serialization.deserialize(recorded) is None
+        assert "OpenAIItem" in caplog.text
+
+    def test_unknown_event_type_still_returns_none_silently(self) -> None:
+        # Pre-existing forward-compat behaviour — no warning should be logged
+        # because we don't know enough to call this "malformed".
+        recorded = self._record(type="SomeFutureEvent", data=b'{"x": 1}')
+        assert _serialization.deserialize(recorded) is None
 
 
 class TestReasoningMapping:

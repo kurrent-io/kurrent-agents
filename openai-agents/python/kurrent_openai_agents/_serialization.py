@@ -13,9 +13,11 @@ Mirrors :mod:`kurrent_strands._serialization` and
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from typing import Any
 
+from google.protobuf import json_format
 from google.protobuf.message import Message as ProtoMessage
 from kurrent_agent_schema import (
     EVENT_TYPE_BY_NAME,
@@ -25,9 +27,11 @@ from kurrent_agent_schema import (
     to_json,
 )
 from kurrentdbclient import NewEvent, RecordedEvent
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ._openai_events import OpenAIItem
+
+logger = logging.getLogger("kurrent_openai_agents._serialization")
 
 SCHEMA_VERSION_METADATA_KEY: str = "$schema_version"
 """Metadata key stamped on every event. See ``SCHEMA_v2.md §9``."""
@@ -85,20 +89,55 @@ def serialize(
 
 def deserialize(recorded: RecordedEvent) -> ProtoMessage | BaseModel | None:
     """Deserialize a ``RecordedEvent`` into a canonical proto event or an
-    OpenAI-specific Pydantic event. Returns ``None`` for unknown event types
-    (forward-compat / cross-framework tolerance)."""
+    OpenAI-specific Pydantic event.
+
+    Returns ``None`` when:
+
+    - The event type is unknown to this integration (forward-compat /
+      cross-framework tolerance).
+    - The payload is malformed for an otherwise-known type (invalid UTF-8,
+      invalid JSON, schema-mismatch). A single corrupt record must not
+      block the whole session read; a warning is logged with enough
+      identification to find the offending event in KurrentDB.
+    """
     proto_cls = EVENT_TYPE_BY_NAME.get(recorded.type)
     if proto_cls is not None:
         if not recorded.data:
             return proto_cls()
-        return from_json(proto_cls, recorded.data.decode("utf-8"))
+        try:
+            decoded = recorded.data.decode("utf-8")
+            return from_json(proto_cls, decoded)
+        except (UnicodeDecodeError, json_format.ParseError, ValueError) as exc:
+            _log_malformed(recorded, exc)
+            return None
 
     pydantic_cls = _OPENAI_NAME_TO_TYPE.get(recorded.type)
     if pydantic_cls is not None:
-        payload = json.loads(recorded.data) if recorded.data else {}
-        return pydantic_cls.model_validate(payload)
+        try:
+            payload = json.loads(recorded.data) if recorded.data else {}
+            return pydantic_cls.model_validate(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValidationError, ValueError) as exc:
+            _log_malformed(recorded, exc)
+            return None
 
     return None
+
+
+def _log_malformed(recorded: RecordedEvent, exc: Exception) -> None:
+    """Log a single malformed-event warning with stream coordinates.
+
+    Includes ``stream_name`` and ``stream_position`` so the offending event
+    can be located via KurrentDB's UI / API. The exception type is logged
+    rather than the full message so a flood of similar corruption does not
+    drown the log; full repro requires reading the event by position.
+    """
+    logger.warning(
+        "Skipping malformed event %r at %s@%d: %s",
+        recorded.type,
+        getattr(recorded, "stream_name", "?"),
+        getattr(recorded, "stream_position", -1),
+        type(exc).__name__,
+    )
 
 
 def read_metadata(recorded: RecordedEvent) -> dict[str, Any] | None:
