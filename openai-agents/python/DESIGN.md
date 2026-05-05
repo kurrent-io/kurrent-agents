@@ -1,6 +1,6 @@
 # Kurrent OpenAI Agents (Python) — Design
 
-KurrentDB integration for the [OpenAI Agents SDK (Python)](https://github.com/openai/openai-agents-python). Shares the canonical event schema with the other integrations in this monorepo (see [`../../schema/SCHEMA.md`](../../schema/SCHEMA.md)).
+KurrentDB integration for the [OpenAI Agents SDK (Python)](https://github.com/openai/openai-agents-python). Shares the canonical event schema with the other integrations in this monorepo (see [`../../schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md)).
 
 ## 1. Goal
 
@@ -77,7 +77,7 @@ AgentSession-{session_id}      conversation items (primary write path)
 AgentMemory-{app}-{user}       planned — cross-session memory (§7)
 ```
 
-`session_id` is opaque; `app_name` and `user_id` are constructor configuration on `KurrentDBSession` (the SDK has no native app/user concept). See `SCHEMA.md §5.3`.
+`session_id` is opaque; `app_name` and `user_id` are constructor configuration on `KurrentDBSession` (the SDK has no native app/user concept). See `SCHEMA_v2.md §3.1` (carried unchanged from SCHEMA.md §5.3).
 
 ## 6. Concurrency
 
