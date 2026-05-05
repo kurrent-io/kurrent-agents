@@ -1,0 +1,42 @@
+{
+  "name": "@kurrent-io/ag-ui-middleware-kurrentdb",
+  "version": "0.0.1",
+  "description": "AG-UI Protocol middleware that persists agent sessions to KurrentDB as canonical events (DEV-1558)",
+  "license": "Apache-2.0",
+  "author": "Kurrent, Inc.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "interop:write": "tsx test/interop-writer.ts"
+  },
+  "keywords": [
+    "ag-ui",
+    "kurrentdb",
+    "eventsourcing",
+    "agents",
+    "middleware"
+  ],
+  "dependencies": {
+    "@ag-ui/client": "^0.0.53",
+    "@kurrent/kurrentdb-client": "^1.1.2",
+    "rxjs": "7.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

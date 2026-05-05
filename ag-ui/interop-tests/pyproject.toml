@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kurrent-ag-ui-interop-tests"
+version = "0.0.0"
+description = "Cross-language acceptance harness: TS middleware writes; Python schema package reads (DEV-1558)"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "kurrent-agent-schema >= 0.4.0",
+  "kurrentdbclient >= 1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest >= 8",
+  "pytest-asyncio >= 0.23",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["interop_tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["."]
+
+[tool.uv.sources]
+kurrent-agent-schema = { path = "../../schema/python", editable = true }
