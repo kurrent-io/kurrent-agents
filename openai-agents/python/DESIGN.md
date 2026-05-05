@@ -23,17 +23,19 @@ OpenAI session items are Responses API dicts with a discriminated `type` field (
 
 ### Write path (`add_items`)
 
-Each item maps to one event:
+| OpenAI item `type` | Canonical event(s) | Notes |
+|---|---|---|
+| `message` (role=user) | `UserMessageReceived` | |
+| `message` (role=assistant) | `AssistantTextGenerated` | |
+| `function_call` | `AssistantToolCallsGenerated` (one tool_call per event) | |
+| `function_call_output` | `ToolResultReceived` | |
+| `reasoning` | `AssistantThinkingGenerated` | Plaintext content, or `encrypted=true` + `signature` for o-series; opaque blob in `extensions.openai.thinking.raw`. SCHEMA_v2 §3.2. |
+| `mcp_approval_request` | `InterruptIssued` (`kind="approval"`) | Proposed call under `extensions.openai.interrupt.proposed_call`; post-hoc gate (`request_id == call_id`). SCHEMA_v2 §3.3. |
+| `mcp_approval_response` | `InterruptResolved` | `outcome=allow|deny` from `approve`; `response` from `reason`. |
+| `handoff_call` / `handoff_output` | `OpenAIItem` | Deferred — see DEV-1684 for the canonical `SubagentStarted` / `SubagentCompleted` promotion. |
+| `computer_call`, `shell_call`, `web_search`, … | `OpenAIItem` | No canonical analogue. |
 
-| OpenAI item `type` | Canonical event |
-|---|---|
-| `message` (role=user) | `UserMessageReceived` |
-| `message` (role=assistant) | `AssistantTextGenerated` |
-| `function_call` | `AssistantToolCallsGenerated` (one tool_call per event) |
-| `function_call_output` | `ToolResultReceived` |
-| everything else | `OpenAIItem` (framework-specific; carries the raw dict verbatim) |
-
-**Every emitted event also stashes the full original item under `extensions.openai.raw_item`** — lossless reconstruction regardless of which branch it took. Items that don't map onto canonical conversation events ride purely in `OpenAIItem`.
+**Every emitted event also stashes the full original item under `extensions.openai.raw_item`** — lossless reconstruction regardless of which branch it took.
 
 ### Read path (`get_items`)
 
@@ -43,15 +45,29 @@ For each event:
 
 `SessionStarted` and `SessionEnded` are framework-level lifecycle markers; not surfaced to `get_items`.
 
+## 3.5 Schema dependency
+
+The integration depends on the shared `kurrent-agent-schema` Python package
+(see [`../../schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md)). Canonical
+event types are protobuf messages (Edition 2024); the integration imports
+them directly from `kurrent_agent_schema`. Stream-name builders and the
+`$usage` metadata key come from the same package.
+
+The framework-specific `OpenAIItem` event remains a local Pydantic model in
+`_openai_events.py` because it is not part of the cross-framework contract.
+
+JSON wire format goes through the schema package's `to_json` / `from_json`
+helpers exclusively — direct calls to `google.protobuf.json_format` are not
+supported on this code path. Each event's metadata carries
+`$schema_version = 2` per SCHEMA_v2 §9.
+
 ## 4. OpenAI-specific concepts
 
-These ride in `extensions.openai.raw_item` or as `OpenAIItem` events; a cross-framework reader ignores them safely.
-
-- **Handoffs** — `handoff_call` and `handoff_output` items. LLM-driven nested agent invocation with optional history filtering / compression.
-- **Guardrails** — input/output/tool guardrails are runtime checks, not session items; they don't land in session history at all. If a guardrail tripwire fires, it halts execution before `add_items` — there's nothing for us to persist.
-- **MCP approvals** — `mcp_approval_request` / `mcp_approval_response`. Optional human-in-the-loop checkpoints on MCP-backed tools.
-- **Computer / shell tools** — `computer_call`, `shell_call`. First-class tool types specific to OpenAI's sandbox extensions.
-- **Reasoning** — `reasoning` items (Responses API). Internal chain-of-thought traces returned by some models.
+- **Handoffs** — `handoff_call` and `handoff_output` items. LLM-driven nested agent invocation. Currently ride as `OpenAIItem`; promotion to canonical `SubagentStarted` / `SubagentCompleted` (with separate `AgentSubsession-` streams) is tracked under DEV-1684.
+- **Guardrails** — runtime checks, not session items; nothing for us to persist.
+- **MCP approvals** — `mcp_approval_request` / `mcp_approval_response` decompose into canonical `InterruptIssued` / `InterruptResolved` (`kind="approval"`). Proposed call rides under `extensions.openai.interrupt.proposed_call`; post-hoc gate (request_id == call_id) per SCHEMA_v2 §3.3.
+- **Computer / shell tools** — `computer_call`, `shell_call`. First-class tool types specific to OpenAI's sandbox extensions; ride as `OpenAIItem`.
+- **Reasoning** — `reasoning` items decompose into canonical `AssistantThinkingGenerated` per SCHEMA_v2 §3.2. Plaintext content rides on the canonical event; o-series encrypted blobs ride under `extensions.openai.thinking.raw` with `encrypted=true` and `signature` populated on the canonical event.
 - **Structured output** — `AgentOutputSchema` / parsed Pydantic payloads. Not a session item; carried on `RunResult` alongside session history.
 
 ## 5. Stream layout
@@ -80,4 +96,4 @@ SDK consumers call `add_items` serially during a run (one append per turn, not p
 
 1. **`pop_item` semantics** — the SDK uses it for the compaction path (`OpenAIResponsesCompactionSession`). Need a concrete "pop" definition (tombstone marker event? Rewind-style marker?). Probably won't block v1 since most users don't exercise this path directly.
 2. **Per-turn usage capture** — add a callback/hook so the caller can attach `$usage` to specific items? Or extend `add_items` with a parallel `usage_per_item` argument? Revisit once there's a concrete need.
-3. **Handoff visibility** — `HandoffCallItem` and `HandoffOutputItem` are durable session items, so they land as `OpenAIItem` events. Should they additionally emit canonical `AgentTransferred`-style events for cross-framework observability? Decision: no in v0 — multi-agent canonical events aren't standardised (`SCHEMA.md §3.3`).
+3. **Handoff visibility** — handled in DEV-1684. Promotion to canonical `SubagentStarted` / `SubagentCompleted` requires routing the handoff target's items to a separate `AgentSubsession-{parent}-{agent_id}` stream and re-flattening on `get_items`. Out of scope for the schema-v2 cutover.
