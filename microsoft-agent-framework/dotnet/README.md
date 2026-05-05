@@ -8,30 +8,9 @@ Events are the canonical Kurrent agent event schema (v2). Records, stream-name b
 
 ## Why KurrentDB
 
-Traditional agent frameworks treat message persistence, memory, observability, and evaluation as separate concerns — each with its own database, pipeline, and schema. The same data gets written to multiple places, in multiple formats, with multiple failure modes.
+For the repo-level rationale — immutable event streams, projections, memory, observability, evaluation, and cross-framework interoperability — see the [root README](../../README.md).
 
-An AI agent's execution is fundamentally a **stream of decisions**: messages received, tools called, results returned, responses generated. Each decision already carries rich data — content, timing, token costs, causation chains. KurrentDB is purpose-built for this:
-
-| Property | What it enables |
-|---|---|
-| **Immutable append-only log** | Every agent decision is permanently recorded. Compliance and audit without extra work |
-| **Catch-up subscriptions** | Memory that builds itself reactively from the event stream. No separate ETL pipeline |
-| **Server-side projections** | Derived views (observability dashboards, eval datasets) that can be rebuilt on demand |
-| **Temporal queries** | "What did the agent know at step 7?" is just reading to a stream position |
-| **Stream-per-entity** | Natural mapping to agent sessions, users, workflows |
-| **Optimistic concurrency** | Safe concurrent agent execution without locks |
-
-The result: **one write, multiple capabilities, zero data duplication.**
-
-```
-Agent Run → Rich Typed Events → KurrentDB Stream
-                                    │
-                                    ├── Chat history (read the stream)
-                                    ├── Token usage (event metadata)
-                                    ├── Memory (catch-up subscription → search index)
-                                    ├── Observability (project from events)
-                                    └── Evaluation (same events, different query)
-```
+This package implements those ideas for Microsoft Agent Framework .NET.
 
 ## What It Does
 
