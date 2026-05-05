@@ -1564,7 +1564,8 @@ class KurrentDBSession(SessionABC):
         run level, not per-item. ``USAGE_METADATA_KEY`` is imported here for
         subclassers who want to attach per-item usage from out-of-band data.
         """
-        del item, event, USAGE_METADATA_KEY  # imported for subclassers
+        del item, event
+        _ = USAGE_METADATA_KEY  # imported for subclassers (del cannot remove module imports)
         return None
 ```
 
