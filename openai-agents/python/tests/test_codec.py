@@ -18,6 +18,19 @@ from kurrent_openai_agents._schema.events import (
 TS = datetime(2026, 4, 19, 12, 0, tzinfo=UTC)
 
 
+def test_for_session_normalises_unsafe_chars() -> None:
+    from kurrent_openai_agents._stream_names import for_session
+    assert for_session("plain") == "AgentSession-plain"
+    assert for_session("ses sion/01") == "AgentSession-ses%20sion%2F01"
+
+
+def test_for_session_rejects_empty() -> None:
+    import pytest
+    from kurrent_openai_agents._stream_names import for_session
+    with pytest.raises(ValueError):
+        for_session("")
+
+
 class TestCanonicalMapping:
     def test_user_text_message(self) -> None:
         items = [{
