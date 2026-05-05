@@ -3,37 +3,50 @@
 The SDK's session items are OpenAI Responses API shapes (TypedDicts with a
 discriminated ``type`` field). We decompose each item into either a canonical
 event (``UserMessageReceived`` / ``AssistantTextGenerated`` /
-``AssistantToolCallsGenerated`` / ``ToolResultReceived``) when the shape
-maps cleanly, or a framework-specific ``OpenAIItem`` event carrying the raw
-dict verbatim when it doesn't.
+``AssistantToolCallsGenerated`` / ``ToolResultReceived`` /
+``AssistantThinkingGenerated`` / ``InterruptIssued`` / ``InterruptResolved``)
+when the shape maps cleanly, or a framework-specific ``OpenAIItem`` event
+carrying the raw dict verbatim when it doesn't.
 
-Every emitted canonical event **also** stashes the original item under
-``extensions.openai.raw_item`` — so reconstruction via ``canonical_to_items``
-is lossless regardless of whether the item was mapped or verbatim-stored.
+Every emitted canonical event also stashes the original item under
+``extensions.openai.raw_item`` — so reconstruction via
+``canonical_to_items`` is lossless regardless of whether the item was
+mapped or verbatim-stored.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from ._schema.events import (
-    OPENAI_EXTENSION_KEY,
+from google.protobuf.json_format import MessageToDict, ParseDict
+from google.protobuf.message import Message as ProtoMessage
+from google.protobuf.struct_pb2 import Struct
+from kurrent_agent_schema import (
     AssistantTextGenerated,
+    AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
-    OpenAIItem,
+    InterruptIssued,
+    InterruptResolved,
     ToolCallInfo,
     ToolResultReceived,
     UserMessageReceived,
-    _EventBase as CanonicalEvent,
 )
 
+from ._openai_events import OPENAI_EXTENSION_KEY, OpenAIItem
 
-# OpenAI item types that we decompose onto canonical events. Everything else
-# (reasoning, handoff_*, mcp_*, computer_call, shell_call, web_search, etc.)
-# rides in OpenAIItem verbatim.
-_CANONICAL_ITEM_TYPES = frozenset({"message", "function_call", "function_call_output"})
+logger = logging.getLogger("kurrent_openai_agents._codec")
+
+
+# OpenAI item types that we decompose onto canonical events. Tasks 6 and 7
+# extend this set.
+_CANONICAL_ITEM_TYPES = frozenset({
+    "message",
+    "function_call",
+    "function_call_output",
+})
 
 
 def items_to_canonical(
@@ -41,88 +54,35 @@ def items_to_canonical(
     *,
     start_index: int,
     timestamp: datetime | None = None,
-) -> list[CanonicalEvent]:
+) -> list[ProtoMessage | OpenAIItem]:
     """Decompose a list of OpenAI session items into canonical events.
 
     ``start_index`` is the session-wide monotonic counter assigned by the
-    caller (the SessionManager keeps track across calls). Each item gets its
-    own index; canonical events emitted for one item share an index.
+    caller. Each item gets its own index; canonical events emitted for one
+    item share that index.
     """
     ts = timestamp or datetime.now(UTC)
-    results: list[CanonicalEvent] = []
+    results: list[ProtoMessage | OpenAIItem] = []
 
     for offset, item in enumerate(items):
         message_index = start_index + offset
         kind = item.get("type", "message")
-        extensions = {OPENAI_EXTENSION_KEY: {"raw_item": dict(item), "item_type": kind}}
 
         if kind == "message":
-            role = item.get("role", "user")
-            content = _extract_message_text(item.get("content"))
-            if role == "user":
-                results.append(
-                    UserMessageReceived(
-                        content=content,
-                        message_index=message_index,
-                        timestamp=ts,
-                        extensions=extensions,
-                    )
-                )
-            else:
-                # assistant / system — map to AssistantTextGenerated; system
-                # prompts are rare on the Responses API input list but fit.
-                results.append(
-                    AssistantTextGenerated(
-                        content=content,
-                        message_index=message_index,
-                        timestamp=ts,
-                        extensions=extensions,
-                    )
-                )
+            results.extend(_map_message(item, message_index, ts))
         elif kind == "function_call":
-            # A single tool call item — one canonical AssistantToolCallsGenerated
-            # carrying one tool_calls entry.
-            results.append(
-                AssistantToolCallsGenerated(
-                    tool_calls=[
-                        ToolCallInfo(
-                            call_id=item.get("call_id") or "",
-                            tool_name=item.get("name") or "",
-                            arguments=_parse_arguments(item.get("arguments")),
-                        )
-                    ],
-                    content=None,
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=extensions,
-                )
-            )
+            results.append(_map_function_call(item, message_index, ts))
         elif kind == "function_call_output":
-            results.append(
-                ToolResultReceived(
-                    call_id=item.get("call_id") or "",
-                    tool_name=None,
-                    result=_serialize_output(item.get("output")),
-                    message_index=message_index,
-                    timestamp=ts,
-                    extensions=extensions,
-                )
-            )
+            results.append(_map_function_call_output(item, message_index, ts))
         else:
-            # Non-canonical — reasoning, handoff_*, mcp_*, computer_call, etc.
-            results.append(
-                OpenAIItem(
-                    item_type=kind,
-                    raw_item=dict(item),
-                    message_index=message_index,
-                    timestamp=ts,
-                )
-            )
+            # Non-canonical — handoff_*, computer_call, shell_call, web_search,
+            # etc. Reasoning + MCP approvals are added in tasks 6 and 7.
+            results.append(_wrap_openai_item(item, kind, message_index, ts))
 
     return results
 
 
-def canonical_to_items(events: list[CanonicalEvent]) -> list[dict[str, Any]]:
+def canonical_to_items(events: list[ProtoMessage | OpenAIItem]) -> list[dict[str, Any]]:
     """Reconstruct OpenAI session items from an ordered event stream.
 
     Prefers ``extensions.openai.raw_item`` for lossless reconstruction.
@@ -131,33 +91,122 @@ def canonical_to_items(events: list[CanonicalEvent]) -> list[dict[str, Any]]:
     """
     items: list[dict[str, Any]] = []
     for event in events:
-        # OpenAIItem: raw dict round-trip.
         if isinstance(event, OpenAIItem):
             items.append(dict(event.raw_item))
             continue
-        # Canonical events: prefer raw_item if present.
-        ext = (event.extensions or {}).get(OPENAI_EXTENSION_KEY) or {}
-        raw = ext.get("raw_item")
+        ext = _read_openai_extension(event)
+        raw = ext.get("raw_item") if isinstance(ext, dict) else None
         if isinstance(raw, dict) and raw:
             items.append(dict(raw))
             continue
-        # Fallback reconstruction from canonical fields (cross-framework read).
         item = _fallback_reconstruct(event)
         if item is not None:
             items.append(item)
     return items
 
 
-# ----- helpers ---------------------------------------------------------------
+# ----- per-item-type mappers -------------------------------------------------
+
+
+def _map_message(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> list[ProtoMessage]:
+    role = item.get("role", "user")
+    content = _extract_message_text(item.get("content"))
+
+    if role == "user":
+        evt = UserMessageReceived(message_index=message_index)
+    else:
+        # Assistant / system — map to AssistantTextGenerated.
+        evt = AssistantTextGenerated(message_index=message_index)
+
+    if content is not None:
+        evt.content = content
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    _set_openai_extension(evt, {"raw_item": dict(item), "item_type": item.get("type", "message")})
+    return [evt]
+
+
+def _map_function_call(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> AssistantToolCallsGenerated:
+    evt = AssistantToolCallsGenerated(message_index=message_index)
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+
+    tc = ToolCallInfo()
+    tc.call_id = item.get("call_id") or ""
+    tc.tool_name = item.get("name") or ""
+    args = _parse_arguments(item.get("arguments"))
+    if args is not None:
+        # Empty-dict args are preserved by design (schema commit ff1540d).
+        # MergeFrom with a Struct (even empty) marks the field as present;
+        # plain update({}) does not set the has-bit.
+        s = Struct()
+        s.update(args)
+        tc.arguments.MergeFrom(s)
+    evt.tool_calls.append(tc)
+
+    _set_openai_extension(evt, {"raw_item": dict(item), "item_type": "function_call"})
+    return evt
+
+
+def _map_function_call_output(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> ToolResultReceived:
+    evt = ToolResultReceived(
+        call_id=item.get("call_id") or "",
+        message_index=message_index,
+    )
+    result = _serialize_output(item.get("output"))
+    if result is not None:
+        evt.result = result
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    _set_openai_extension(evt, {"raw_item": dict(item), "item_type": "function_call_output"})
+    return evt
+
+
+def _wrap_openai_item(
+    item: dict[str, Any], kind: str, message_index: int, ts: datetime
+) -> OpenAIItem:
+    return OpenAIItem(
+        item_type=kind,
+        raw_item=dict(item),
+        message_index=message_index,
+        timestamp=ts,
+    )
+
+
+# ----- extension helpers -----------------------------------------------------
+
+
+def _set_openai_extension(event: ProtoMessage, payload: dict[str, Any]) -> None:
+    """Stamp ``event.extensions['openai']`` from a plain dict.
+
+    Goes through :func:`google.protobuf.json_format.ParseDict` to coerce
+    nested dicts/lists into ``Struct``. No bytes handling is needed because
+    OpenAI Responses items are JSON-shaped (binary content is base64'd
+    server-side).
+    """
+    if not payload:
+        return
+    struct = Struct()
+    ParseDict(payload, struct)
+    event.extensions[OPENAI_EXTENSION_KEY].CopyFrom(struct)
+
+
+def _read_openai_extension(event: ProtoMessage) -> dict[str, Any]:
+    """Read ``event.extensions['openai']`` back as a plain dict."""
+    if not hasattr(event, "extensions") or OPENAI_EXTENSION_KEY not in event.extensions:
+        return {}
+    return MessageToDict(
+        event.extensions[OPENAI_EXTENSION_KEY], preserving_proto_field_name=True
+    )
+
+
+# ----- text + argument coercion ---------------------------------------------
 
 
 def _extract_message_text(content: Any) -> str | None:
-    """Pull plain text out of a Responses API ``content`` field.
-
-    ``content`` is either a string or a list of typed content parts
-    (``{"type": "input_text", "text": "..."}`` etc.). For non-text parts we
-    concatenate only the text; richer content rides verbatim via ``raw_item``.
-    """
     if content is None:
         return None
     if isinstance(content, str):
@@ -176,11 +225,6 @@ def _extract_message_text(content: Any) -> str | None:
 
 
 def _parse_arguments(arguments: Any) -> dict[str, Any] | None:
-    """Parse a ``function_call.arguments`` blob into a dict.
-
-    OpenAI returns JSON-encoded strings; we preserve empty-dict args distinctly
-    from missing args (Anthropic and some other readers reject ``null``).
-    """
     if arguments is None:
         return None
     if isinstance(arguments, dict):
@@ -207,43 +251,42 @@ def _serialize_output(output: Any) -> str | None:
         return json.dumps(output, default=str)
 
 
-def _fallback_reconstruct(event: CanonicalEvent) -> dict[str, Any] | None:
+# ----- cross-framework fallback ---------------------------------------------
+
+
+def _fallback_reconstruct(event: ProtoMessage) -> dict[str, Any] | None:
     """Best-effort item rebuild when no ``raw_item`` is present.
 
     Used only for cross-framework reads (e.g. an ADK agent wrote the session
-    and we're reading it from OpenAI's side). Generates a minimal Responses
-    API item that's good enough for the SDK to append to and continue.
+    and we're reading it from OpenAI's side).
     """
     if isinstance(event, UserMessageReceived):
         return {
             "type": "message",
             "role": "user",
-            "content": [{"type": "input_text", "text": event.content or ""}],
+            "content": [{"type": "input_text", "text": event.content if event.HasField("content") else ""}],
         }
     if isinstance(event, AssistantTextGenerated):
         return {
             "type": "message",
             "role": "assistant",
-            "content": [{"type": "output_text", "text": event.content or ""}],
+            "content": [{"type": "output_text", "text": event.content if event.HasField("content") else ""}],
         }
     if isinstance(event, AssistantToolCallsGenerated):
-        # OpenAI uses one ``function_call`` item per tool call. If we have
-        # multiple tool_calls on one canonical event (common for ADK), emit
-        # only the first here — best-effort. Real-world cross-framework
-        # reads should always have raw_item present.
         if not event.tool_calls:
             return None
         tc = event.tool_calls[0]
+        args = MessageToDict(tc.arguments, preserving_proto_field_name=True) if tc.HasField("arguments") else {}
         return {
             "type": "function_call",
             "call_id": tc.call_id,
             "name": tc.tool_name,
-            "arguments": json.dumps(tc.arguments if tc.arguments is not None else {}),
+            "arguments": json.dumps(args),
         }
     if isinstance(event, ToolResultReceived):
         return {
             "type": "function_call_output",
             "call_id": event.call_id,
-            "output": event.result,
+            "output": event.result if event.HasField("result") else None,
         }
     return None
