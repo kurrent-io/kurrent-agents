@@ -2,7 +2,7 @@
 
 KurrentDB integration for the [Strands Agents SDK](https://github.com/strands-agents/sdk-python) — persist agent sessions as canonical events in KurrentDB, wire-compatible with the other integrations in this repo (Google ADK, Microsoft Agent Framework).
 
-**Status: alpha.** `KurrentDBSessionManager` implements the core `initialize` / `append_message` / `sync_agent` / `redact_latest_message` surface so messages round-trip through KurrentDB; `KurrentDBAgentMemory` provides cross-session fact recall. Strands-specific state (conversation-manager state, multi-agent flows, interrupts) rides in `extensions.strands`.
+**Status: alpha.** `KurrentDBSessionManager` implements the core `initialize` / `append_message` / `sync_agent` / `redact_latest_message` surface so messages round-trip through KurrentDB; `KurrentDBAgentMemory` provides cross-session fact recall. Reasoning content emits canonical `AssistantThinkingGenerated`, and tool-approval pauses emit canonical `InterruptIssued` / `InterruptResolved` per `SCHEMA_v2.md §3.2`–`§3.3`. Strands-specific state (conversation-manager state, custom metadata, non-canonical content blocks) rides in `extensions.strands`; runtime-only state (`_internal_state`) round-trips via the framework-specific `StrandsAgentState` event.
 
 Shares the canonical schema with the rest of the monorepo — see [`schema/SCHEMA_v2.md`](../../schema/SCHEMA_v2.md). A session written by a Strands agent is readable by an ADK agent (and vice versa) for the conversational parts.
 
