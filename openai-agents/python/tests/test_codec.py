@@ -198,3 +198,46 @@ def test_serialize_pydantic_openai_item() -> None:
     payload = _json.loads(new_event.data)
     assert payload["item_type"] == "computer_call"
     assert payload["raw_item"] == {"type": "computer_call", "id": "x"}
+
+
+class TestReasoningMapping:
+    def test_plaintext_reasoning_maps_to_thinking(self) -> None:
+        items = [{
+            "type": "reasoning",
+            "id": "r1",
+            "content": [{"type": "reasoning_text", "text": "because..."}],
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert len(events) == 1
+        assert isinstance(events[0], AssistantThinkingGenerated)
+        assert events[0].content == "because..."
+        # Plaintext path must omit `encrypted` from the wire; under Edition 2024
+        # this means *not* setting the field rather than setting it to False.
+        assert not events[0].HasField("encrypted")
+        assert not events[0].HasField("signature")
+        assert _ext(events[0])["raw_item"] == items[0]
+
+    def test_encrypted_reasoning_maps_to_thinking(self) -> None:
+        items = [{
+            "type": "reasoning",
+            "id": "r2",
+            "encrypted_content": "AAA-OPAQUE-BLOB-AAA",
+            "signature": "sig-deadbeef",
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert isinstance(events[0], AssistantThinkingGenerated)
+        assert events[0].encrypted is True
+        assert events[0].signature == "sig-deadbeef"
+        assert not events[0].HasField("content")
+        ext = _ext(events[0])
+        assert ext["thinking"]["raw"] == "AAA-OPAQUE-BLOB-AAA"
+        assert ext["raw_item"] == items[0]
+
+    def test_reasoning_round_trips_through_raw_item(self) -> None:
+        items = [{
+            "type": "reasoning",
+            "id": "r1",
+            "content": [{"type": "reasoning_text", "text": "thinking..."}],
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert canonical_to_items(events) == items

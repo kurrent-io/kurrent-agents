@@ -46,6 +46,7 @@ _CANONICAL_ITEM_TYPES = frozenset({
     "message",
     "function_call",
     "function_call_output",
+    "reasoning",
 })
 
 
@@ -74,6 +75,8 @@ def items_to_canonical(
             results.append(_map_function_call(item, message_index, ts))
         elif kind == "function_call_output":
             results.append(_map_function_call_output(item, message_index, ts))
+        elif kind == "reasoning":
+            results.append(_map_reasoning(item, message_index, ts))
         else:
             # Non-canonical — handoff_*, computer_call, shell_call, web_search,
             # etc. Reasoning + MCP approvals are added in tasks 6 and 7.
@@ -174,6 +177,62 @@ def _wrap_openai_item(
         message_index=message_index,
         timestamp=ts,
     )
+
+
+def _map_reasoning(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> AssistantThinkingGenerated:
+    """Map an OpenAI ``reasoning`` item to ``AssistantThinkingGenerated``.
+
+    Two shapes per SCHEMA_v2 §3.2:
+    - Plaintext: ``content[*].text`` carries reasoning text; ``encrypted=False``.
+    - Encrypted (o-series): opaque ``encrypted_content`` + optional ``signature``;
+      blob rides under ``extensions.openai.thinking.raw``.
+    """
+    evt = AssistantThinkingGenerated(message_index=message_index)
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+
+    text = _extract_reasoning_text(item.get("content") or item.get("summary"))
+    encrypted_blob = item.get("encrypted_content")
+    signature = item.get("signature")
+
+    ext_payload: dict[str, Any] = {"raw_item": dict(item), "item_type": "reasoning"}
+
+    if encrypted_blob is not None:
+        # Only set the field when True. Edition 2024 emits any explicitly-set
+        # field on the wire (`"encrypted": false` would drift from the canonical
+        # fixture, which omits the key when reasoning is plaintext).
+        evt.encrypted = True
+        if signature:
+            evt.signature = signature
+        ext_payload["thinking"] = {"raw": encrypted_blob}
+    else:
+        if text is not None:
+            evt.content = text
+        if signature:
+            evt.signature = signature
+
+    _set_openai_extension(evt, ext_payload)
+    return evt
+
+
+def _extract_reasoning_text(blocks: Any) -> str | None:
+    """Pull plaintext from a ``reasoning.content`` or ``reasoning.summary`` list.
+
+    Handles ``{"type": "reasoning_text", "text": "..."}`` and
+    ``{"type": "summary_text", "text": "..."}`` entries; concatenates text.
+    """
+    if not isinstance(blocks, list):
+        return None
+    parts: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") in {"reasoning_text", "summary_text", "text"}:
+            value = block.get("text")
+            if isinstance(value, str):
+                parts.append(value)
+    return "".join(parts) or None
 
 
 # ----- extension helpers -----------------------------------------------------
@@ -288,5 +347,20 @@ def _fallback_reconstruct(event: ProtoMessage) -> dict[str, Any] | None:
             "type": "function_call_output",
             "call_id": event.call_id,
             "output": event.result if event.HasField("result") else None,
+        }
+    if isinstance(event, AssistantThinkingGenerated):
+        if event.encrypted:
+            ext = _read_openai_extension(event)
+            blob = ext.get("thinking", {}).get("raw") if isinstance(ext, dict) else None
+            item: dict[str, Any] = {"type": "reasoning"}
+            if blob is not None:
+                item["encrypted_content"] = blob
+            if event.HasField("signature"):
+                item["signature"] = event.signature
+            return item
+        text = event.content if event.HasField("content") else ""
+        return {
+            "type": "reasoning",
+            "content": [{"type": "reasoning_text", "text": text}],
         }
     return None
