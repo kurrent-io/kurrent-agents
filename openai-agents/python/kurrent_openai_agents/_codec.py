@@ -63,8 +63,16 @@ def items_to_canonical(
     ``start_index`` is the session-wide monotonic counter assigned by the
     caller. Each item gets its own index; canonical events emitted for one
     item share that index.
+
+    Naive ``timestamp`` arguments are interpreted as UTC, matching the
+    default ``datetime.now(UTC)`` and ``Timestamp.FromDatetime`` semantics.
+    Tz-aware datetimes are converted to UTC. Either way, mappers downstream
+    receive a tz-aware UTC datetime, so they cannot accidentally invoke
+    ``datetime.astimezone(UTC)`` on a naive value (which would silently
+    interpret it as local time on Python 3.11+).
     """
     ts = timestamp or datetime.now(UTC)
+    ts = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
     results: list[ProtoMessage | OpenAIItem] = []
 
     for offset, item in enumerate(items):
@@ -131,7 +139,7 @@ def _map_message(
 
     if content is not None:
         evt.content = content
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
     _set_openai_extension(evt, {"raw_item": dict(item), "item_type": item.get("type", "message")})
     return [evt]
 
@@ -140,7 +148,7 @@ def _map_function_call(
     item: dict[str, Any], message_index: int, ts: datetime
 ) -> AssistantToolCallsGenerated:
     evt = AssistantToolCallsGenerated(message_index=message_index)
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
 
     tc = ToolCallInfo()
     tc.call_id = item.get("call_id") or ""
@@ -169,7 +177,7 @@ def _map_function_call_output(
     result = _serialize_output(item.get("output"))
     if result is not None:
         evt.result = result
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
     _set_openai_extension(evt, {"raw_item": dict(item), "item_type": "function_call_output"})
     return evt
 
@@ -196,7 +204,7 @@ def _map_reasoning(
       blob rides under ``extensions.openai.thinking.raw``.
     """
     evt = AssistantThinkingGenerated(message_index=message_index)
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
 
     text = _extract_reasoning_text(item.get("content") or item.get("summary"))
     encrypted_blob = item.get("encrypted_content")
@@ -242,7 +250,7 @@ def _map_mcp_approval_request(
     )
     if name:
         evt.tool_name = name
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
 
     proposed_call: dict[str, Any] = {
         "id": request_id,
@@ -272,7 +280,7 @@ def _map_mcp_approval_response(
     reason = item.get("reason")
     if isinstance(reason, str) and reason:
         evt.response = reason
-    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    evt.timestamp.FromDatetime(ts.replace(tzinfo=None))
     _set_openai_extension(evt, {
         "raw_item": dict(item),
         "item_type": "mcp_approval_response",

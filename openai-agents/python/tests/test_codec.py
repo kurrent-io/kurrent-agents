@@ -159,6 +159,48 @@ class TestRoundTrip:
         }]
 
 
+class TestTimestampNormalisation:
+    """Naive timestamps must be interpreted as UTC, not silently as local time.
+
+    On Python 3.11+, ``naive.astimezone(UTC)`` does not raise — it interprets
+    the input as local time and converts. That silently produces a wrong
+    canonical UTC for any caller passing a naive datetime, regardless of
+    intent. The codec normalises tz-naive inputs to UTC at the entry point.
+    """
+
+    def _proto_ts_to_aware(self, evt) -> datetime:
+        """Read a proto Timestamp back as a tz-aware UTC datetime."""
+        return evt.timestamp.ToDatetime(tzinfo=UTC)
+
+    def test_naive_timestamp_treated_as_utc_not_local(self) -> None:
+        wall = datetime(2026, 4, 19, 12, 0)  # naive
+        utc = wall.replace(tzinfo=UTC)
+
+        items = [{"type": "message", "role": "user",
+                  "content": [{"type": "input_text", "text": "hi"}]}]
+        from_naive = items_to_canonical(items, start_index=0, timestamp=wall)
+        from_aware = items_to_canonical(items, start_index=0, timestamp=utc)
+
+        assert (
+            self._proto_ts_to_aware(from_naive[0])
+            == self._proto_ts_to_aware(from_aware[0])
+            == utc
+        ), "naive timestamp must round-trip as UTC, not as local-time-converted-to-UTC"
+
+    def test_aware_non_utc_timestamp_converted_to_utc(self) -> None:
+        from datetime import timedelta, timezone
+
+        plus_two = timezone(timedelta(hours=2))
+        local = datetime(2026, 4, 19, 14, 0, tzinfo=plus_two)
+        utc = datetime(2026, 4, 19, 12, 0, tzinfo=UTC)
+
+        items = [{"type": "message", "role": "user",
+                  "content": [{"type": "input_text", "text": "hi"}]}]
+        events = items_to_canonical(items, start_index=0, timestamp=local)
+
+        assert self._proto_ts_to_aware(events[0]) == utc
+
+
 def test_serialize_stamps_schema_version() -> None:
     import json as _json
     from datetime import UTC
