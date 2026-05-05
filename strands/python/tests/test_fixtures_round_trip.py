@@ -131,7 +131,11 @@ def test_fixture_round_trips_through_kurrentdb(
         events=[new_event],
     )
 
-    recorded = next(iter(kurrentdb_client.read_stream(stream)), None)
+    # ``read_stream`` opens a server-streaming gRPC RPC; close it deterministically
+    # via the context manager so the underlying channel doesn't linger across the
+    # 18 parametrised cases waiting on GC finalisation.
+    with kurrentdb_client.read_stream(stream) as response:
+        recorded = next(response, None)
     assert recorded is not None, f"Stream {stream} was empty after append"
 
     decoded = serialization.deserialize(recorded)
