@@ -171,3 +171,41 @@ class TestRoundTrip:
                 "content": [{"type": "input_text", "text": "hello"}],
             }
         ]
+
+
+def test_serialize_stamps_schema_version() -> None:
+    import json as _json
+    from datetime import UTC, datetime as _dt
+    from kurrent_agent_schema import UserMessageReceived
+    from kurrent_openai_agents import _serialization
+
+    event = UserMessageReceived(message_index=0)
+    event.timestamp.FromDatetime(_dt(2026, 5, 5, tzinfo=UTC))
+    event.content = "hi"
+
+    new_event = _serialization.serialize(event)
+
+    assert new_event.type == "UserMessageReceived"
+    payload = _json.loads(new_event.data)
+    assert payload["content"] == "hi"
+    metadata = _json.loads(new_event.metadata)
+    assert metadata["$schema_version"] == 2
+
+
+def test_serialize_pydantic_openai_item() -> None:
+    import json as _json
+    from datetime import UTC, datetime as _dt
+    from kurrent_openai_agents import _serialization
+    from kurrent_openai_agents._openai_events import OpenAIItem
+
+    item = OpenAIItem(
+        item_type="computer_call",
+        raw_item={"type": "computer_call", "id": "x"},
+        message_index=3,
+        timestamp=_dt(2026, 5, 5, tzinfo=UTC),
+    )
+    new_event = _serialization.serialize(item)
+    assert new_event.type == "OpenAIItem"
+    payload = _json.loads(new_event.data)
+    assert payload["item_type"] == "computer_call"
+    assert payload["raw_item"] == {"type": "computer_call", "id": "x"}
