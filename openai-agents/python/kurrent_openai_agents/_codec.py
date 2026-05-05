@@ -47,6 +47,8 @@ _CANONICAL_ITEM_TYPES = frozenset({
     "function_call",
     "function_call_output",
     "reasoning",
+    "mcp_approval_request",
+    "mcp_approval_response",
 })
 
 
@@ -77,6 +79,10 @@ def items_to_canonical(
             results.append(_map_function_call_output(item, message_index, ts))
         elif kind == "reasoning":
             results.append(_map_reasoning(item, message_index, ts))
+        elif kind == "mcp_approval_request":
+            results.append(_map_mcp_approval_request(item, message_index, ts))
+        elif kind == "mcp_approval_response":
+            results.append(_map_mcp_approval_response(item, message_index, ts))
         else:
             # Non-canonical — handoff_*, computer_call, shell_call, web_search,
             # etc. Reasoning + MCP approvals are added in tasks 6 and 7.
@@ -213,6 +219,64 @@ def _map_reasoning(
             evt.signature = signature
 
     _set_openai_extension(evt, ext_payload)
+    return evt
+
+
+def _map_mcp_approval_request(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> InterruptIssued:
+    """Map an MCP ``mcp_approval_request`` item to ``InterruptIssued``.
+
+    Post-hoc gate per SCHEMA_v2 §3.3: ``request_id`` equals the gated tool
+    call's ``call_id``. The proposed call rides under
+    ``extensions.openai.interrupt.proposed_call`` per the documented soft
+    convention.
+    """
+    request_id = item.get("id") or ""
+    name = item.get("name") or ""
+    args = _parse_arguments(item.get("arguments"))
+
+    evt = InterruptIssued(
+        request_id=request_id,
+        kind="approval",
+    )
+    if name:
+        evt.tool_name = name
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+
+    proposed_call: dict[str, Any] = {
+        "id": request_id,
+        "name": name,
+        "arguments": args if args is not None else {},
+    }
+    _set_openai_extension(evt, {
+        "raw_item": dict(item),
+        "item_type": "mcp_approval_request",
+        "interrupt": {"proposed_call": proposed_call},
+    })
+    return evt
+
+
+def _map_mcp_approval_response(
+    item: dict[str, Any], message_index: int, ts: datetime
+) -> InterruptResolved:
+    """Map ``mcp_approval_response`` to ``InterruptResolved``.
+
+    ``approve=True`` ⇒ ``outcome=allow``; ``approve=False`` ⇒ ``outcome=deny``.
+    Free-text rationale (when present) goes in canonical ``response``.
+    """
+    evt = InterruptResolved(
+        request_id=item.get("approval_request_id") or "",
+        outcome="allow" if item.get("approve") else "deny",
+    )
+    reason = item.get("reason")
+    if isinstance(reason, str) and reason:
+        evt.response = reason
+    evt.timestamp.FromDatetime(ts.astimezone(UTC).replace(tzinfo=None))
+    _set_openai_extension(evt, {
+        "raw_item": dict(item),
+        "item_type": "mcp_approval_response",
+    })
     return evt
 
 
@@ -363,4 +427,22 @@ def _fallback_reconstruct(event: ProtoMessage) -> dict[str, Any] | None:
             "type": "reasoning",
             "content": [{"type": "reasoning_text", "text": text}],
         }
+    if isinstance(event, InterruptIssued):
+        ext = _read_openai_extension(event)
+        proposed = (ext.get("interrupt") or {}).get("proposed_call") or {}
+        return {
+            "type": "mcp_approval_request",
+            "id": event.request_id,
+            "name": event.tool_name if event.HasField("tool_name") else proposed.get("name", ""),
+            "arguments": json.dumps(proposed.get("arguments") or {}),
+        }
+    if isinstance(event, InterruptResolved):
+        resolved_item: dict[str, Any] = {
+            "type": "mcp_approval_response",
+            "approval_request_id": event.request_id,
+            "approve": event.outcome == "allow",
+        }
+        if event.HasField("response"):
+            resolved_item["reason"] = event.response
+        return resolved_item
     return None

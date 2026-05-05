@@ -241,3 +241,69 @@ class TestReasoningMapping:
         }]
         events = items_to_canonical(items, start_index=0, timestamp=TS)
         assert canonical_to_items(events) == items
+
+
+class TestMcpApprovalMapping:
+    def test_mcp_approval_request_maps_to_interrupt_issued(self) -> None:
+        items = [{
+            "type": "mcp_approval_request",
+            "id": "req-1",
+            "name": "publish_post",
+            "arguments": '{"title": "hi"}',
+            "server_label": "blog-mcp",
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert isinstance(events[0], InterruptIssued)
+        assert events[0].request_id == "req-1"
+        assert events[0].kind == "approval"
+        assert events[0].tool_name == "publish_post"
+        ext = _ext(events[0])
+        assert ext["interrupt"]["proposed_call"] == {
+            "id": "req-1",
+            "name": "publish_post",
+            "arguments": {"title": "hi"},
+        }
+        assert ext["raw_item"] == items[0]
+
+    def test_mcp_approval_response_allow_maps_to_resolved(self) -> None:
+        items = [{
+            "type": "mcp_approval_response",
+            "approval_request_id": "req-1",
+            "approve": True,
+            "reason": "looks fine",
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert isinstance(events[0], InterruptResolved)
+        assert events[0].request_id == "req-1"
+        assert events[0].outcome == "allow"
+        assert events[0].response == "looks fine"
+
+    def test_mcp_approval_response_deny_maps_to_resolved(self) -> None:
+        items = [{
+            "type": "mcp_approval_response",
+            "approval_request_id": "req-2",
+            "approve": False,
+        }]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        assert isinstance(events[0], InterruptResolved)
+        assert events[0].outcome == "deny"
+        assert not events[0].HasField("response")
+
+    def test_mcp_round_trip(self) -> None:
+        items = [
+            {
+                "type": "mcp_approval_request",
+                "id": "req-1",
+                "name": "publish_post",
+                "arguments": '{"title": "hi"}',
+                "server_label": "blog-mcp",
+            },
+            {
+                "type": "mcp_approval_response",
+                "approval_request_id": "req-1",
+                "approve": True,
+            },
+        ]
+        events = items_to_canonical(items, start_index=0, timestamp=TS)
+        restored = canonical_to_items(events)
+        assert restored == items
