@@ -13,7 +13,9 @@ authors = [{ name = "Kurrent, Inc." }]
 keywords = ["kurrentdb", "eventsourcing", "openai-agents", "llm", "agents"]
 dependencies = [
   "openai-agents >= 0.2.0",
+  "kurrent-agent-schema >= 0.3.0",
   "kurrentdbclient >= 1.2.0",
+  "protobuf >= 6.32.1, < 8",
   "pydantic >= 2.5",
 ]
 
@@ -40,4 +42,5 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
 
 [tool.uv.sources]
+kurrent-agent-schema = { path = "../../schema/python", editable = true }
 kurrent-agents-testing = { path = "../../testing", editable = true }
