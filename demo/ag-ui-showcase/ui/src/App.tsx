@@ -1,12 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { Subscription } from 'rxjs';
 
 import { Chat } from './components/Chat';
 import {
-  EventType,
   FRAMEWORK_ENABLED,
   FRAMEWORK_LABELS,
-  type BaseEvent,
   type Framework,
   makeAgent,
 } from './lib/agent';
@@ -34,11 +31,8 @@ export function App(): JSX.Element {
   const [pending, setPending] = useState<string>('');
   const [running, setRunning] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const subscriptionRef = useRef<Subscription | null>(null);
 
   const resetSession = useCallback(() => {
-    subscriptionRef.current?.unsubscribe();
-    subscriptionRef.current = null;
     setRunning(false);
     setAcc(emptyAccumulator());
     setSessionId(newSessionId());
@@ -48,9 +42,10 @@ export function App(): JSX.Element {
     const text = pending.trim();
     if (!text || running) return;
 
-    // Optimistic user bubble — server will echo via UserMessageReceived
-    // → TEXT_MESSAGE_*(role=user). We pre-add it here and let the
-    // accumulator's de-dupe-by-messageId merge them.
+    // Optimistic user bubble — pre-render so the user sees their input
+    // immediately. The same content shows up again in the AG-UI stream
+    // (TEXT_MESSAGE_*(role=user)) but with a different messageId; the
+    // accumulator treats them as separate bubbles, which is fine.
     const userBubble: TextBubble = {
       kind: 'text',
       id: `local-user-${Date.now()}`,
@@ -66,45 +61,37 @@ export function App(): JSX.Element {
     setRunning(true);
 
     const agent = makeAgent(framework, sessionId);
+    // Build RunAgentInput inline so the request body has every field
+    // the server expects. (Calling agent.run({runId}) sends only
+    // {runId} — see AG-UI HttpAgent.requestInit using JSON.stringify.)
     const runId = newRunId();
-    const sub = agent
-      .run({
-        runId,
-        // HttpAgent sends `messages` automatically from agent.messages,
-        // so we mutate it here to include the new user turn.
-        // The agent maintains the running history.
-      } as never)
-      .subscribe({
-        next: (event: BaseEvent) => {
-          setAcc((prev) => applyEvent(prev, event));
-          if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
-            setRunning(false);
-          }
-        },
-        error: (err) => {
-          setAcc((prev) => ({
-            ...prev,
-            bubbles: [
-              ...prev.bubbles,
-              {
-                kind: 'error',
-                id: `err-${Date.now()}`,
-                message: (err as Error).message ?? String(err),
-              },
-            ],
-          }));
-          setRunning(false);
-        },
-        complete: () => setRunning(false),
-      });
-    subscriptionRef.current = sub;
-
-    // The HttpAgent doesn't quite know about our user message yet; push
-    // it into agent.messages so it shows up in RunAgentInput.messages.
-    agent.messages = [
-      ...(agent.messages ?? []),
-      { id: userBubble.id, role: 'user', content: text } as never,
-    ];
+    const input = {
+      threadId: sessionId,
+      runId,
+      tools: [],
+      context: [],
+      forwardedProps: {},
+      state: {},
+      messages: [{ id: userBubble.id, role: 'user' as const, content: text }],
+    };
+    agent.run(input as never).subscribe({
+      next: (event) => setAcc((prev) => applyEvent(prev, event)),
+      error: (err) => {
+        setAcc((prev) => ({
+          ...prev,
+          bubbles: [
+            ...prev.bubbles,
+            {
+              kind: 'error',
+              id: `err-${Date.now()}`,
+              message: (err as Error).message ?? String(err),
+            },
+          ],
+        }));
+        setRunning(false);
+      },
+      complete: () => setRunning(false),
+    });
   }, [framework, pending, running, sessionId]);
 
   const onKeyDown = useCallback(
