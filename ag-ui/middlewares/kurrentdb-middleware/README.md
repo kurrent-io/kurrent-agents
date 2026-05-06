@@ -99,6 +99,42 @@ new KurrentDBMiddleware({
 });
 ```
 
+## Sample
+
+Run a synthetic agent through the middleware and see the AG-UI events
+collapse into canonical events:
+
+```bash
+cd ../../demo && docker compose up -d   # KurrentDB on :2113
+cd ../ag-ui/middlewares/kurrentdb-middleware
+npm install
+npm run sample
+```
+
+Output (abridged):
+
+```
+=== AG-UI events emitted by agent (15) ===
+  RUN_STARTED
+  TEXT_MESSAGE_START / _CONTENT / _END   user "What's the weather in Oslo?"
+  TEXT_MESSAGE_START / _CONTENT / _END   assistant "Looking that up."
+  TOOL_CALL_START / _ARGS / _END         get_weather({"city":"Oslo"})
+  TOOL_CALL_RESULT                       {"temperature_c":8,...}
+  TEXT_MESSAGE_START / _CONTENT / _END   assistant "8°C with light rain in Oslo."
+  RUN_FINISHED
+
+=== Canonical events persisted to AgentSession-sample-... ===
+  [0] SessionStarted
+  [1] UserMessageReceived          "What's the weather in Oslo?"
+  [2] AssistantToolCallsGenerated  carrier="Looking that up." + 1 tool call
+  [3] ToolResultReceived           {"temperature_c":8,"condition":"light_rain"}
+  [4] AssistantTextGenerated       "8°C with light rain in Oslo."
+  [5] SessionEnded                 reason=complete
+```
+
+15 incremental AG-UI events → 6 canonical events. Any Python or .NET
+integration in this monorepo can now replay the session unchanged.
+
 ## Layout
 
 | Path | Purpose |
@@ -108,6 +144,7 @@ new KurrentDBMiddleware({
 | `src/dedup.ts` | Per-thread `messageId` dedup, seeded from existing stream |
 | `src/streamNames.ts` | Canonical stream name builders (mirrors Python/.NET) |
 | `src/types.ts` | Canonical event types (hand-written stopgap; see TODO) |
+| `samples/basic.ts` | Side-by-side AG-UI vs canonical events demo |
 | `test/translator.test.ts` | Unit tests for the pure translator |
 | `test/middleware.integration.test.ts` | End-to-end vs live KurrentDB |
 
