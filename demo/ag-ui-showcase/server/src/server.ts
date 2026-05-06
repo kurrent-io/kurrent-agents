@@ -1,20 +1,26 @@
 /**
  * ag-ui-showcase Fastify server.
  *
- * Phase 1: hosts the /agent/maf route. Phase 2 adds /agent/adk,
- * /agent/strands, /agent/langgraph.
+ * Phase 2 hosts four AG-UI lanes:
+ *   /agent/maf      — MAF Python via subprocess (writes canonical;
+ *                     replay agent live-tails)
+ *   /agent/adk      — Google ADK Python ditto
+ *   /agent/strands  — Strands Python ditto
+ *   /agent/langgraph — TS in-process; AG-UI middleware persists
+ *                      canonical as side effect; events pass straight
+ *                      through to the browser.
  *
  * Env:
- * - PORT (default 7000)
- * - KURRENTDB_CONNECTION_STRING (default kurrentdb://localhost:2113?Tls=false)
- * - DUMMY_MODE (truthy: skip LLM, use canned responses)
- * - ANTHROPIC_API_KEY (when not in dummy mode)
+ *   PORT (default 7000)
+ *   KURRENTDB_CONNECTION_STRING (default kurrentdb://localhost:2113?Tls=false)
+ *   DUMMY_MODE (truthy: skip LLM, use canned/synthetic responses)
+ *   ANTHROPIC_API_KEY (when not in dummy mode)
  */
 
 import Fastify from 'fastify';
 import { KurrentDBClient } from '@kurrent/kurrentdb-client';
 
-import { registerMafRoute } from './routes/maf.js';
+import { registerNativeRoute } from './routes/native.js';
 
 const PORT = Number(process.env.PORT ?? 7000);
 const CONN =
@@ -28,8 +34,6 @@ async function main(): Promise<void> {
     logger: { level: 'info' },
   });
 
-  // Browser is on a different origin (Vite dev :5173). Enable CORS for
-  // the AG-UI SSE endpoint.
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Access-Control-Allow-Origin', '*');
     reply.header('Access-Control-Allow-Headers', 'Content-Type');
@@ -43,21 +47,24 @@ async function main(): Promise<void> {
     status: 'ok',
     dummyMode: DUMMY,
     kurrentdb: CONN,
+    lanes: ['maf', 'adk', 'strands'],
   }));
 
   const client = KurrentDBClient.connectionString(CONN);
-
-  registerMafRoute(app, {
+  const nativeConfig = {
     client,
     connectionString: CONN,
     dummyMode: DUMMY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    logger: (line) => app.log.info(line),
-  });
+    logger: (line: string) => app.log.info(line),
+  };
+  registerNativeRoute(app, 'maf', nativeConfig);
+  registerNativeRoute(app, 'adk', nativeConfig);
+  registerNativeRoute(app, 'strands', nativeConfig);
 
   await app.listen({ port: PORT, host: '0.0.0.0' });
   app.log.info(
-    `ag-ui-showcase server up — http://localhost:${PORT}/health (dummy=${DUMMY})`,
+    `ag-ui-showcase server up — http://localhost:${PORT}/health (dummy=${DUMMY}; lanes: maf, adk, strands)`,
   );
 }
 

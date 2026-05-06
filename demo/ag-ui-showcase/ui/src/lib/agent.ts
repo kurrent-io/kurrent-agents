@@ -7,20 +7,18 @@
 
 import { EventType, HttpAgent, type BaseEvent } from '@ag-ui/client';
 
-export type Framework = 'maf' | 'adk' | 'strands' | 'langgraph';
+export type Framework = 'maf' | 'adk' | 'strands';
 
 export const FRAMEWORK_LABELS: Record<Framework, string> = {
   maf: 'Microsoft Agent Framework',
   adk: 'Google ADK',
   strands: 'Strands',
-  langgraph: 'LangGraph (AG-UI native)',
 };
 
 export const FRAMEWORK_ENABLED: Record<Framework, boolean> = {
   maf: true,
-  adk: false, // Phase 2
-  strands: false, // Phase 2
-  langgraph: false, // Phase 2
+  adk: true,
+  strands: true,
 };
 
 export function makeAgent(framework: Framework, threadId: string): HttpAgent {

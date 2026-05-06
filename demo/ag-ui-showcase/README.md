@@ -19,63 +19,71 @@ sessions side-by-side.
 
 | Phase | Status | Scope |
 |---|---|---|
-| 1 | in progress | Vertical slice — MAF lane only, end-to-end. Bones working. |
-| 2 | TODO | Add ADK + Strands + LangGraph lanes. Framework dropdown. |
+| 1 | done | Vertical slice — MAF lane only, end-to-end. Bones working. |
+| 2 | done | ADK + Strands lanes. Framework dropdown. (LangGraph deferred — was the only lane that exercised the DEV-1558 middleware; without it the demo only shows DEV-1559 read side.) |
+| 2.5 | TODO | Real LLM mode (`ANTHROPIC_API_KEY` set). MAF/ADK/Strands native runners actually invoke their integrations instead of writing canned events. |
 | 3 | TODO | Visual polish, session browser, error handling, one-command bring-up. |
 
-## Architecture (Phase 1)
+## Architecture (Phase 2)
 
 ```
 Browser (Vite + React, @ag-ui/client HttpAgent)
-       │
-       ▼ POST /agent/maf  (AG-UI RunAgentInput)
-       ▼ SSE response     (stream of AG-UI BaseEvent JSON)
+       │  framework dropdown picks the lane
+       ▼ POST /agent/{maf|adk|strands}  (AG-UI RunAgentInput)
+       ▼ SSE response                   (stream of AG-UI BaseEvent JSON)
 TS Fastify server (server/)
        │
-       ├── 1. Spawn Python subprocess: runners/maf_runner.py
-       │    (writes canonical events to KurrentDB AgentSession-{id})
+       ├── 1. Spawn Python subprocess: runners/{lane}/runner.py
+       │      Each lane has its own venv (incompatible deps; see
+       │      CLAUDE.md re: otel pin conflict between MAF and ADK).
+       │      Runner writes canonical events to AgentSession-{id}.
        │
        └── 2. KurrentDBReplayAgent in `live` mode subscribes to
-              AgentSession-{id}. As canonical events land, replay
+              AgentSession-{id}. As canonical events land, the replay
               agent emits AG-UI events. Server pipes them to browser.
                   ▲
                   │
               KurrentDB (single source of truth for the conversation)
 ```
 
-## Running (Phase 1)
+Switching lanes mid-conversation is fine — every lane writes to the
+same `AgentSession-{threadId}` stream. The canonical schema is the
+contract; integrations don't need to know each other exists.
+
+## Running (Phase 2 — dummy mode)
 
 Prereqs:
 - Node 20+, npm
 - Python 3.11+, [uv](https://docs.astral.sh/uv/)
 - Docker (for KurrentDB)
-- `ANTHROPIC_API_KEY` env var — **OR** `DUMMY_MODE=1` to use canned responses
 
 ```bash
 # 1. KurrentDB
-cd ../        # demo/ root
+cd ../demo
 docker compose up -d
 
-# 2. Python runner deps (one-time)
+# 2. Python runner venvs — one per lane (otel pin incompatibility)
 cd ag-ui-showcase
-uv sync
+uv sync --project runners/maf
+uv sync --project runners/adk
+uv sync --project runners/strands
 
-# 3. Install + build server
+# 3. Install + run server
 cd server
 npm install
-npm run build
+DUMMY_MODE=1 npm start         # in dummy mode — see below
 
-# 4. Install + run UI
+# 4. Install + run UI (separate terminal)
 cd ../ui
 npm install
-npm run dev   # Vite dev server at http://localhost:5173
+npm run dev                    # Vite dev server at http://localhost:5173
 
-# 5. Run server (separate terminal)
-cd ../server
-DUMMY_MODE=1 npm start    # or set ANTHROPIC_API_KEY for real LLM
-
-# 6. Open http://localhost:5173 in your browser.
+# 5. Open http://localhost:5173. Pick a framework. Type a message.
 ```
+
+Phase 2.5 (real LLM): unset `DUMMY_MODE`, set `ANTHROPIC_API_KEY`,
+restart the server. (Real-mode runners are stubbed today —
+`NotImplementedError` until 2.5 ships.)
 
 (A one-command bring-up script lands in Phase 3.)
 
