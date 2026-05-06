@@ -192,10 +192,10 @@ graph LR
     classDef store fill:#f1faf3,stroke:#15803d,color:#114b25
     classDef mw fill:#fff4e6,stroke:#b45309,color:#5c2e00
 
-    A[AG-UI agent<br/>LangGraph · Mastra · ...]
-    M[KurrentDBMiddleware<br/><small>~250 lines of TypeScript</small>]:::mw
+    A["AG-UI agent<br/>LangGraph · Mastra · ..."]
+    M["KurrentDBMiddleware<br/><small>~250 lines of TypeScript</small>"]:::mw
     UI[UI / consumer]
-    DB[(KurrentDB<br/>AgentSession-{id})]:::store
+    DB[("KurrentDB<br/>AgentSession-...")]:::store
 
     A -->|emits AG-UI events| M
     M -->|passes through unchanged| UI
