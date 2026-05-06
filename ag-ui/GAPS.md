@@ -117,8 +117,22 @@ when the first user asks for them.
 
 `STATE_SNAPSHOT` / `STATE_DELTA` (RFC 6902 patches) and
 `MESSAGES_SNAPSHOT` are observed but not persisted in v1. The middleware
-already has the hook point inside the `subscribe.next` callback; DEV-1562
-implements `onStateEvent` without restructuring.
+exposes a public `onStateEvent` hook (see `KurrentDBMiddlewareOptions`)
+that fires for each of these events, carrying the AG-UI event plus the
+post-event accumulated state, messages, sessionId, and runId. Default
+is no-op. DEV-1562 implements its persistence by passing a hook
+implementation, no middleware refactor needed.
+
+### 3.9 SessionStarted enrichment
+
+The middleware fills `app_name`, `agent_name`, `user_id`, `model`, and
+`agent_config` on `SessionStarted` from a combination of constructor
+options, `RunAgentInput.context` lookup (`description: "user_id" |
+"model"`), `RunAgentInput.forwardedProps.model`, and `RunAgentInput.tools`.
+`AgentConfig.tools` map AG-UI's `Tool` to canonical `ToolSpec` with
+`source: "ag_ui"`; `forwardedProps` (minus `model`) lift into
+`AgentConfig.model_parameters`. Both fields are dropped from the wire
+payload when nothing useful is derivable.
 
 ---
 

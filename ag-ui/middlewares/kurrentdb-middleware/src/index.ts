@@ -1,5 +1,5 @@
 export { KurrentDBMiddleware } from './middleware.js';
-export type { KurrentDBMiddlewareOptions } from './middleware.js';
+export type { KurrentDBMiddlewareOptions, StateEventHook } from './middleware.js';
 export { translateMessage } from './translator.js';
 export { agentSessionStream, AGENT_SESSION_PREFIX } from './streamNames.js';
 export {
@@ -8,6 +8,7 @@ export {
   SCHEMA_VERSION_METADATA_KEY,
   USAGE_METADATA_KEY,
   type AgentConfig,
+  type ToolSpec,
   type AssistantTextGenerated,
   type AssistantThinkingGenerated,
   type AssistantToolCallsGenerated,

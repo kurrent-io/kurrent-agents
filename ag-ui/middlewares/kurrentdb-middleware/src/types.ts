@@ -18,8 +18,15 @@ export interface CanonicalBase {
   extensions?: Record<string, unknown>;
 }
 
+export interface ToolSpec {
+  name: string;
+  description?: string;
+  input_schema?: unknown;
+  source?: string;
+}
+
 export interface AgentConfig {
-  tools?: Array<{ name: string; description?: string; input_schema?: unknown; source?: string }>;
+  tools?: ToolSpec[];
   plugins?: string[];
   conversation_manager?: Record<string, unknown>;
   model_parameters?: Record<string, unknown>;
