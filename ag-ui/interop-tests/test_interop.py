@@ -1,14 +1,22 @@
-"""Cross-language acceptance test for the AG-UI → KurrentDB middleware.
+"""Cross-language acceptance tests for the AG-UI → KurrentDB middleware.
 
 Spawns the TypeScript middleware writer (`npm run interop:write`) which
-runs a synthetic AG-UI agent, the middleware persists the canonical
-events, and this test reads the resulting `AgentSession-{id}` stream
-via the Python `kurrent-agent-schema` package — the same package every
-other Python integration in this monorepo uses.
+runs a synthetic AG-UI agent through `KurrentDBMiddleware`, then verifies
+the resulting canonical stream from two angles:
 
-If this test passes, the wire format produced by the TypeScript
-middleware is structurally identical to what Python and .NET readers
-expect. That's the DEV-1558 acceptance criterion.
+1. **Schema-level read** — parse each event with `kurrent-agent-schema`
+   and assert the proto types and field values. Proves the wire format
+   matches what every Python and .NET integration expects.
+
+2. **Real-integration read** — feed the same stream through MAF Python's
+   `KurrentDBHistoryProvider.get_messages()`, the same code path MAF
+   uses in production. Proves the middleware-written stream is wire-
+   compatible with an existing first-party Kurrent integration's reader.
+
+Together they cover the DEV-1558 acceptance criterion: "wrapping any
+existing /integrations/* agent with this middleware produces a
+replayable AgentSession-* stream readable by kurrent-agents' existing
+Python/.NET readers."
 
 Prereqs:
   - KurrentDB running (`demo/docker-compose up -d`).
@@ -174,6 +182,81 @@ async def test_python_reads_canonical_events_written_by_ts_middleware(
     for t, _, meta in events:
         assert meta.get("$run_id") == run_id, f"missing $run_id on {t}"
         assert meta.get("$schema_version") == 2
+
+
+@pytest.mark.asyncio
+async def test_maf_history_provider_reads_canonical_events_written_by_ts_middleware(
+    client: AsyncKurrentDBClient,
+    write_session_via_middleware,
+) -> None:
+    """The full DEV-1558 acceptance: an existing first-party Kurrent
+    integration's reader reconstructs Message objects from the canonical
+    stream the TS middleware wrote.
+
+    This is the strongest possible test without an LLM in the loop.
+    The middleware doesn't know MAF exists; MAF doesn't know the
+    middleware exists; the canonical schema is the only contract
+    they share — and it works.
+    """
+    from agent_framework import Message
+    from kurrent_agent_framework import KurrentDBHistoryProvider
+
+    session_id = f"interop-maf-{uuid.uuid4().hex[:8]}"
+    run_id = f"run-{uuid.uuid4().hex[:8]}"
+    write_session_via_middleware(session_id, run_id)
+
+    history = KurrentDBHistoryProvider(
+        client,
+        source_id="interop",
+        agent_name="fake",
+        model_name="synthetic",
+    )
+    messages: list[Message] = await history.get_messages(session_id)
+
+    # The synthetic AG-UI agent emits 4 conversational messages: user,
+    # assistant-with-tool-call, tool-result, assistant-text. MAF's reader
+    # should reconstruct exactly that.
+    roles = [m.role.value if hasattr(m.role, "value") else m.role for m in messages]
+    assert roles == ["user", "assistant", "tool", "assistant"], (
+        f"unexpected role sequence: {roles}"
+    )
+
+    # User message reconstructed with text content.
+    assert messages[0].text == "Weather in Oslo?"
+
+    # Assistant message with a function_call content block.
+    assistant_with_call = messages[1]
+    function_calls = [
+        c for c in assistant_with_call.contents if c.type == "function_call"
+    ]
+    assert len(function_calls) == 1
+    fc = function_calls[0]
+    assert fc.name == "get_weather"
+    assert fc.call_id == "c1"
+    # MAF FunctionCallContent stores arguments as the canonical Struct
+    # round-tripped to a dict.
+    assert dict(fc.arguments) == {"city": "Oslo"}
+    # Carrier text from the assistant message is preserved alongside the call.
+    text_blocks = [c for c in assistant_with_call.contents if c.type == "text"]
+    assert any(c.text == "Looking up." for c in text_blocks), (
+        f"missing carrier text in {[c.type for c in assistant_with_call.contents]}"
+    )
+
+    # Tool result message.
+    tool_result_msg = messages[2]
+    fr = next(
+        c for c in tool_result_msg.contents if c.type == "function_result"
+    )
+    assert fr.call_id == "c1"
+    # MAF stores function_result.result as a string — same as the canonical
+    # ToolResultReceived.result field.
+    assert json.loads(fr.result) == {
+        "temperature_c": 8,
+        "condition": "light_rain",
+    }
+
+    # Final assistant text.
+    assert messages[3].text == "8°C with light rain."
 
 
 if __name__ == "__main__":
