@@ -1,0 +1,19 @@
+[project]
+name = "ag-ui-showcase-runners"
+version = "0.0.0"
+description = "Python framework runners for the ag-ui-showcase customer demo"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+  # MAF lane — direct Kurrent integration writes canonical events.
+  "kurrent-agent-framework",
+  # Schema package for direct canonical writes in dummy mode.
+  "kurrent-agent-schema >= 0.4.0",
+  "kurrentdbclient >= 1.2.0",
+  # Real LLM lane (only used when ANTHROPIC_API_KEY is set).
+  "anthropic >= 0.40",
+]
+
+[tool.uv.sources]
+kurrent-agent-schema = { path = "../../schema/python", editable = true }
+kurrent-agent-framework = { path = "../../microsoft-agent-framework/python", editable = true }
