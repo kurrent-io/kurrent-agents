@@ -135,6 +135,11 @@ describe('KurrentDBMiddleware (live KurrentDB)', () => {
       app_name: 'test-app',
       agent_name: 'test-agent',
     });
+    // SessionStarted does NOT carry model when none is configured (synthetic
+    // FakeAgent has no model; AgentConfig is empty since FakeAgent.run is
+    // called with an input that has no tools/forwardedProps).
+    expect(collected[0]!.data).not.toHaveProperty('model');
+    expect(collected[0]!.data).not.toHaveProperty('agent_config');
 
     // User message landed verbatim.
     expect(collected[1]!.data).toMatchObject({
@@ -174,6 +179,119 @@ describe('KurrentDBMiddleware (live KurrentDB)', () => {
       expect((e.metadata as Record<string, unknown>).$run_id).toBe(runId);
       expect((e.metadata as Record<string, unknown>).$schema_version).toBe(2);
     }
+  }, 30_000);
+
+  test('SessionStarted carries model + AgentConfig when middleware can derive them', async () => {
+    const threadId = `agui-mw-cfg-${Math.random().toString(36).slice(2, 10)}`;
+    const runId = `run-${Math.random().toString(36).slice(2, 10)}`;
+
+    // Subclass FakeAgent so its run() receives a RunAgentInput with
+    // tools/forwardedProps populated. AbstractAgent.runAgent() builds
+    // the input from the parameters we pass.
+    class FakeAgentWithTools extends AbstractAgent {
+      constructor(private readonly events: BaseEvent[]) {
+        super({ threadId, agentId: 'cfg-fake', description: 'fake' });
+      }
+      run(_: RunAgentInput): Observable<BaseEvent> {
+        return new Observable<BaseEvent>((sub) => {
+          for (const e of this.events) sub.next(e);
+          sub.complete();
+        });
+      }
+    }
+    const events: BaseEvent[] = [
+      { type: EventType.RUN_STARTED, threadId, runId, timestamp: ts() } as never,
+      { type: EventType.RUN_FINISHED, threadId, runId, timestamp: ts() } as never,
+    ];
+
+    const agent = new FakeAgentWithTools(events);
+    agent.use(
+      new KurrentDBMiddleware({
+        client,
+        appName: 'cfg',
+        // explicit model wins over context/forwardedProps lookup
+        model: 'claude-haiku-4-5',
+      }),
+    );
+    await agent.runAgent({
+      runId,
+      tools: [
+        {
+          name: 'get_weather',
+          description: 'Look up the weather for a city',
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        },
+      ],
+      forwardedProps: { temperature: 0.7 },
+    });
+
+    const stream = client.readStream(agentSessionStream(threadId), {
+      direction: FORWARDS,
+      fromRevision: START,
+      maxCount: 4,
+    });
+    let sessionStartedData: Record<string, unknown> | undefined;
+    for await (const resolved of stream) {
+      const e = resolved.event!;
+      if (e.type === 'SessionStarted') {
+        sessionStartedData = e.data as Record<string, unknown>;
+        break;
+      }
+    }
+    expect(sessionStartedData).toBeDefined();
+    expect(sessionStartedData!.model).toBe('claude-haiku-4-5');
+    const cfg = sessionStartedData!.agent_config as {
+      tools?: Array<{ name: string; description?: string; source?: string }>;
+      model_parameters?: Record<string, unknown>;
+    };
+    expect(cfg.tools).toEqual([
+      expect.objectContaining({
+        name: 'get_weather',
+        description: 'Look up the weather for a city',
+        source: 'ag_ui',
+      }),
+    ]);
+    expect(cfg.model_parameters).toEqual({ temperature: 0.7 });
+  }, 30_000);
+
+  test('onStateEvent hook fires for STATE_SNAPSHOT / STATE_DELTA / MESSAGES_SNAPSHOT', async () => {
+    const threadId = `agui-mw-state-${Math.random().toString(36).slice(2, 10)}`;
+    const runId = `run-${Math.random().toString(36).slice(2, 10)}`;
+
+    const events: BaseEvent[] = [
+      { type: EventType.RUN_STARTED, threadId, runId, timestamp: ts() } as never,
+      { type: EventType.STATE_SNAPSHOT, snapshot: { count: 0 }, timestamp: ts() } as never,
+      { type: EventType.STATE_DELTA, delta: [{ op: 'replace', path: '/count', value: 1 }], timestamp: ts() } as never,
+      { type: EventType.MESSAGES_SNAPSHOT, messages: [], timestamp: ts() } as never,
+      { type: EventType.RUN_FINISHED, threadId, runId, timestamp: ts() } as never,
+    ];
+
+    const agent = new FakeAgent(threadId, events);
+    const captured: string[] = [];
+    agent.use(
+      new KurrentDBMiddleware({
+        client,
+        onStateEvent: ({ event }) => {
+          captured.push(event.type as string);
+        },
+      }),
+    );
+    await agent.runAgent({ runId });
+
+    expect(captured).toEqual(['STATE_SNAPSHOT', 'STATE_DELTA', 'MESSAGES_SNAPSHOT']);
+
+    // Side-effect: state events do NOT land in the canonical stream
+    // (DEV-1562 will add that). Only SessionStarted + SessionEnded.
+    const types: string[] = [];
+    const stream = client.readStream(agentSessionStream(threadId), {
+      direction: FORWARDS,
+      fromRevision: START,
+      maxCount: 16,
+    });
+    for await (const resolved of stream) {
+      types.push(resolved.event!.type);
+    }
+    expect(types).toEqual(['SessionStarted', 'SessionEnded']);
   }, 30_000);
 
   test('idempotent re-run does not double-write user messages', async () => {

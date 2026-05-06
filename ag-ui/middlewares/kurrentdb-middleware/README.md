@@ -89,11 +89,26 @@ new KurrentDBMiddleware({
   client,                           // required — connected KurrentDBClient
 
   // Map AG-UI threadId → canonical session_id. Default: identity.
-  // Override for multi-tenant scoping.
   scope: (input) => `${input.context?.find(c => c.description === 'tenant_id')?.value}-${input.threadId}`,
 
   appName: 'my-app',                // → SessionStarted.app_name
   agentName: 'my-agent',            // → SessionStarted.agent_name
+
+  // → SessionStarted.model. Either a literal, or a function reading
+  // from RunAgentInput. Default: forwardedProps.model, then context
+  // entry { description: "model" }.
+  model: 'claude-haiku-4-5',
+
+  // → SessionStarted.agent_config. Default derives `tools` from
+  // RunAgentInput.tools (mapped to canonical ToolSpec) and lifts
+  // forwardedProps (minus `model`) into model_parameters.
+  agentConfig: (input) => ({ tools: input.tools.map(t => ({ name: t.name })) }),
+
+  // Reserved for DEV-1562 (state round-trip). Called for every
+  // STATE_SNAPSHOT / STATE_DELTA / MESSAGES_SNAPSHOT event the inner
+  // agent emits. Default: no-op. The middleware itself does not
+  // persist state in v1.
+  onStateEvent: ({ event, state, messages, sessionId, runId }) => { /* ... */ },
 
   logger: console.log,              // optional; receives lifecycle messages
 });
