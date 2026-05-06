@@ -7,7 +7,8 @@ dependencies = [
   "kurrent-agent-framework",
   "kurrent-agent-schema >= 0.4.0",
   "kurrentdbclient >= 1.2.0",
-  "anthropic >= 0.40",
+  # MAF's Anthropic chat client lives in a separate package.
+  "agent-framework-anthropic",
 ]
 
 [tool.uv.sources]

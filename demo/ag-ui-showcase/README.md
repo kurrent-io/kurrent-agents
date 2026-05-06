@@ -21,7 +21,7 @@ sessions side-by-side.
 |---|---|---|
 | 1 | done | Vertical slice — MAF lane only, end-to-end. Bones working. |
 | 2 | done | ADK + Strands lanes. Framework dropdown. (LangGraph deferred — was the only lane that exercised the DEV-1558 middleware; without it the demo only shows DEV-1559 read side.) |
-| 2.5 | TODO | Real LLM mode (`ANTHROPIC_API_KEY` set). MAF/ADK/Strands native runners actually invoke their integrations instead of writing canned events. |
+| 2.5 | done (MAF + Strands) | Real LLM mode via `ANTHROPIC_API_KEY`. **ADK lane disabled** in UI pending integration bug fix: `kurrent_google_adk` imports `kurrent_agent_schema.events` which moved when schema 0.4.0 went proto-generated. ADK runner falls back to dummy mode if invoked. |
 | 3 | TODO | Visual polish, session browser, error handling, one-command bring-up. |
 
 ## Architecture (Phase 2)

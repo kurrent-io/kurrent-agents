@@ -127,7 +127,6 @@ export function App(): JSX.Element {
             {(Object.keys(FRAMEWORK_LABELS) as Framework[]).map((f) => (
               <option key={f} value={f} disabled={!FRAMEWORK_ENABLED[f]}>
                 {FRAMEWORK_LABELS[f]}
-                {!FRAMEWORK_ENABLED[f] ? ' (Phase 2)' : ''}
               </option>
             ))}
           </select>
