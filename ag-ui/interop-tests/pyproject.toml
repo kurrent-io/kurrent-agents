@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "kurrent-ag-ui-interop-tests"
 version = "0.0.0"
-description = "Cross-language acceptance harness: TS middleware writes; Python schema package reads (DEV-1558)"
+description = "Cross-language acceptance harness: TS middleware writes; Python readers consume (DEV-1558)"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = [
@@ -17,6 +17,10 @@ dependencies = [
 dev = [
   "pytest >= 8",
   "pytest-asyncio >= 0.23",
+  # Real-reader interop: MAF Python's KurrentDBHistoryProvider reads the
+  # canonical events the TS middleware writes. Proves wire compatibility
+  # with an existing first-party Kurrent integration's reader path.
+  "kurrent-agent-framework",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -28,3 +32,4 @@ testpaths = ["."]
 
 [tool.uv.sources]
 kurrent-agent-schema = { path = "../../schema/python", editable = true }
+kurrent-agent-framework = { path = "../../microsoft-agent-framework/python", editable = true }

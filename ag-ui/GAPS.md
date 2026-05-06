@@ -177,10 +177,27 @@ Mitigations (post-merge):
 > middleware produces a replayable `AgentSession-*` stream readable by
 > kurrent-agents' existing Python/.NET readers.
 
-**v1 status**: TS integration test in
-`middlewares/kurrentdb-middleware/test/middleware.integration.test.ts`
-asserts the canonical sequence on a live KurrentDB. The full Python-side
-parsing assertion lives in `ag-ui/interop-tests/`.
+**v1 status: covered.** Two layers of cross-language tests in
+`ag-ui/interop-tests/`:
+
+1. **Schema-level** — TS middleware writes; Python parses each event with
+   `kurrent-agent-schema` and asserts proto types and field values.
+2. **Real-integration** — TS middleware writes; **MAF Python's
+   `KurrentDBHistoryProvider.get_messages()`** (the same code path MAF
+   uses in production) reconstructs `Message` objects with proper
+   `role`, `text`, `function_call`, and `function_result` content
+   blocks. The middleware and MAF Python don't know each other exists;
+   the canonical schema is their only contract.
+
+This is stronger than the spec's "wrap a /integrations/* agent" path
+because it composes two of our own first-party integrations on opposite
+ends of a single canonical stream — exactly the cross-framework
+portability claim the schema is designed to make.
+
+A real-LLM smoke test wrapping a LangGraph or Mastra agent is a
+follow-up issue, not v1. It would add coverage of the input side
+(real `RunAgentInput` from a real framework) but doesn't change the
+contract being verified.
 
 ---
 
@@ -195,8 +212,10 @@ parsing assertion lives in `ag-ui/interop-tests/`.
   follows once a concrete use case lands.
 - **DEV-1560 (EvalRun ↔ runId)** — middleware writes `$run_id` metadata;
   reader-side joining and CopilotKit-style score-rendering UIs follow.
-- **Real-framework integration test** — wrap a LangGraph/Mastra agent
-  with the middleware end-to-end. v1 tests use a synthetic `FakeAgent`.
+- **Real-LLM-framework smoke test** — wrap a LangGraph/Mastra agent
+  with the middleware end-to-end. v1 covers the contract via the MAF
+  Python reader interop (above); this would extend coverage to the
+  *input* side, but is non-deterministic and needs an LLM key.
 - **AG-UI repo design doc** — capture §3 decisions in
   `docs/superpowers/specs/` of the ag-ui repo for community review.
 
