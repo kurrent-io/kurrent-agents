@@ -19,6 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "sample": "tsx samples/basic.ts",
     "interop:write": "tsx test/interop-writer.ts"
   },
   "keywords": [
