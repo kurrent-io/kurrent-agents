@@ -30,10 +30,13 @@ export class MessageIdDedup {
     const set = new Set<string>();
     let exists = false;
     try {
+      // Read forward from the start to the end of the stream, no
+      // maxCount cap. A cap would silently miss older message_ids on
+      // long-lived sessions and let duplicate canonical messages
+      // through on resume — correctness over startup latency.
       const events = client.readStream(agentSessionStream(sessionId), {
         direction: FORWARDS,
         fromRevision: START,
-        maxCount: 4096,
       });
       for await (const resolved of events) {
         const e = resolved.event;

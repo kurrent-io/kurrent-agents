@@ -44,9 +44,9 @@ into the AG-UI ecosystem.
 | ID | Title | Direction | Language | Status |
 |---|---|---|---|---|
 | **DEV-1558** | AG-UI middleware → KurrentDB | write | TypeScript | **v1 in this PR** at `ag-ui/middlewares/kurrentdb-middleware/` |
+| **DEV-1559** | KurrentDB → AG-UI session replay | read | TypeScript | **v1 in this PR** at `ag-ui/agents/kurrentdb-replay/` |
 | DEV-1562 | State round-trip (`STATE_SNAPSHOT` / `STATE_DELTA` persist + rehydrate) | both | TS + canonical | open; v1 reserves an observation hook |
 | DEV-1560 | EvalRun ↔ AG-UI `runId` alignment | cross-cutting | schema + readers | open; middleware stamps `$run_id` metadata so EvalRun can join |
-| DEV-1559 | KurrentDB → AG-UI session replay | read | Python | not in this PR; explicitly lower priority post-DEV-1614 |
 
 The middleware (DEV-1558) is the lever — single TS implementation, ~15×
 framework reach (every AG-UI integration: LangGraph, Mastra, CrewAI,

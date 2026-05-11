@@ -77,7 +77,7 @@ committed and emit `SessionEnded` with `extensions.ag_ui.aborted=true`.
 |---|---|
 | `runId` representation | Stamped on event metadata as `$run_id` (no canonical schema change) |
 | Multi-tool-call batching | Trivial — `AssistantMessage.toolCalls[]` is already batched in AG-UI |
-| Idempotency on resume | Read stream tail on first session touch, dedup by `messageId` |
+| Idempotency on resume | Read existing stream forward from the start on first session touch, dedup by `messageId` |
 | Aborted runs | Flush partial messages, then `SessionEnded(reason="error")` with `extensions.ag_ui.aborted=true` |
 | Per-framework usage extraction | None in v1 (best-effort, framework-dependent — to be added per integration as needed) |
 | `STATE_SNAPSHOT` / `STATE_DELTA` | Not in v1; observation hook reserved for DEV-1562 |

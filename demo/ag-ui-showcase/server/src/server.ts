@@ -1,19 +1,17 @@
 /**
  * ag-ui-showcase Fastify server.
  *
- * Phase 2 hosts four AG-UI lanes:
- *   /agent/maf      — MAF Python via subprocess (writes canonical;
- *                     replay agent live-tails)
- *   /agent/adk      — Google ADK Python ditto
- *   /agent/strands  — Strands Python ditto
- *   /agent/langgraph — TS in-process; AG-UI middleware persists
- *                      canonical as side effect; events pass straight
- *                      through to the browser.
+ * Phase 2 hosts three native AG-UI lanes (each is a Python subprocess
+ * that writes canonical events; the replay agent live-tails the
+ * resulting AgentSession-* stream and emits AG-UI events back):
+ *   /agent/maf      — Microsoft Agent Framework
+ *   /agent/adk      — Google ADK
+ *   /agent/strands  — Strands
  *
  * Env:
  *   PORT (default 7000)
  *   KURRENTDB_CONNECTION_STRING (default kurrentdb://localhost:2113?Tls=false)
- *   DUMMY_MODE (truthy: skip LLM, use canned/synthetic responses)
+ *   DUMMY_MODE (truthy: skip LLM, use canned responses)
  *   ANTHROPIC_API_KEY (when not in dummy mode)
  */
 
@@ -49,7 +47,7 @@ async function main(): Promise<void> {
   app.get('/health', async () => ({
     status: 'ok',
     dummyMode: DUMMY,
-    kurrentdb: CONN,
+    kurrentdb: redactConnectionString(CONN),
     lanes: ['maf', 'adk', 'strands'],
   }));
 
@@ -69,6 +67,23 @@ async function main(): Promise<void> {
   app.log.info(
     `ag-ui-showcase server up — http://localhost:${PORT}/health (dummy=${DUMMY}; lanes: maf, adk, strands)`,
   );
+}
+
+/**
+ * Strip credentials and query parameters from a KurrentDB connection
+ * string before reflecting it back from `/health`. Hosted clusters or
+ * test setups can carry tokens like `?Authorization=Basic ...` or
+ * embed `user:pass@` in the URL; never echo those.
+ */
+function redactConnectionString(conn: string): string {
+  try {
+    const url = new URL(conn);
+    let hostPort = url.host;
+    if (!hostPort) hostPort = `${url.hostname}:${url.port}`;
+    return `${url.protocol}//${hostPort}`;
+  } catch {
+    return '<redacted>';
+  }
 }
 
 main().catch((err) => {

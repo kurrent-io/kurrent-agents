@@ -151,7 +151,7 @@ describe('KurrentDBReplayAgent (live KurrentDB)', () => {
     });
   }, 30_000);
 
-  test('non-existent session emits only RUN_STARTED-then-RUN_FINISHED safety closure', async () => {
+  test('non-existent session synthesises a safety RUN_FINISHED so consumers do not hang', async () => {
     const client = KurrentDBClient.connectionString(CONN);
     const sessionId = rid('replay-empty');
     const runId = rid('run');

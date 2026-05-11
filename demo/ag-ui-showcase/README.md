@@ -82,15 +82,23 @@ npm run dev                    # Vite dev server at http://localhost:5173
 ```
 
 Phase 2.5 (real LLM): unset `DUMMY_MODE`, set `ANTHROPIC_API_KEY`,
-restart the server. (Real-mode runners are stubbed today —
-`NotImplementedError` until 2.5 ships.)
+restart the server.
+- **MAF**: real Claude via `agent-framework-anthropic`.
+- **Strands**: real Claude via `strands.models.anthropic.AnthropicModel`.
+- **ADK**: real path implemented but the runner falls back to dummy
+  because `kurrent_google_adk` currently imports
+  `kurrent_agent_schema.events`, which moved when schema 0.4.0 went
+  proto-generated. The ADK lane is also disabled in the UI dropdown
+  until that integration is migrated.
 
 (A one-command bring-up script lands in Phase 3.)
 
 ## Why this exists
 
-PR #57 ships DEV-1558 (write side) and DEV-1559 (read side). This demo
-*uses* both in production-ish ways, against real framework integrations,
-proving the canonical schema as a true cross-framework contract.
+This demo *uses* both halves of the AG-UI × KurrentDB integration —
+the DEV-1558 middleware (write side, exercised indirectly via the
+canonical schema contract) and the DEV-1559 replay agent (read side,
+live-tailing native lanes). Together they prove the canonical schema
+as a true cross-framework contract.
 
 For the strategic positioning, see `ag-ui/GAPS.md`.

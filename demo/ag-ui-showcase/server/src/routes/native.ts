@@ -99,6 +99,8 @@ export function registerNativeRoute(
         try {
           send({
             type: EventType.RUN_ERROR,
+            threadId: sessionId,
+            runId: body.runId,
             message: (err as Error).message,
           } as BaseEvent);
         } catch {
@@ -131,6 +133,8 @@ export function registerNativeRoute(
           try {
             send({
               type: EventType.RUN_ERROR,
+              threadId: sessionId,
+              runId: body.runId,
               message: `Runner exited with code ${code}`,
             } as BaseEvent);
           } catch {
