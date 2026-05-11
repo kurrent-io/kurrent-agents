@@ -39,7 +39,10 @@ async function main(): Promise<void> {
     reply.header('Access-Control-Allow-Headers', 'Content-Type');
     reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
     if (req.method === 'OPTIONS') {
-      reply.code(204).send();
+      // Must return the reply so Fastify stops processing — otherwise
+      // the request continues into route matching and trips
+      // "Reply was already sent".
+      return reply.code(204).send();
     }
   });
 

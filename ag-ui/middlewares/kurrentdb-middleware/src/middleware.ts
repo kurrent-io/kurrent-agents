@@ -169,9 +169,12 @@ export class KurrentDBMiddleware extends Middleware {
       const onRunStarted = async (): Promise<void> => {
         await this.dedup.ensureInitialised(this.client, sessionId);
         // SessionStarted is emitted only on the *first* run that ever
-        // touches this session. Subsequent runs (resume) see existing
-        // events and skip it.
-        if (this.dedup.size(sessionId) === 0) {
+        // touches this session. We check whether the canonical stream
+        // already had ANY events (not just messages) — a prior run
+        // might have written SessionStarted then crashed before any
+        // messages, and we mustn't double-write SessionStarted on
+        // resume.
+        if (!this.dedup.hasExistingStream(sessionId)) {
           const ts = new Date().toISOString();
           const payload: SessionStarted = {
             app_name: this.appName,

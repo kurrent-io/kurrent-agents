@@ -114,13 +114,57 @@ export function registerNativeRoute(
       },
     });
 
+    // If the runner exits with a non-zero code (or exits cleanly but
+    // the replay never sees SessionEnded within a grace period), we
+    // synthesise a closing event so the SSE doesn't hang. Without
+    // this, a runner that crashes before writing SessionEnded leaves
+    // the browser waiting indefinitely.
+    const FINALISE_GRACE_MS = 5_000;
+    let finaliseTimer: ReturnType<typeof setTimeout> | undefined;
+
     handle.done.then((code) => {
       runnerExited = true;
       log(`[${framework}] runner exited (code=${code})`);
-      maybeFinalise();
+      if (code !== 0) {
+        // Hard failure — emit RUN_ERROR and close immediately.
+        if (!runFinishedSeen) {
+          try {
+            send({
+              type: EventType.RUN_ERROR,
+              message: `Runner exited with code ${code}`,
+            } as BaseEvent);
+          } catch {
+            /* ignore */
+          }
+        }
+        finalise();
+        return;
+      }
+      // Clean exit. Give the replay subscription a brief window to
+      // surface the SessionEnded → RUN_FINISHED that the runner just
+      // wrote. If it doesn't arrive, synthesise one and close.
+      if (runFinishedSeen) {
+        finalise();
+      } else {
+        finaliseTimer = setTimeout(() => {
+          if (!runFinishedSeen) {
+            try {
+              send({
+                type: EventType.RUN_FINISHED,
+                threadId: sessionId,
+                runId: body.runId,
+              } as BaseEvent);
+            } catch {
+              /* ignore */
+            }
+          }
+          finalise();
+        }, FINALISE_GRACE_MS);
+      }
     });
 
     reply.raw.on('close', () => {
+      if (finaliseTimer) clearTimeout(finaliseTimer);
       if (!runnerExited) {
         try {
           handle.process.kill();
@@ -133,8 +177,17 @@ export function registerNativeRoute(
 
     function maybeFinalise(): void {
       if (runnerExited && runFinishedSeen) {
-        subscription.unsubscribe();
+        finalise();
+      }
+    }
+
+    function finalise(): void {
+      if (finaliseTimer) clearTimeout(finaliseTimer);
+      subscription.unsubscribe();
+      try {
         reply.raw.end();
+      } catch {
+        /* already ended */
       }
     }
 

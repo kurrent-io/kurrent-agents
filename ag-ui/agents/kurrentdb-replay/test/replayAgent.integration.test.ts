@@ -98,7 +98,7 @@ describe('KurrentDBReplayAgent (live KurrentDB)', () => {
     ]);
 
     const runId = rid('run');
-    const agent = new KurrentDBReplayAgent({ client, sessionId, runId });
+    const agent = new KurrentDBReplayAgent({ client, sessionId });
     const collected = await firstValueFrom(
       agent.run({ threadId: sessionId, runId } as never).pipe(toArray()),
     );
@@ -155,7 +155,7 @@ describe('KurrentDBReplayAgent (live KurrentDB)', () => {
     const client = KurrentDBClient.connectionString(CONN);
     const sessionId = rid('replay-empty');
     const runId = rid('run');
-    const agent = new KurrentDBReplayAgent({ client, sessionId, runId });
+    const agent = new KurrentDBReplayAgent({ client, sessionId });
     const collected = await firstValueFrom(
       agent.run({ threadId: sessionId, runId } as never).pipe(toArray()),
     );

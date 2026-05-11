@@ -104,7 +104,7 @@ async function main(): Promise<void> {
   await writer.runAgent({ runId: writeRunId });
 
   // -------- 2. replay agent reads the same session and emits AG-UI --------
-  const replayer = new KurrentDBReplayAgent({ client, sessionId, runId: replayRunId });
+  const replayer = new KurrentDBReplayAgent({ client, sessionId });
   const replayed = await firstValueFrom(
     replayer.run({ threadId: sessionId, runId: replayRunId } as never).pipe(toArray()),
   );

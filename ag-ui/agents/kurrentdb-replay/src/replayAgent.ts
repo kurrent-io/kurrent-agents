@@ -41,8 +41,6 @@ export interface KurrentDBReplayAgentConfig {
   client: KurrentDBClient;
   /** Canonical session id (becomes AG-UI threadId). */
   sessionId: string;
-  /** AG-UI runId surfaced on RUN_STARTED. Defaults to a derived id. */
-  runId?: string;
   /** catchup (default) or live tail. */
   mode?: ReplayMode;
   /** Optional max events to read in catchup mode. */
