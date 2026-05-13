@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AG-UI × KurrentDB middleware — from zero</title>
+<style>
+  :root {
+    --fg: #1d2127;
+    --muted: #6a7280;
+    --bg: #fdfcfa;
+    --accent: #1a73e8;
+    --rule: #e6e3dc;
+    --code-bg: #f4f1ec;
+    --good: #15803d;
+    --warn: #b45309;
+  }
+  html { background: var(--bg); }
+  body {
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    max-width: 880px;
+    margin: 2.5rem auto;
+    padding: 0 1.5rem 4rem;
+  }
+  h1 { font-size: 2rem; margin: 0 0 .25em; }
+  h2 {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    font-size: 1.4rem;
+  }
+  h3 { margin-top: 2rem; font-size: 1.1rem; }
+  p, li { color: var(--fg); }
+  .lede {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin: 0 0 2rem;
+  }
+  code {
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: .92em;
+    font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 1rem 1.25rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: .85rem;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  .mermaid {
+    text-align: center;
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin: 1.5rem 0;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: .94rem;
+    margin: 1rem 0;
+  }
+  th, td {
+    border-bottom: 1px solid var(--rule);
+    padding: .55rem .75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); font-weight: 600; }
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: #f5f9ff;
+    padding: .85rem 1rem;
+    margin: 1.25rem 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout.warn { border-color: var(--warn); background: #fdf6ec; }
+  .callout.good { border-color: var(--good); background: #f1faf3; }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child  { margin-bottom: 0; }
+  .nav {
+    color: var(--muted);
+    font-size: .9rem;
+    margin: 0 0 2rem;
+  }
+  .nav a {
+    color: var(--muted);
+    text-decoration: none;
+    margin-right: 1rem;
+  }
+  .nav a:hover { color: var(--accent); }
+  small.muted { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>AG-UI × KurrentDB middleware</h1>
+<p class="lede">A from-zero walkthrough: what the problem is, what the middleware does, and why a single 200-line piece of TypeScript gives every AG-UI-compatible framework durable, replayable, cross-framework conversations.</p>
+
+<nav class="nav">
+  <a href="#problem">1. The problem</a>
+  <a href="#layers">2. Two protocols, two layers</a>
+  <a href="#middleware">3. The middleware</a>
+  <a href="#walkthrough">4. Walkthrough</a>
+  <a href="#cross-framework">5. Cross-framework</a>
+  <a href="#bigpicture">6. Why it matters</a>
+</nav>
+
+<h2 id="problem">1. The problem</h2>
+
+<p>You build an AI agent. A user opens a chat UI, asks <em>"What's the weather in Oslo?"</em>, the agent calls a tool, gets a result, replies. So far, so normal.</p>
+
+<div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as User (browser)
+    participant A as Agent backend
+    participant T as Tool
+    U->>A: "Weather in Oslo?"
+    A->>T: get_weather({city:"Oslo"})
+    T-->>A: {temperature_c:8, condition:"light_rain"}
+    A-->>U: "8°C with light rain in Oslo."
+</div>
+
+<p>Now the conversation ends. <strong>Where did all of that go?</strong></p>
+
+<ul>
+  <li>Did you log it for audit / compliance?</li>
+  <li>Can the user resume the conversation tomorrow?</li>
+  <li>Can a different agent framework pick up where this one left off?</li>
+  <li>Can you replay it for an evaluator to score?</li>
+</ul>
+
+<p>Out of the box: <strong>no</strong>. Wiring durable storage, deciding the schema, handling resume — that's all on you.</p>
+
+<h2 id="layers">2. Two protocols, two layers</h2>
+
+<p>Two open standards already exist for the parts of this we care about — and they live at <em>different layers</em>:</p>
+
+<div class="mermaid">
+graph TD
+    classDef ui fill:#e8f1ff,stroke:#1a73e8,color:#0c3a8a
+    classDef store fill:#f1faf3,stroke:#15803d,color:#114b25
+
+    UI[Frontend / chat UI]
+    AGUI[AG-UI Protocol<br/><em>wire format: events over SSE/WebSocket</em><br/>RUN_STARTED, TEXT_MESSAGE_*, TOOL_CALL_*, ...]:::ui
+    AGENT[Agent backend<br/><small>LangGraph · Mastra · CrewAI · MAF · ADK · ...</small>]
+    KURRENT[KurrentDB canonical schema<br/><em>durable record: append-only event streams</em><br/>SessionStarted, UserMessageReceived, AssistantToolCallsGenerated, ...]:::store
+    DB[(KurrentDB)]:::store
+
+    UI <-- AG-UI events --> AGENT
+    AGENT --> AGUI
+    AGENT -- writes --> KURRENT
+    KURRENT --> DB
+</div>
+
+<table>
+  <thead><tr><th>Layer</th><th>Standard</th><th>Job</th><th>Lifetime</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Wire</td>
+      <td><strong>AG-UI Protocol</strong></td>
+      <td>How an agent talks to a UI in real time. Streaming text, tool calls, state.</td>
+      <td>Ephemeral — events fly past, then are gone.</td>
+    </tr>
+    <tr>
+      <td>Durable record</td>
+      <td><strong>KurrentDB canonical schema</strong></td>
+      <td>How an agent session is stored: a stream of typed events you can replay.</td>
+      <td>Append-only, forever.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p><strong>Insight:</strong> AG-UI events and canonical KurrentDB events are talking about <em>almost the same things</em> — a user message, an assistant reply, a tool call, a tool result. They differ only in <em>granularity</em>: AG-UI streams a message in many pieces (start, content delta, content delta, end); the canonical schema records one event per finished message. That match is what makes a clean bridge possible.</p>
+</div>
+
+<h2 id="middleware">3. The middleware</h2>
+
+<p>AG-UI's <code>@ag-ui/client</code> ships a <code>Middleware</code> base class. You can wrap any AG-UI agent and observe everything it emits before the events reach the UI:</p>
+
+<div class="mermaid">
+graph LR
+    classDef store fill:#f1faf3,stroke:#15803d,color:#114b25
+    classDef mw fill:#fff4e6,stroke:#b45309,color:#5c2e00
+
+    A["AG-UI agent<br/>LangGraph · Mastra · ..."]
+    M["KurrentDBMiddleware<br/><small>~250 lines of TypeScript</small>"]:::mw
+    UI[UI / consumer]
+    DB[("KurrentDB<br/>AgentSession-...")]:::store
+
+    A -->|emits AG-UI events| M
+    M -->|passes through unchanged| UI
+    M -->|appends canonical events| DB
+</div>
+
+<p>Two things matter:</p>
+
+<ul>
+  <li><strong>Pass-through.</strong> The middleware doesn't change what the UI sees. Your existing AG-UI client keeps working.</li>
+  <li><strong>Single implementation, many frameworks.</strong> AG-UI is the wire format. Anything that emits AG-UI events — LangGraph, Mastra, CrewAI, MS Agent Framework, Google ADK, Claude Agent SDK — gets durable storage by adding one line: <code>agent.use(new KurrentDBMiddleware({ client }))</code>. That's the lever.</li>
+</ul>
+
+<h2 id="walkthrough">4. Walkthrough — a weather query, end to end</h2>
+
+<p>Same conversation as §1. Here's what actually happens on the wire and on disk.</p>
+
+<h3>4.1 What the agent emits (AG-UI, ~15 events)</h3>
+
+<p>AG-UI streams every message in pieces. A 4-message conversation produces ~15 events:</p>
+
+<pre><code>RUN_STARTED            thread=demo run=run-001
+TEXT_MESSAGE_START     id=u1 role=user
+TEXT_MESSAGE_CONTENT   id=u1 delta="What's the weather in Oslo?"
+TEXT_MESSAGE_END       id=u1
+TEXT_MESSAGE_START     id=a1 role=assistant
+TEXT_MESSAGE_CONTENT   id=a1 delta="Looking that up."
+TEXT_MESSAGE_END       id=a1
+TOOL_CALL_START        id=c1 name=get_weather parent=a1
+TOOL_CALL_ARGS         id=c1 delta='{"city":"Oslo"}'
+TOOL_CALL_END          id=c1
+TOOL_CALL_RESULT       id=c1 content='{"temperature_c":8,"condition":"light_rain"}'
+TEXT_MESSAGE_START     id=a2 role=assistant
+TEXT_MESSAGE_CONTENT   id=a2 delta="8°C with light rain in Oslo."
+TEXT_MESSAGE_END       id=a2
+RUN_FINISHED           thread=demo run=run-001</code></pre>
+
+<h3>4.2 What the middleware observes</h3>
+
+<div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Ag as Agent
+    participant MW as Middleware
+    participant DB as KurrentDB
+
+    Ag->>MW: RUN_STARTED
+    MW->>DB: append SessionStarted
+    Note over MW: read AgentSession-demo tail<br/>(empty, first run)<br/>seed messageId dedup
+
+    Ag->>MW: TEXT_MESSAGE_START/_CONTENT/_END (u1, user)
+    Note over MW: observe — no append yet
+
+    Ag->>MW: TEXT_MESSAGE_START/_CONTENT/_END (a1, assistant)
+    Note over MW: a1 looks like text-only...
+
+    Ag->>MW: TOOL_CALL_START/_ARGS/_END (c1 → parent=a1)
+    Note over MW: ...but a1 just got upgraded<br/>to text + tool call!<br/>Defer until RUN_FINISHED.
+
+    Ag->>MW: TOOL_CALL_RESULT (t1, role=tool)
+    Ag->>MW: TEXT_MESSAGE_START/_CONTENT/_END (a2, assistant)
+
+    Ag->>MW: RUN_FINISHED
+    Note over MW: now flush:<br/>each AG-UI message is in final form
+    MW->>DB: UserMessageReceived (u1)
+    MW->>DB: AssistantToolCallsGenerated (a1)
+    MW->>DB: ToolResultReceived (t1)
+    MW->>DB: AssistantTextGenerated (a2)
+    MW->>DB: SessionEnded
+</div>
+
+<div class="callout warn">
+  <p><strong>Why defer to <code>RUN_FINISHED</code>?</strong> AG-UI can <em>upgrade</em> an assistant message: emit a text message, end it, then later attach a tool call to it via <code>parentMessageId</code>. If the middleware persisted at <code>TEXT_MESSAGE_END</code>, it would write <code>AssistantTextGenerated</code> for <code>a1</code> — then have no way to upgrade it to <code>AssistantToolCallsGenerated</code> when the tool call arrives, because the canonical schema is append-only. Deferring sees the final form. Trade-off: no partial durability if the host process dies mid-run; aborted runs are flushed explicitly.</p>
+</div>
+
+<h3>4.3 What's in KurrentDB afterwards (6 canonical events)</h3>
+
+<table>
+  <thead><tr><th>#</th><th>Event type</th><th>Payload (abridged)</th></tr></thead>
+  <tbody>
+    <tr><td>0</td><td><code>SessionStarted</code></td><td>app_name=weather_demo, agent_name=Weather, model=…</td></tr>
+    <tr><td>1</td><td><code>UserMessageReceived</code></td><td>id=u1, content="What's the weather in Oslo?"</td></tr>
+    <tr><td>2</td><td><code>AssistantToolCallsGenerated</code></td><td>id=a1, content="Looking that up.", tool_calls=[{call_id:c1, tool_name:get_weather, arguments:{city:"Oslo"}}]</td></tr>
+    <tr><td>3</td><td><code>ToolResultReceived</code></td><td>call_id=c1, result='{"temperature_c":8,"condition":"light_rain"}'</td></tr>
+    <tr><td>4</td><td><code>AssistantTextGenerated</code></td><td>id=a2, content="8°C with light rain in Oslo."</td></tr>
+    <tr><td>5</td><td><code>SessionEnded</code></td><td>reason=complete</td></tr>
+  </tbody>
+</table>
+
+<p>Every event also carries metadata: <code>$schema_version=2</code> and <code>$run_id=run-001</code>. The <code>$run_id</code> is what lets evaluators score per-run, not just per-session.</p>
+
+<p><strong>15 ephemeral wire events → 6 durable typed events.</strong> No information lost; conversation reduced to its message-level essence.</p>
+
+<h2 id="cross-framework">5. Cross-framework portability</h2>
+
+<p>Here's where the canonical schema earns its keep. The middleware writes TypeScript-side; <em>any</em> reader in <em>any</em> language can consume the same stream because they all share <code>schema/proto/kurrent/agent/v2/*.proto</code>. And the read direction has its own first-party TS package — <code>KurrentDBReplayAgent</code> in <a href="../../../agents/kurrentdb-replay/"><code>ag-ui/agents/kurrentdb-replay/</code></a> — that turns canonical events back into AG-UI events for any AG-UI client (CopilotKit, AG-UI Dojo, custom UI):</p>
+
+<div class="mermaid">
+graph TD
+    classDef store fill:#f1faf3,stroke:#15803d,color:#114b25
+    classDef mw fill:#fff4e6,stroke:#b45309,color:#5c2e00
+
+    LANG[LangGraph]
+    MASTRA[Mastra]
+    CREW[CrewAI]
+    MAF[MS Agent Framework]
+    OTHER["..."]
+
+    MW[KurrentDBMiddleware<br/>TypeScript<br/><small>this package</small>]:::mw
+    DB[(KurrentDB<br/>AgentSession-...<br/><small>canonical events</small>)]:::store
+
+    REPLAY[KurrentDBReplayAgent<br/>TypeScript<br/><small>read side, sibling pkg</small>]:::mw
+    PYREAD[Python reader<br/><small>kurrent-agent-framework</small>]:::store
+    NETREAD[.NET reader<br/><small>Kurrent.AgentFramework</small>]:::store
+    CAP[Capacitor UI<br/><small>renders any session</small>]:::store
+    AGUI[AG-UI client UI<br/><small>CopilotKit / Dojo / custom</small>]:::store
+
+    LANG --> MW
+    MASTRA --> MW
+    CREW --> MW
+    MAF --> MW
+    OTHER --> MW
+
+    MW --> DB
+
+    DB --> REPLAY
+    REPLAY --> AGUI
+    DB --> PYREAD
+    DB --> NETREAD
+    DB --> CAP
+</div>
+
+<p>The replay agent closes the loop: <em>AG-UI → middleware → KurrentDB → replay → AG-UI</em>. Same canonical bytes flow in both directions.</p>
+
+<p>None of this is theory. Two layers of acceptance tests in <code>ag-ui/interop-tests/</code>:</p>
+
+<ol>
+  <li><strong>Schema-level</strong>: TS middleware writes; Python's <code>kurrent-agent-schema</code> parses each event and asserts proto types and field values.</li>
+  <li><strong>Real-integration</strong>: TS middleware writes; <strong>MAF Python's <code>KurrentDBHistoryProvider.get_messages()</code></strong> (the production reader code from the MS Agent Framework integration) reconstructs <code>Message[]</code> with the right <code>role</code>s, <code>text</code>, <code>function_call</code> blocks (name, call_id, arguments), and <code>function_result</code> blocks (call_id, result).</li>
+</ol>
+
+<p>The middleware doesn't import MAF; MAF doesn't import the middleware. <strong>The canonical schema is their only contract — and it works.</strong> The round-trip sample in <code>ag-ui/agents/kurrentdb-replay/samples/round-trip.ts</code> exercises the full loop in TypeScript: 15 AG-UI events in, 6 canonical events on disk, 15 AG-UI events back out.</p>
+
+<h2 id="bigpicture">6. Why this matters</h2>
+
+<div class="callout good">
+  <p><strong>One TypeScript implementation × every AG-UI integration.</strong></p>
+  <p>AG-UI today has integrations for ~15 frameworks. Without this middleware, persisting any of them to KurrentDB requires a per-framework adapter. With this middleware, every existing AG-UI integration gets durable, replayable, cross-framework-portable session storage by adding <em>one line</em> to the agent setup.</p>
+</div>
+
+<h3>What you get for free, per framework</h3>
+
+<ul>
+  <li><strong>Durability.</strong> Sessions survive process restarts, crashes, redeploys.</li>
+  <li><strong>Resume.</strong> Same <code>threadId</code> next run → middleware reads the prior history, dedupes, picks up where it left off.</li>
+  <li><strong>Replay / audit.</strong> Walk any past session event-by-event for compliance or debugging.</li>
+  <li><strong>Eval-ready.</strong> Every event tagged with <code>$run_id</code>; evaluators can score per-run.</li>
+  <li><strong>Cross-framework reads.</strong> A session written by one framework can be read by another's tooling — proven by the MAF reader interop test.</li>
+  <li><strong>Capacitor UI.</strong> Kurrent's session-browsing UI works on any <code>AgentSession-*</code> stream; no framework-specific code needed.</li>
+</ul>
+
+<h3>The mapping in one table</h3>
+
+<table>
+  <thead><tr><th>AG-UI emits</th><th>Middleware writes</th></tr></thead>
+  <tbody>
+    <tr><td><code>RUN_STARTED</code> (first time)</td><td><code>SessionStarted</code> with app_name, agent_name, model, AgentConfig</td></tr>
+    <tr><td><code>UserMessage</code> (committed)</td><td><code>UserMessageReceived</code></td></tr>
+    <tr><td><code>AssistantMessage</code> (text only)</td><td><code>AssistantTextGenerated</code></td></tr>
+    <tr><td><code>AssistantMessage</code> (with tool calls)</td><td><code>AssistantToolCallsGenerated</code></td></tr>
+    <tr><td><code>ReasoningMessage</code></td><td><code>AssistantThinkingGenerated</code></td></tr>
+    <tr><td><code>ToolMessage</code></td><td><code>ToolResultReceived</code></td></tr>
+    <tr><td><code>STATE_SNAPSHOT</code> / <code>STATE_DELTA</code></td><td><em>observed via <code>onStateEvent</code> hook (DEV-1562)</em></td></tr>
+    <tr><td><code>RUN_FINISHED</code> / <code>RUN_ERROR</code></td><td><code>SessionEnded</code> (with <code>extensions.ag_ui.aborted=true</code> on error)</td></tr>
+  </tbody>
+</table>
+
+<h3>The minimum to use it</h3>
+
+<pre><code>import { KurrentDBClient } from '@kurrent/kurrentdb-client';
+import { KurrentDBMiddleware } from '@kurrent-io/ag-ui-middleware-kurrentdb';
+
+const client = KurrentDBClient.connectionString(
+  'kurrentdb://localhost:2113?Tls=false',
+);
+
+const agent = new MyAGUICompatibleAgent();
+agent.use(new KurrentDBMiddleware({ client, appName: 'my-app' }));
+
+await agent.runAgent({ runId: 'run-001' });
+// AgentSession-{threadId} now contains the full canonical history,
+// readable by every Kurrent integration in the monorepo.</code></pre>
+
+<p style="color: var(--muted); margin-top: 3rem; font-size: .9rem;">
+Source: <code>ag-ui/middlewares/kurrentdb-middleware/</code> in the
+<code>kurrent-agents</code> monorepo. Linear: DEV-1558. PR: #52.
+</p>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    themeVariables: {
+      primaryColor: '#fff',
+      primaryTextColor: '#1d2127',
+      primaryBorderColor: '#6a7280',
+      lineColor: '#6a7280',
+      fontSize: '14px',
+    },
+    sequence: { actorMargin: 50, messageFontSize: 12 },
+  });
+</script>
+</body>
+</html>

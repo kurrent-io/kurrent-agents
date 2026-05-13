@@ -1,0 +1,44 @@
+{
+  "name": "@kurrent-io/ag-ui-agent-kurrentdb-replay",
+  "version": "0.0.1",
+  "description": "AG-UI AbstractAgent that replays canonical KurrentDB sessions as AG-UI events (DEV-1559)",
+  "license": "Apache-2.0",
+  "author": "Kurrent, Inc.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "sample": "tsx samples/round-trip.ts"
+  },
+  "keywords": [
+    "ag-ui",
+    "kurrentdb",
+    "eventsourcing",
+    "agents",
+    "replay"
+  ],
+  "dependencies": {
+    "@ag-ui/client": "^0.0.53",
+    "@kurrent/kurrentdb-client": "^1.1.2",
+    "rxjs": "7.8.1"
+  },
+  "devDependencies_note": "kurrent-io/ag-ui-middleware-kurrentdb is a sibling workspace package, used only by the round-trip sample.",
+  "devDependencies": {
+    "@kurrent-io/ag-ui-middleware-kurrentdb": "file:../../middlewares/kurrentdb-middleware",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
