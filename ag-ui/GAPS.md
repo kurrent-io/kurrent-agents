@@ -1,9 +1,11 @@
 # AG-UI integration — gaps and strategic positioning
 
-This document captures (a) where AG-UI fits in the kurrent-agents thesis,
-(b) the four workstreams that make the integration whole, (c) what
-the v1 middleware ([`ag-ui/middlewares/kurrentdb-middleware/`](./middlewares/kurrentdb-middleware/))
-ships and what it doesn't, and (d) open spec questions whose v1 answers
+This document captures (a) where AG-UI fits in the kurrent-agents
+thesis, (b) the four workstreams that make the integration whole,
+(c) what this PR's v1 packages
+([`ag-ui/middlewares/kurrentdb-middleware/`](./middlewares/kurrentdb-middleware/) for write,
+[`ag-ui/agents/kurrentdb-replay/`](./agents/kurrentdb-replay/) for read)
+ship and what they don't, and (d) open spec questions whose v1 answers
 are now committed in code (and which still need design-doc treatment in
 the AG-UI repo).
 
@@ -134,6 +136,27 @@ options, `RunAgentInput.context` lookup (`description: "user_id" |
 `AgentConfig.model_parameters`. Both fields are dropped from the wire
 payload when nothing useful is derivable.
 
+### 3.10 DEV-1559 replay defaults
+
+Inverse mappings of the middleware. Two open spec questions resolved:
+
+* **One-shot, not synthesised token deltas.** Each canonical event
+  becomes a complete `*_START → _CONTENT/_ARGS → _END` triple in a
+  single tick. Canonical events are message-grained; fabricating fake
+  token deltas would invent data we don't have. UIs that want a
+  streaming feel can synthesise word-by-word client-side.
+* **Unknown events → `CUSTOM` by default**, opt-out via
+  `customPassthrough: false`. Lets downstream UIs surface ADK / MAF /
+  Strands extras without dropping data.
+
+Modes:
+
+* `catchup` (default) — read forward to end, emit, finish. For
+  replay/audit/eval.
+* `live` — `subscribeToStream` from start; catch-up + live tail in
+  one consistent ordering. Dedup by `message_id` makes the catch-up
+  window harmless. For "follow this in-progress session" UIs.
+
 ---
 
 ## 4. Layout
@@ -142,12 +165,16 @@ payload when nothing useful is derivable.
 ag-ui/
   middlewares/
     kurrentdb-middleware/        # TS write-side (DEV-1558) — this PR
+  agents/
+    kurrentdb-replay/            # TS read-side (DEV-1559) — this PR
+  interop-tests/                 # TS-writes / Python-reads acceptance harness
   GAPS.md                        # this file
+demo/
+  ag-ui-showcase/                # 4-lane chat demo using both packages
 schema/
   python/                        # existing (proto-generated)
   dotnet/                        # existing (proto-generated)
-  typescript/                    # NEW (TODO) — buf-gen-es from schema/proto/
-ag-ui/interop-tests/             # TS-writes / Python-reads acceptance harness
+  typescript/                    # NEXT (TODO) — buf-gen-es from schema/proto/
 ```
 
 `schema/typescript/` is the next-up follow-up: replaces the hand-written
@@ -160,11 +187,12 @@ gate drift once TS lands.
 
 ## 5. Discoverability
 
-Middleware in this repo loses AG-UI's first-party discovery surface.
-Mitigations (post-merge):
+The two TS packages in this repo lose AG-UI's first-party discovery
+surface. Mitigations (post-merge):
 
-- Publish to npm as `@kurrent-io/ag-ui-middleware-kurrentdb` — AG-UI
-  users find it via npm search.
+- Publish to npm:
+  - `@kurrent-io/ag-ui-middleware-kurrentdb` — write side (DEV-1558).
+  - `@kurrent-io/ag-ui-agent-kurrentdb-replay` — read side (DEV-1559).
 - Submit a docs PR to AG-UI pointing at this repo from their
   middlewares / integrations page.
 - If AG-UI maintains a "community middlewares" list, get listed.
@@ -194,28 +222,40 @@ because it composes two of our own first-party integrations on opposite
 ends of a single canonical stream — exactly the cross-framework
 portability claim the schema is designed to make.
 
-A real-LLM smoke test wrapping a LangGraph or Mastra agent is a
-follow-up issue, not v1. It would add coverage of the input side
-(real `RunAgentInput` from a real framework) but doesn't change the
-contract being verified.
+A real-LLM smoke test of the read side via real framework runs is
+the demo at [`demo/ag-ui-showcase/`](../demo/ag-ui-showcase/) — MAF
+and Strands write canonical events through their native integrations,
+the DEV-1559 replay agent live-tails them and emits AG-UI events to
+the browser. ADK is wired similarly but its integration package
+needs a fix (see §7).
 
 ---
 
 ## 7. What's still open
 
 - **`schema/typescript/`** — replace hand-written canonical types in
-  the middleware with proto-generated bindings; published to npm as a
-  separate package.
-- **DEV-1559 (replay, Python)** — the prior PR explored this; closed
-  pending DEV-1614 (Capacitor), kept in mind as ecosystem scaffolding.
-- **DEV-1562 (state round-trip)** — observation hook reserved; impl
-  follows once a concrete use case lands.
+  both TS packages (middleware + replay) with proto-generated
+  bindings; published to npm. Cross-language CI gate is already in
+  place for Python/.NET.
+- **DEV-1562 (state round-trip)** — observation hook reserved on the
+  middleware; impl follows once a concrete use case lands.
 - **DEV-1560 (EvalRun ↔ runId)** — middleware writes `$run_id` metadata;
-  reader-side joining and CopilotKit-style score-rendering UIs follow.
-- **Real-LLM-framework smoke test** — wrap a LangGraph/Mastra agent
-  with the middleware end-to-end. v1 covers the contract via the MAF
-  Python reader interop (above); this would extend coverage to the
-  *input* side, but is non-deterministic and needs an LLM key.
+  reader-side joining and an eval-runner utility (read an
+  `AgentSession` stream → emit `EvalRun-*` events per `runId`) follow.
+  `schema/SCHEMA_v2.md` doesn't yet document the
+  `AG-UI runId ↔ EvalRun.run_id` / `threadId ↔ session_id` mapping.
+- **`MESSAGES_SNAPSHOT` on connect** in DEV-1559 — Linear v1 spec
+  mentions it for fast hydration; current replay emits incrementally
+  from the start with no upfront snapshot.
+- **`kurrent_google_adk` integration broken against schema 0.4.0** —
+  pre-existing bug surfaced when wiring the showcase ADK lane to real
+  Claude. Imports `kurrent_agent_schema.events` which moved when
+  schema went proto-generated. ADK lane in the demo is greyed out
+  pending this fix. Not in any AG-UI Linear ticket.
+- **LangGraph / Mastra real-AG-UI smoke test** — would exercise the
+  DEV-1558 middleware (write side) end-to-end against a real AG-UI
+  framework, complementing the read-side smoke test the demo already
+  provides via the native lanes.
 - **AG-UI repo design doc** — capture §3 decisions in
   `docs/superpowers/specs/` of the ag-ui repo for community review.
 

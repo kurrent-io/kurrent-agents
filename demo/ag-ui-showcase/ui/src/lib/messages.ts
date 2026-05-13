@@ -14,6 +14,13 @@ export interface TextBubble {
   role: 'user' | 'assistant';
   content: string;
   pending?: boolean;
+  /**
+   * True for an optimistic user bubble that has been claimed by a
+   * server-echoed `TEXT_MESSAGE_*(role=user)`. Suppresses subsequent
+   * CONTENT/END deltas for that messageId so the typed text doesn't
+   * get re-appended to itself.
+   */
+  claimed?: boolean;
 }
 
 export interface ToolBubble {
@@ -38,10 +45,32 @@ export interface MessageAccumulator {
   bubbles: Bubble[];
   byMessageId: Map<string, number>;
   byToolCallId: Map<string, number>;
+  /**
+   * FIFO of local-only bubble ids waiting to be reconciled with the
+   * server's echoed user `TEXT_MESSAGE_START`. The next user-role
+   * START claims the oldest entry and the local bubble adopts the
+   * canonical messageId. Without this, every typed user message
+   * renders twice (optimistic + server echo).
+   */
+  pendingUserLocalIds: string[];
 }
 
 export function emptyAccumulator(): MessageAccumulator {
-  return { bubbles: [], byMessageId: new Map(), byToolCallId: new Map() };
+  return {
+    bubbles: [],
+    byMessageId: new Map(),
+    byToolCallId: new Map(),
+    pendingUserLocalIds: [],
+  };
+}
+
+/** Push a local-only optimistic user bubble onto the queue. */
+export function enqueueOptimisticUser(prev: MessageAccumulator, bubble: TextBubble): MessageAccumulator {
+  return {
+    ...prev,
+    bubbles: [...prev.bubbles, bubble],
+    pendingUserLocalIds: [...prev.pendingUserLocalIds, bubble.id],
+  };
 }
 
 /**
@@ -55,6 +84,7 @@ export function applyEvent(
   const bubbles = [...prev.bubbles];
   const byMessageId = new Map(prev.byMessageId);
   const byToolCallId = new Map(prev.byToolCallId);
+  let pendingUserLocalIds = prev.pendingUserLocalIds;
 
   const e = event as BaseEvent & Record<string, unknown>;
 
@@ -62,6 +92,24 @@ export function applyEvent(
     case EventType.TEXT_MESSAGE_START: {
       const id = e.messageId as string;
       const role = (e.role as 'user' | 'assistant') ?? 'assistant';
+
+      // Reconcile a server-echoed user message with the optimistic
+      // bubble we already rendered when the user clicked Send.
+      if (role === 'user' && pendingUserLocalIds.length > 0) {
+        const [localId, ...rest] = pendingUserLocalIds;
+        const localIdx = bubbles.findIndex((b) => b.id === localId);
+        if (localIdx !== -1 && bubbles[localIdx]!.kind === 'text') {
+          const claimed = bubbles[localIdx] as TextBubble;
+          bubbles[localIdx] = { ...claimed, id, claimed: true, pending: false };
+          byMessageId.set(id, localIdx);
+          pendingUserLocalIds = rest;
+          break;
+        }
+        // Local bubble vanished (e.g. session reset); fall through to
+        // create a new one as the server expects.
+        pendingUserLocalIds = rest;
+      }
+
       const idx = byMessageId.get(id);
       if (idx === undefined) {
         bubbles.push({ kind: 'text', id, role, content: '', pending: true });
@@ -76,6 +124,10 @@ export function applyEvent(
       const idx = byMessageId.get(id);
       if (idx !== undefined && bubbles[idx]?.kind === 'text') {
         const b = bubbles[idx] as TextBubble;
+        // A claimed bubble already has the full content from the
+        // optimistic render; ignore the server's echoed deltas to
+        // avoid doubling.
+        if (b.claimed) break;
         bubbles[idx] = { ...b, content: b.content + delta, pending: true };
       }
       break;
@@ -85,7 +137,9 @@ export function applyEvent(
       const id = e.messageId as string;
       const idx = byMessageId.get(id);
       if (idx !== undefined && bubbles[idx]?.kind === 'text') {
-        bubbles[idx] = { ...(bubbles[idx] as TextBubble), pending: false };
+        const b = bubbles[idx] as TextBubble;
+        if (b.claimed) break;
+        bubbles[idx] = { ...b, pending: false };
       }
       break;
     }
@@ -140,5 +194,5 @@ export function applyEvent(
       break;
   }
 
-  return { bubbles, byMessageId, byToolCallId };
+  return { bubbles, byMessageId, byToolCallId, pendingUserLocalIds };
 }

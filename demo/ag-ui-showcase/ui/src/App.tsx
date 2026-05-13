@@ -10,6 +10,7 @@ import {
 import {
   applyEvent,
   emptyAccumulator,
+  enqueueOptimisticUser,
   type MessageAccumulator,
   type TextBubble,
 } from './lib/messages';
@@ -43,9 +44,11 @@ export function App(): JSX.Element {
     if (!text || running) return;
 
     // Optimistic user bubble — pre-render so the user sees their input
-    // immediately. The same content shows up again in the AG-UI stream
-    // (TEXT_MESSAGE_*(role=user)) but with a different messageId; the
-    // accumulator treats them as separate bubbles, which is fine.
+    // immediately. The accumulator queues the local id; when the
+    // server echoes the same message via `TEXT_MESSAGE_*(role=user)`,
+    // it claims this bubble (remaps id to the canonical messageId,
+    // suppresses the now-redundant content deltas) instead of
+    // rendering a duplicate.
     const userBubble: TextBubble = {
       kind: 'text',
       id: `local-user-${Date.now()}`,
@@ -53,10 +56,7 @@ export function App(): JSX.Element {
       content: text,
       pending: false,
     };
-    setAcc((prev) => ({
-      ...prev,
-      bubbles: [...prev.bubbles, userBubble],
-    }));
+    setAcc((prev) => enqueueOptimisticUser(prev, userBubble));
     setPending('');
     setRunning(true);
 

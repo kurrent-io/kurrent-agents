@@ -291,7 +291,7 @@ sequenceDiagram
 
 <h2 id="cross-framework">5. Cross-framework portability</h2>
 
-<p>Here's where the canonical schema earns its keep. The middleware writes TypeScript-side; <em>any</em> reader in <em>any</em> language can consume the same stream because they all share <code>schema/proto/kurrent/agent/v2/*.proto</code>:</p>
+<p>Here's where the canonical schema earns its keep. The middleware writes TypeScript-side; <em>any</em> reader in <em>any</em> language can consume the same stream because they all share <code>schema/proto/kurrent/agent/v2/*.proto</code>. And the read direction has its own first-party TS package — <code>KurrentDBReplayAgent</code> in <a href="../../../agents/kurrentdb-replay/"><code>ag-ui/agents/kurrentdb-replay/</code></a> — that turns canonical events back into AG-UI events for any AG-UI client (CopilotKit, AG-UI Dojo, custom UI):</p>
 
 <div class="mermaid">
 graph TD
@@ -304,12 +304,14 @@ graph TD
     MAF[MS Agent Framework]
     OTHER["..."]
 
-    MW[KurrentDBMiddleware<br/>TypeScript]:::mw
+    MW[KurrentDBMiddleware<br/>TypeScript<br/><small>this package</small>]:::mw
     DB[(KurrentDB<br/>AgentSession-...<br/><small>canonical events</small>)]:::store
 
+    REPLAY[KurrentDBReplayAgent<br/>TypeScript<br/><small>read side, sibling pkg</small>]:::mw
     PYREAD[Python reader<br/><small>kurrent-agent-framework</small>]:::store
     NETREAD[.NET reader<br/><small>Kurrent.AgentFramework</small>]:::store
     CAP[Capacitor UI<br/><small>renders any session</small>]:::store
+    AGUI[AG-UI client UI<br/><small>CopilotKit / Dojo / custom</small>]:::store
 
     LANG --> MW
     MASTRA --> MW
@@ -319,21 +321,23 @@ graph TD
 
     MW --> DB
 
+    DB --> REPLAY
+    REPLAY --> AGUI
     DB --> PYREAD
     DB --> NETREAD
     DB --> CAP
 </div>
 
-<p>This isn't theory. The acceptance test in <code>ag-ui/interop-tests/</code> proves it:</p>
+<p>The replay agent closes the loop: <em>AG-UI → middleware → KurrentDB → replay → AG-UI</em>. Same canonical bytes flow in both directions.</p>
+
+<p>None of this is theory. Two layers of acceptance tests in <code>ag-ui/interop-tests/</code>:</p>
 
 <ol>
-  <li>Spawn the TS middleware writer (<code>npm run interop:write</code>).</li>
-  <li>It runs a synthetic AG-UI agent and writes 6 canonical events to KurrentDB.</li>
-  <li>Python <code>KurrentDBHistoryProvider.get_messages()</code> — the production reader code from the MS Agent Framework integration — reads the same stream.</li>
-  <li>Assert: <code>Message[]</code> reconstructs with the right <code>role</code>s, <code>text</code>, <code>function_call</code> blocks (name, call_id, arguments), and <code>function_result</code> blocks (call_id, result).</li>
+  <li><strong>Schema-level</strong>: TS middleware writes; Python's <code>kurrent-agent-schema</code> parses each event and asserts proto types and field values.</li>
+  <li><strong>Real-integration</strong>: TS middleware writes; <strong>MAF Python's <code>KurrentDBHistoryProvider.get_messages()</code></strong> (the production reader code from the MS Agent Framework integration) reconstructs <code>Message[]</code> with the right <code>role</code>s, <code>text</code>, <code>function_call</code> blocks (name, call_id, arguments), and <code>function_result</code> blocks (call_id, result).</li>
 </ol>
 
-<p>The middleware doesn't import MAF; MAF doesn't import the middleware. <strong>The canonical schema is their only contract — and it works.</strong></p>
+<p>The middleware doesn't import MAF; MAF doesn't import the middleware. <strong>The canonical schema is their only contract — and it works.</strong> The round-trip sample in <code>ag-ui/agents/kurrentdb-replay/samples/round-trip.ts</code> exercises the full loop in TypeScript: 15 AG-UI events in, 6 canonical events on disk, 15 AG-UI events back out.</p>
 
 <h2 id="bigpicture">6. Why this matters</h2>
 
