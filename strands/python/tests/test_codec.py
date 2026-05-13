@@ -328,6 +328,48 @@ class TestToolResult:
         [restored] = canonical_to_messages(events)
         assert restored["content"][0]["toolResult"]["status"] == "success"
 
+    def test_tool_result_content_dict_wrapped_for_cross_framework(self) -> None:
+        """If a non-Strands writer (e.g. MAF) put the raw structured tool
+        return in ``ToolResultReceived.result`` (a JSON-encoded dict, not a
+        list of content blocks), Strands' deserialiser must wrap it as
+        ``[{"json": <dict>}]`` so the model adapter doesn't trip when
+        iterating ``content`` as a dict.
+
+        See https://github.com/kurrent-io/kurrent-agents/issues/58.
+        """
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                # MAF-style: raw structured result, not pre-wrapped as a
+                # list of Strands content blocks.
+                result='{"status":"success","city":"Tokyo","temperature_c":22}',
+                message_index=0,
+                timestamp=TS,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        content = restored["content"][0]["toolResult"]["content"]
+        assert isinstance(content, list)
+        assert content == [
+            {"json": {"status": "success", "city": "Tokyo", "temperature_c": 22}}
+        ]
+
+    def test_tool_result_content_string_wrapped_for_cross_framework(self) -> None:
+        """A plain-string tool result (e.g. a non-JSON tool return) gets
+        wrapped as ``[{"text": <str>}]`` so model adapters still iterate
+        a list of blocks."""
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                result="just a plain string",
+                message_index=0,
+                timestamp=TS,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        content = restored["content"][0]["toolResult"]["content"]
+        assert content == [{"text": "just a plain string"}]
+
     def test_tool_result_round_trip(self) -> None:
         original = _msg(
             "user",

@@ -471,7 +471,9 @@ def _reconstruct_message(events: list[ProtoMessage]) -> Message:
             role = "user"
             tr_block: dict[str, Any] = {
                 "toolUseId": event.call_id,
-                "content": _deserialize_tool_result_content(event.result),
+                "content": _normalise_tool_result_content(
+                    _deserialize_tool_result_content(event.result)
+                ),
             }
             tr_extras = per_event_ext.get("tool_result")
             if isinstance(tr_extras, dict):
@@ -541,3 +543,37 @@ def _deserialize_tool_result_content(value: str | None) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return value
+
+
+def _normalise_tool_result_content(value: Any) -> list[dict[str, Any]]:
+    """Coerce a deserialised ``ToolResultReceived.result`` payload into the
+    list-of-content-blocks shape Strands' model adapters require.
+
+    Strands writers serialise ``ToolResult.content`` as a JSON-encoded list
+    of content blocks (``[{"text": ...}, {"json": ...}, ...]``); reading
+    back is lossless. Other framework writers (e.g. MAF Python's
+    ``KurrentDBHistoryProvider``) write the raw tool return — typically a
+    JSON-encoded dict or string — directly into the canonical
+    ``ToolResultReceived.result`` field. When Strands then reads such a
+    session, ``toolResult.content`` ends up as a plain dict / string,
+    and Strands' model adapters (e.g. ``AnthropicModel.format_request``)
+    raise ``TypeError: content_type=<...> | unsupported type`` because
+    they iterate ``content`` expecting block dicts.
+
+    Normalise so cross-framework reads don't crash:
+
+    * ``None`` → ``[]``
+    * already a ``list`` → trust it (Strands-shaped or close enough)
+    * ``dict`` → wrap as ``[{"json": value}]`` (Strands' ``json`` content
+      block type matches structured tool returns from non-Strands writers)
+    * any primitive (str/int/bool/...) → wrap as ``[{"text": str(value)}]``
+
+    See https://github.com/kurrent-io/kurrent-agents/issues/58.
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return [{"json": value}]
+    return [{"text": str(value)}]
