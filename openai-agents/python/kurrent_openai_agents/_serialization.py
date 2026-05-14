@@ -87,6 +87,41 @@ def serialize(
     )
 
 
+def serialize_for_multi_append(
+    event: ProtoMessage | BaseModel,
+    *,
+    event_id: uuid.UUID | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> NewEvent:
+    """Serialize for the v2 multi-stream append path.
+
+    KurrentDB's gRPC ``AppendSession`` (used by ``multi_append_to_stream``)
+    requires event metadata to be a JSON document with **string-only values**
+    (see ``kurrentdbclient.v2streams._metadata_to_properties``). The single-
+    stream ``append_to_stream`` path accepts any JSON, so the regular
+    ``serialize`` stamps ``$schema_version`` as int ``2``. This helper stamps
+    it as the string ``"2"`` and rejects any caller-supplied non-string values.
+    """
+    data = _encode_event_data(event)
+
+    effective: dict[str, Any] = dict(metadata) if metadata else {}
+    for key, value in effective.items():
+        if not isinstance(value, str):
+            raise ValueError(
+                f"multi-append metadata values must be strings; got "
+                f"{key}={value!r} ({type(value).__name__})"
+            )
+    effective[SCHEMA_VERSION_METADATA_KEY] = str(SCHEMA_VERSION)
+    metadata_bytes = json.dumps(effective, separators=(",", ":")).encode("utf-8")
+
+    return NewEvent(
+        id=event_id or uuid.uuid4(),
+        type=_name_for(event),
+        data=data,
+        metadata=metadata_bytes,
+    )
+
+
 def deserialize(recorded: RecordedEvent) -> ProtoMessage | BaseModel | None:
     """Deserialize a ``RecordedEvent`` into a canonical proto event or an
     OpenAI-specific Pydantic event.
