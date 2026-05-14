@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from agents.lifecycle import RunHooksBase
 from kurrent_agent_schema import (
     AssistantTextGenerated,
     SubagentCompleted,
@@ -12,6 +13,7 @@ from kurrent_agent_schema import (
     UserMessageReceived,
 )
 
+from kurrent_openai_agents import KurrentDBSession
 from kurrent_openai_agents._handoffs import (
     ActiveHandoff,
     DualAppend,
@@ -246,3 +248,38 @@ def test_route_items_preserves_inter_op_ordering() -> None:
     assert isinstance(ops[1], SingleAppend)
     assert isinstance(ops[1].events[0], AssistantTextGenerated)
     assert isinstance(ops[2], DualAppend) and isinstance(ops[2].event, SubagentCompleted)
+
+
+# ----- KurrentDBSession as RunHooksBase ----------------------------------
+
+
+class _StubAgent:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def test_session_is_a_run_hooks_base() -> None:
+    # Compose without a real KurrentDB client — we only test the in-memory ledger.
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    assert isinstance(session, RunHooksBase)
+
+
+async def test_on_handoff_sets_expected_handoff() -> None:
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    target = _StubAgent("ResearchAgent")
+    await session.on_handoff(context=None, from_agent=_StubAgent("Triage"), to_agent=target)
+    assert session._ledger.expected is not None
+    assert session._ledger.expected.from_name == "Triage"
+    assert session._ledger.expected.to_name == "ResearchAgent"
+    assert session._ledger.expected.to_agent is target
+
+
+async def test_duplicate_on_handoff_is_idempotent_while_expected_set() -> None:
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    a = _StubAgent("A")
+    b = _StubAgent("B")
+    await session.on_handoff(context=None, from_agent=a, to_agent=b)
+    first = session._ledger.expected
+    await session.on_handoff(context=None, from_agent=a, to_agent=b)
+    # Second call is dropped while expected is still pending.
+    assert session._ledger.expected is first

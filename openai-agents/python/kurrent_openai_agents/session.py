@@ -15,6 +15,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from agents.lifecycle import RunHooksBase
 from agents.memory.session import SessionABC
 from kurrent_agent_schema import (
     USAGE_METADATA_KEY,
@@ -29,6 +30,7 @@ from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
 from ._codec import canonical_to_items, items_to_canonical
+from ._handoffs import ExpectedHandoff, _HandoffLedger
 from ._stream_names import for_session
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -58,7 +60,7 @@ _LIFECYCLE_PROTO_TYPES: tuple[type, ...] = (
 )
 
 
-class KurrentDBSession(SessionABC):
+class KurrentDBSession(SessionABC, RunHooksBase):
     """KurrentDB-backed ``Session`` implementation.
 
     One stream per session: ``AgentSession-{session_id}``. First write per
@@ -84,6 +86,7 @@ class KurrentDBSession(SessionABC):
         self._user_id = user_id
         self._agent_name = agent_name
         self._stream = for_session(session_id)
+        self._ledger = _HandoffLedger(parent_stream=self._stream)
 
     # ----- Session protocol --------------------------------------------------
 
@@ -164,6 +167,51 @@ class KurrentDBSession(SessionABC):
             events=[_serialization.serialize(ended)],
             current_version=StreamState.ANY,
         )
+
+    # ----- RunHooksBase overrides -------------------------------------------
+
+    async def on_handoff(
+        self,
+        context: Any,
+        from_agent: Any,
+        to_agent: Any,
+    ) -> None:
+        """Stash the expected handoff target until the next ``function_call`` arrives.
+
+        Idempotent while ``expected`` is already pending — duplicate hook delivery
+        from streaming retries or replay doesn't double-emit ``SubagentStarted``.
+        """
+        if self._ledger.expected is not None:
+            return
+        self._ledger.expected = ExpectedHandoff(
+            from_name=getattr(from_agent, "name", "") or "",
+            to_name=getattr(to_agent, "name", "") or "",
+            to_agent=to_agent,
+        )
+
+    async def on_agent_end(
+        self,
+        context: Any,
+        agent: Any,
+        output: Any,
+    ) -> None:
+        """Emit a deferred ``SubagentCompleted`` if this agent's subagent never returned.
+
+        Some flows let the target agent produce a final output without handing
+        back to the parent; without this catch we'd leak an open subagent.
+        """
+        agent_name = getattr(agent, "name", "") or ""
+        for call_id, active in list(self._ledger.active.items()):
+            if active.agent_type == agent_name and self._ledger.current_owner == active.subsession_stream:
+                await self._emit_deferred_subagent_completed(call_id, output)
+                return
+
+    async def _emit_deferred_subagent_completed(
+        self, call_id: str, output: Any
+    ) -> None:
+        """Implementation lands in Task 7 once add_items has the multi-append wiring."""
+        # Placeholder kept to satisfy on_agent_end's call site; Task 7 fills in.
+        del call_id, output
 
     # ----- internals ---------------------------------------------------------
 
