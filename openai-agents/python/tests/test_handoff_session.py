@@ -15,22 +15,22 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from agents import Agent, Runner
-from kurrentdbclient import AsyncKurrentDBClient
+from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_openai_agents import KurrentDBSession
-from kurrent_openai_agents._serialization import deserialize
-from kurrent_openai_agents._stream_names import for_session
+from kurrent_openai_agents._codec import _map_handoff_call
+from kurrent_openai_agents._handoffs import ActiveHandoff
+from kurrent_openai_agents._serialization import deserialize, serialize_for_multi_append
+from kurrent_openai_agents._stream_names import for_session, for_subsession
 
-pytestmark = [
-    pytest.mark.asyncio,
-    pytest.mark.skipif(
-        not os.getenv("OPENAI_API_KEY"),
-        reason="Requires OPENAI_API_KEY for live Runner.run; see Task 10 for offline coverage.",
-    ),
-]
+_requires_openai = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="Requires OPENAI_API_KEY for live Runner.run; see Task 10 for offline coverage.",
+)
 
 
 async def _stream_events(client: AsyncKurrentDBClient, stream: str) -> list:
@@ -46,6 +46,7 @@ async def _stream_events(client: AsyncKurrentDBClient, stream: str) -> list:
     return out
 
 
+@_requires_openai
 async def test_handoff_emits_subagent_lifecycle_to_both_streams(
     kurrentdb_client: AsyncKurrentDBClient,
 ) -> None:
@@ -82,6 +83,7 @@ async def test_handoff_emits_subagent_lifecycle_to_both_streams(
     assert any(t == "AssistantTextGenerated" for t in sub_types)
 
 
+@_requires_openai
 async def test_get_items_inlines_subagent_transcript(
     kurrentdb_client: AsyncKurrentDBClient,
 ) -> None:
@@ -98,3 +100,126 @@ async def test_get_items_inlines_subagent_transcript(
     assert "function_call" in types
     assert "function_call_output" in types
     assert any(t == "message" for t in types)
+
+
+async def test_on_agent_end_emits_subagent_completed_for_unreturned_subagent(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    # Manually seed the ledger as if a handoff had started but no return.
+    call_id = "call_unreturned_abc"
+    agent_id = "sub-loner-ned_abc"
+    sub_stream = for_subsession(session_id, agent_id)
+    session._ledger.active[call_id] = ActiveHandoff(
+        call_id=call_id, agent_id=agent_id, agent_type="Loner",
+        subsession_stream=sub_stream,
+    )
+    session._ledger.current_owner = sub_stream
+
+    class _Agent:
+        name = "Loner"
+
+    await session.on_agent_end(context=None, agent=_Agent(), output="all done")
+
+    parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
+    completed = [evt for t, evt in parent_events if t == "SubagentCompleted"]
+    assert len(completed) == 1
+    assert completed[0].agent_id == agent_id
+    assert session._ledger.current_owner == for_session(session_id)
+    assert call_id not in session._ledger.active
+
+
+async def test_hooks_not_wired_falls_through_to_canonical_tool_events(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    """Without hooks=session, handoff-named function_call/output become canonical tool events,
+    not subagent lifecycle events — and no subsession stream is created."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    handoff_call = {
+        "type": "function_call",
+        "call_id": "call_z123456",
+        "name": "transfer_to_x",
+        "arguments": "{}",
+    }
+    handoff_output = {
+        "type": "function_call_output",
+        "call_id": "call_z123456",
+        "output": "{}",
+    }
+    await session.add_items([handoff_call, handoff_output])  # type: ignore[list-item]
+
+    parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
+    types = [t for t, _ in parent_events]
+    # Handoff promotion requires ledger.expected to be set by on_handoff; without it,
+    # function_call / function_call_output fall through to canonical tool events.
+    assert "SubagentStarted" not in types
+    assert "SubagentCompleted" not in types
+    assert "AssistantToolCallsGenerated" in types
+    assert "ToolResultReceived" in types
+
+    # No subsession stream should have been created.
+    sub_events = await _stream_events(kurrentdb_client, for_subsession(session_id, "any"))
+    assert sub_events == []
+
+
+async def test_get_items_handles_missing_subsession_stream(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    """Parent has SubagentStarted but the subsession stream is gone — emit handoff_call only."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    # Emit a SubagentStarted whose subsession_stream points nowhere.
+    fake_call = {
+        "type": "function_call", "call_id": "call_ghost1",
+        "name": "transfer_to_ghost", "arguments": "{}",
+    }
+    started = _map_handoff_call(
+        item=fake_call, agent_id="sub-ghost-host1", agent_type="Ghost",
+        source_agent="Triage",
+        subsession_stream=for_subsession(session_id, "sub-ghost-host1"),
+        message_index=0, timestamp=datetime.now(UTC),
+    )
+    # Write only to parent — simulate a non-atomic legacy writer / crash.
+    await kurrentdb_client.append_to_stream(
+        for_session(session_id),
+        events=[serialize_for_multi_append(started)],
+        current_version=StreamState.ANY,
+    )
+
+    items = await session.get_items()
+    types = [it.get("type") for it in items]
+    assert "function_call" in types  # handoff_call reconstructed from raw_item
+    # No transcript items (the subsession was missing).
+    assert "message" not in types
+
+
+async def test_duplicate_on_handoff_emits_single_subagent_started(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    class _A:
+        name = "A"
+
+    class _B:
+        name = "B"
+
+    await session.on_handoff(context=None, from_agent=_A(), to_agent=_B())
+    await session.on_handoff(context=None, from_agent=_A(), to_agent=_B())  # duplicate
+
+    # Drain the ledger via a synthesised handoff_call.
+    call = {
+        "type": "function_call", "call_id": "call_dup123456",
+        "name": "transfer_to_b", "arguments": "{}",
+    }
+    await session.add_items([call])  # type: ignore[list-item]
+
+    parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
+    started_count = sum(1 for t, _ in parent_events if t == "SubagentStarted")
+    assert started_count == 1
