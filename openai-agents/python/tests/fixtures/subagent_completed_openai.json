@@ -2,15 +2,5 @@
   "agent_id": "sub-specialist-abc123",
   "outcome": "success",
   "summary": "Reviewed: approved with notes.",
-  "timestamp": "2026-05-14T12:05:00Z",
-  "extensions": {
-    "openai": {
-      "raw_item": {
-        "type": "function_call_output",
-        "call_id": "call_xyzabc123",
-        "output": "Reviewed: approved with notes."
-      },
-      "item_type": "handoff_output"
-    }
-  }
+  "timestamp": "2026-05-14T12:05:00Z"
 }

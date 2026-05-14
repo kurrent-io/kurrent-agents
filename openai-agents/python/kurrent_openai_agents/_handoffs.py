@@ -55,11 +55,20 @@ def derive_agent_id(target_name: str, call_id: str) -> str:
 
 @dataclass(slots=True)
 class ExpectedHandoff:
-    """Stashed by ``on_handoff`` until the next matching ``function_call`` arrives."""
+    """Stashed by ``on_handoff`` until the next matching ``function_call`` arrives.
+
+    ``tool_name`` is the SDK's ``Handoff.tool_name`` (e.g. ``transfer_to_<slug>``
+    by default or a ``tool_name_override``). It scopes the function_call
+    promotion: an unrelated tool call from the same LLM response is left as a
+    canonical ``AssistantToolCallsGenerated`` instead of being mis-promoted.
+    ``None`` means we couldn't resolve the Handoff config — fall back to the
+    ``transfer_to_`` prefix heuristic in ``route_items``.
+    """
 
     from_name: str
     to_name: str
     to_agent: Any  # agents.Agent — kept as Any to avoid an import cycle
+    tool_name: str | None = None
 
 
 @dataclass(slots=True)
@@ -83,6 +92,9 @@ class _HandoffLedger:
     parent_stream: str
     expected: ExpectedHandoff | None = None
     active: dict[str, ActiveHandoff] = field(default_factory=dict)
+    # call_id → summary: populated by on_agent_end, drained at the end of
+    # route_items so SubagentCompleted lands AFTER the target's final items.
+    pending_close: dict[str, str] = field(default_factory=dict)
     current_owner: str = ""  # set in __post_init__
 
     def __post_init__(self) -> None:
@@ -175,6 +187,23 @@ def route_items(
         kind = item.get("type")
 
         if kind == "function_call" and ledger.expected is not None:
+            expected = ledger.expected
+            func_name = item.get("name") or ""
+            # Tool-name scoped match: if we resolved the Handoff.tool_name in
+            # on_handoff, the function_call.name must equal it. Otherwise fall
+            # back to the SDK's default-naming prefix `transfer_to_`.
+            name_match = (
+                func_name == expected.tool_name
+                if expected.tool_name
+                else func_name.startswith("transfer_to_")
+            )
+            if not name_match:
+                # An unrelated tool call slipped in before the actual handoff
+                # call. Persist it as a canonical tool call on current_owner;
+                # keep `expected` pending for the real handoff_call to follow.
+                canonical_events = items_to_canonical([item], start_index=message_index, timestamp=timestamp)
+                queue_single(ledger.current_owner, canonical_events)
+                continue
             call_id = item.get("call_id") or ""
             if not call_id:
                 # Malformed handoff_call (no call_id) — fall through to the
@@ -183,7 +212,7 @@ def route_items(
                 logger.warning(
                     "function_call missing call_id while handoff %r→%r is expected; "
                     "falling through to canonical tool call (no SubagentStarted emitted).",
-                    ledger.expected.from_name, ledger.expected.to_name,
+                    expected.from_name, expected.to_name,
                 )
                 canonical_events = items_to_canonical([item], start_index=message_index, timestamp=timestamp)
                 queue_single(ledger.current_owner, canonical_events)
@@ -199,21 +228,28 @@ def route_items(
             ))
             continue
 
-        if kind == "function_call_output":
-            call_id = item.get("call_id") or ""
-            if call_id in ledger.active:
-                subsession = ledger.active[call_id].subsession_stream
-                flush_pending()
-                evt = _emit_subagent_completed(item, ledger, message_index, timestamp)
-                del ledger.active[call_id]
-                ledger.current_owner = ledger.parent_stream
-                ops.append(DualAppend(streams=(ledger.parent_stream, subsession), event=evt))
-                continue
-
         canonical_events = items_to_canonical([item], start_index=message_index, timestamp=timestamp)
         queue_single(ledger.current_owner, canonical_events)
 
     flush_pending()
+
+    # Drain pending_close — emit SubagentCompleted for any subagent whose
+    # on_agent_end fired before this add_items call. The close lands AFTER
+    # the target's final-batch items so the subsession transcript is
+    # complete before the lifecycle marker.
+    for call_id, summary in list(ledger.pending_close.items()):
+        active = ledger.active.pop(call_id, None)
+        if active is None:
+            del ledger.pending_close[call_id]
+            continue
+        evt = _emit_subagent_completed_synthetic(
+            agent_id=active.agent_id, summary=summary,
+            message_index=start_index + len(items), timestamp=timestamp,
+        )
+        ops.append(DualAppend(streams=(ledger.parent_stream, active.subsession_stream), event=evt))
+        del ledger.pending_close[call_id]
+        ledger.current_owner = ledger.parent_stream
+
     return ops
 
 
@@ -253,17 +289,26 @@ def _emit_subagent_started(
     return evt
 
 
-def _emit_subagent_completed(
-    item: dict[str, Any],
-    ledger: _HandoffLedger,
+def _emit_subagent_completed_synthetic(
+    *,
+    agent_id: str,
+    summary: str,
     message_index: int,
     timestamp: datetime,
 ) -> ProtoMessage:
-    from ._codec import _map_handoff_output
+    """Build a SubagentCompleted lifecycle marker WITHOUT an underlying SDK item.
 
-    call_id = item["call_id"]
-    active = ledger.active[call_id]
-    return _map_handoff_output(
-        item=item, agent_id=active.agent_id,
-        message_index=message_index, timestamp=timestamp,
-    )
+    The close is triggered by ``on_agent_end``, not by a ``function_call_output``
+    dict, so there is no ``raw_item`` to store. Cross-framework readers should skip
+    SubagentCompleted (it has no flat-list correlate); the subsession stream's
+    ToolResultReceived for the handoff_output serves as the SDK-visible "transfer"
+    record.
+    """
+    from kurrent_agent_schema import SubagentCompleted
+
+    evt = SubagentCompleted(agent_id=agent_id, outcome="success")
+    if summary:
+        evt.summary = summary[:512]
+    evt.timestamp.FromDatetime(timestamp.replace(tzinfo=None))
+    del message_index  # SubagentCompleted has no message_index field
+    return evt

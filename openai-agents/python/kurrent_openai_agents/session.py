@@ -123,8 +123,10 @@ class KurrentDBSession(SessionABC, RunHooksBase):
                 continue
 
             if isinstance(event, SubagentCompleted):
-                handoff_output_items = canonical_to_items([event])
-                items.extend(handoff_output_items)  # type: ignore[arg-type]
+                # SubagentCompleted is a lifecycle-only marker — the synthetic
+                # close triggered by on_agent_end has no underlying SDK item.
+                # The subsession stream holds the ToolResultReceived for the
+                # handoff_output, which is the SDK-visible "transfer" record.
                 continue
 
             if isinstance(event, _LIFECYCLE_PROTO_TYPES):
@@ -138,8 +140,12 @@ class KurrentDBSession(SessionABC, RunHooksBase):
 
     async def add_items(self, items: list[TResponseInputItem]) -> None:
         """Append items to the session stream(s), routing handoff-target items
-        to ``AgentSubsession-{parent}-{agent_id}`` per SCHEMA_v2 §3.5."""
-        if not items:
+        to ``AgentSubsession-{parent}-{agent_id}`` per SCHEMA_v2 §3.5.
+
+        Called even with an empty list so that pending_close entries stashed by
+        on_agent_end are drained on the next SDK-driven invocation.
+        """
+        if not items and not self._ledger.pending_close:
             return
 
         await self._init_next_index_if_needed()
@@ -262,7 +268,38 @@ class KurrentDBSession(SessionABC, RunHooksBase):
             from_name=getattr(from_agent, "name", "") or "",
             to_name=getattr(to_agent, "name", "") or "",
             to_agent=to_agent,
+            tool_name=self._resolve_handoff_tool_name(from_agent, to_agent),
         )
+
+    @staticmethod
+    def _resolve_handoff_tool_name(from_agent: Any, to_agent: Any) -> str | None:
+        """Best-effort lookup of ``Handoff.tool_name`` for the from→to pair.
+
+        Iterates ``from_agent.handoffs`` (a mix of ``Agent`` and ``Handoff``
+        instances per the SDK) and returns the tool name that would trigger
+        this handoff. Falls back to the SDK's default convention when only an
+        ``Agent`` instance was registered. Returns ``None`` when nothing
+        matches, in which case ``route_items`` accepts any ``transfer_to_``
+        prefixed function call.
+        """
+        import re as _re
+
+        handoffs = getattr(from_agent, "handoffs", None) or []
+        to_name = getattr(to_agent, "name", "") or ""
+        for entry in handoffs:
+            entry_agent_name = (
+                getattr(entry, "agent_name", None) or getattr(entry, "name", None)
+            )
+            if entry_agent_name != to_name:
+                continue
+            tool_name = getattr(entry, "tool_name", None)
+            if tool_name:
+                return tool_name
+            # Agent passed directly — mirror the SDK's default-naming convention:
+            # transform_string_function_style(`transfer_to_<agent.name>`).
+            slug = _re.sub(r"[^a-zA-Z0-9_]", "_", to_name).lower()
+            return f"transfer_to_{slug}"
+        return None
 
     async def on_agent_end(
         self,
@@ -270,51 +307,20 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         agent: Any,
         output: Any,
     ) -> None:
-        """Emit a deferred ``SubagentCompleted`` if this agent's subagent never returned.
+        """Defer SubagentCompleted to the next add_items call.
 
-        Some flows let the target agent produce a final output without handing
-        back to the parent; without this catch we'd leak an open subagent.
+        The SDK fires on_agent_end BEFORE the final save_result_to_session call,
+        so writing SubagentCompleted here would race with the target's last batch
+        of items. Instead, we stash (call_id → summary) in pending_close and let
+        route_items drain it at the end of the next add_items invocation, after
+        the final items have been flushed.
         """
         agent_name = getattr(agent, "name", "") or ""
+        summary = output if isinstance(output, str) else str(output or "")
         for call_id, active in list(self._ledger.active.items()):
-            if active.agent_type == agent_name and self._ledger.current_owner == active.subsession_stream:
-                await self._emit_deferred_subagent_completed(call_id, output)
+            if active.agent_type == agent_name:
+                self._ledger.pending_close[call_id] = summary[:512]
                 return
-
-    async def _emit_deferred_subagent_completed(
-        self, call_id: str, output: Any
-    ) -> None:
-        """Emit a SubagentCompleted to BOTH streams when the target ended
-        without producing a handoff_output (one-way handoff)."""
-        from kurrentdbclient import NewEvents
-
-        from ._codec import _map_handoff_output
-
-        active = self._ledger.active.pop(call_id, None)
-        if active is None:
-            return
-        synthetic_item = {
-            "type": "function_call_output",
-            "call_id": call_id,
-            "output": output if isinstance(output, str) else str(output or ""),
-        }
-        evt = _map_handoff_output(
-            item=synthetic_item, agent_id=active.agent_id,
-            message_index=-1, timestamp=datetime.now(UTC),
-        )
-        await self._client.multi_append_to_stream([
-            NewEvents(
-                stream_name=self._stream,
-                events=[_serialization.serialize_for_multi_append(evt)],
-                current_version=StreamState.ANY,
-            ),
-            NewEvents(
-                stream_name=active.subsession_stream,
-                events=[_serialization.serialize_for_multi_append(evt)],
-                current_version=StreamState.ANY,
-            ),
-        ])
-        self._ledger.current_owner = self._stream
 
     # ----- internals ---------------------------------------------------------
 
@@ -380,10 +386,16 @@ class KurrentDBSession(SessionABC, RunHooksBase):
             if record.type not in skip:
                 count += 1
             elif record.type == "SubagentStarted":
-                # Track referenced subsession streams for counting their events.
+                # Each SubagentStarted represents one consumed flat-list slot
+                # (the parent's handoff_call item) that has no message_index
+                # event of its own — count it here so the next add_items
+                # batch resumes at the right offset.
+                count += 1
                 evt = _serialization.deserialize(record)
                 if evt is not None and isinstance(evt, SubagentStarted) and evt.subsession_stream:
                     subsession_streams.append(evt.subsession_stream)
+            # SubagentCompleted is synthetic (no underlying SDK item), so it
+            # consumes no flat-list slot — intentionally not counted.
 
         for sub_stream in subsession_streams:
             try:

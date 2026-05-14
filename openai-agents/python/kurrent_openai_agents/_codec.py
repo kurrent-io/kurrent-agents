@@ -525,10 +525,8 @@ def _fallback_reconstruct(event: ProtoMessage) -> dict[str, Any] | None:
             "name": f"transfer_to_{event.agent_type.lower()}" if event.HasField("agent_type") else "transfer",
             "arguments": event.prompt if event.HasField("prompt") else "{}",
         }
-    if isinstance(event, SubagentCompleted):
-        return {
-            "type": "function_call_output",
-            "call_id": event.agent_id,
-            "output": event.summary if event.HasField("summary") else "",
-        }
+    # SubagentCompleted has no flat-list correlate under the new model — the
+    # synthetic close is a lifecycle marker only. Cross-framework readers
+    # should skip it; the subsession's ToolResultReceived for the handoff_output
+    # is the SDK-visible "transfer" record and appears inline via SubagentStarted.
     return None

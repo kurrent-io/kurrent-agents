@@ -103,9 +103,11 @@ async def test_get_items_inlines_subagent_transcript(
     assert any(t == "message" for t in types)
 
 
-async def test_on_agent_end_emits_subagent_completed_for_unreturned_subagent(
+async def test_on_agent_end_defers_subagent_completed_to_next_add_items(
     kurrentdb_client: AsyncKurrentDBClient,
 ) -> None:
+    """on_agent_end only sets pending_close; SubagentCompleted is emitted on
+    the NEXT add_items call so the target's final items land before the close marker."""
     session_id = f"sess-{uuid.uuid4().hex[:8]}"
     session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
 
@@ -124,12 +126,23 @@ async def test_on_agent_end_emits_subagent_completed_for_unreturned_subagent(
 
     await session.on_agent_end(context=None, agent=_Agent(), output="all done")
 
+    # Immediately after on_agent_end: pending_close set, nothing written yet.
+    assert call_id in session._ledger.pending_close
+    assert call_id in session._ledger.active
+    parent_events_before = await _stream_events(kurrentdb_client, for_session(session_id))
+    assert not any(t == "SubagentCompleted" for t, _ in parent_events_before)
+
+    # Now trigger add_items with an empty list to drain pending_close.
+    await session.add_items([])  # type: ignore[arg-type]
+
     parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
     completed = [evt for t, evt in parent_events if t == "SubagentCompleted"]
     assert len(completed) == 1
     assert completed[0].agent_id == agent_id
+    # After drain: active + pending_close cleared, current_owner back to parent.
     assert session._ledger.current_owner == for_session(session_id)
     assert call_id not in session._ledger.active
+    assert call_id not in session._ledger.pending_close
 
 
 async def test_hooks_not_wired_falls_through_to_canonical_tool_events(
@@ -230,12 +243,16 @@ async def test_message_index_is_session_wide_monotonic_across_handoffs(
     kurrentdb_client: AsyncKurrentDBClient,
 ) -> None:
     """After a handoff completes, follow-up parent items use indices that
-    do NOT collide with indices already consumed on the subsession stream."""
+    do NOT collide with indices already consumed on the subsession stream.
+
+    Uses the real SDK order: [handoff_call, handoff_output, sub_msg] in batch 1,
+    then a plain parent message in batch 2 after the subagent is closed via
+    pending_close (simulated by a follow-up add_items with empty list after
+    on_agent_end fires).
+    """
     session_id = f"sess-{uuid.uuid4().hex[:8]}"
     session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
 
-    # Pre-seed the ledger with an active handoff so route_items emits
-    # SubagentStarted on the first item.
     class _A:
         name = "A"
 
@@ -244,15 +261,24 @@ async def test_message_index_is_session_wide_monotonic_across_handoffs(
 
     await session.on_handoff(context=None, from_agent=_A(), to_agent=_B())
 
-    # First batch: handoff_call, sub_msg, handoff_output (handoff lifecycle + 1 subagent message).
+    # First batch: real SDK order — handoff_call then handoff_output (setup), then sub_msg.
     await session.add_items([
         {"type": "function_call", "call_id": "call_w001", "name": "transfer_to_b", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_w001", "output": "handoff-ack"},
         {"type": "message", "role": "assistant",
          "content": [{"type": "output_text", "text": "sub-reply"}]},
-        {"type": "function_call_output", "call_id": "call_w001", "output": "ok"},
     ])  # type: ignore[list-item]
 
-    # Second batch: a plain user message back on the parent stream.
+    # Simulate on_agent_end firing (defers close to next add_items).
+    await session.on_agent_end(context=None, agent=_B(), output="done")
+
+    # Second batch: final subagent message + pending_close drains.
+    await session.add_items([
+        {"type": "message", "role": "assistant",
+         "content": [{"type": "output_text", "text": "final-sub-reply"}]},
+    ])  # type: ignore[list-item]
+
+    # Third batch: a plain user message back on the parent stream.
     await session.add_items([
         {"type": "message", "role": "user", "content": "follow-up"},
     ])  # type: ignore[list-item]
