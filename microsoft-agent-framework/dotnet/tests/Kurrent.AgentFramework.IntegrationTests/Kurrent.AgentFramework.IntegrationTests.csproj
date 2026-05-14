@@ -10,8 +10,8 @@
 
     <ItemGroup>
         <ProjectReference Include="$(MafDotnetSrcDir)Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
-        <PackageReference Include="TUnit" Version="1.43.11" />
+        <PackageReference Include="TUnit" Version="1.44.0" />
         <PackageReference Include="Testcontainers.KurrentDb" Version="4.11.0" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     </ItemGroup>
 </Project>
