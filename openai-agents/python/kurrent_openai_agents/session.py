@@ -41,22 +41,16 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger("kurrent_openai_agents.session")
 
 # Lifecycle / out-of-conversation event types that get_items must skip.
-# Subagent lifecycle is canonical in v2 (SCHEMA_v2 §3.5) but lives on the
-# parent session stream — same skip treatment as session lifecycle.
 _LIFECYCLE_EVENT_TYPES: frozenset[str] = frozenset({
     "SessionStarted",
     "SessionEnded",
     "SessionContinuedAs",
-    "SubagentStarted",
-    "SubagentCompleted",
 })
 
 _LIFECYCLE_PROTO_TYPES: tuple[type, ...] = (
     SessionStarted,
     SessionEnded,
     SessionContinuedAs,
-    SubagentStarted,
-    SubagentCompleted,
 )
 
 
@@ -93,25 +87,51 @@ class KurrentDBSession(SessionABC, RunHooksBase):
     async def get_items(
         self, limit: int | None = None
     ) -> list[TResponseInputItem]:
-        """Retrieve conversation history, newest-last."""
+        """Retrieve conversation history, newest-last, re-flattening subagent
+        transcripts inline at each ``SubagentStarted`` marker per spec §3."""
         try:
             recorded = await self._client.get_stream(self._stream)
         except NotFoundError:
             return []
 
-        canonical_events: list = []
+        items: list[TResponseInputItem] = []
+        subsession_cache: dict[str, list[Any]] = {}
+
         for record in recorded:
             event = _serialization.deserialize(record)
             if event is None:
                 continue
+
+            if isinstance(event, SubagentStarted):
+                # Emit the original handoff_call dict from extensions.openai.raw_item.
+                handoff_call_items = canonical_to_items([event])
+                items.extend(handoff_call_items)  # type: ignore[arg-type]
+
+                # Inline the subsession transcript.
+                subsession_stream = event.subsession_stream
+                if subsession_stream:
+                    sub_items = await self._read_subsession(subsession_stream, subsession_cache)
+                    items.extend(sub_items)
+                else:
+                    logger.warning(
+                        "SubagentStarted without subsession_stream on %s — skipping inline transcript",
+                        self._stream,
+                    )
+                continue
+
+            if isinstance(event, SubagentCompleted):
+                handoff_output_items = canonical_to_items([event])
+                items.extend(handoff_output_items)  # type: ignore[arg-type]
+                continue
+
             if isinstance(event, _LIFECYCLE_PROTO_TYPES):
                 continue
-            canonical_events.append(event)
 
-        items = canonical_to_items(canonical_events)
+            items.extend(canonical_to_items([event]))  # type: ignore[arg-type]
+
         if limit is not None and limit >= 0:
             items = items[-limit:]
-        return items  # type: ignore[return-value]
+        return items
 
     async def add_items(self, items: list[TResponseInputItem]) -> None:
         """Append items to the session stream(s), routing handoff-target items
@@ -278,14 +298,48 @@ class KurrentDBSession(SessionABC, RunHooksBase):
 
     # ----- internals ---------------------------------------------------------
 
+    async def _read_subsession(
+        self,
+        subsession_stream: str,
+        cache: dict[str, list[Any]],
+    ) -> list[TResponseInputItem]:
+        """Read a subsession stream, skipping its mirrored Subagent* lifecycle
+        and converting remaining events to OpenAI flat dicts."""
+        if subsession_stream in cache:
+            return cache[subsession_stream]  # type: ignore[return-value]
+
+        try:
+            recorded = await self._client.get_stream(subsession_stream)
+        except NotFoundError:
+            logger.warning(
+                "Missing subsession stream %s referenced from %s — emitting handoff_call only",
+                subsession_stream, self._stream,
+            )
+            cache[subsession_stream] = []
+            return []
+
+        canonical_events: list[Any] = []
+        for record in recorded:
+            event = _serialization.deserialize(record)
+            if event is None:
+                continue
+            # Skip the mirrored SubagentStarted/Completed copies — the parent
+            # stream already accounts for those.
+            if isinstance(event, (SubagentStarted, SubagentCompleted)):
+                continue
+            canonical_events.append(event)
+
+        sub_items = canonical_to_items(canonical_events)
+        cache[subsession_stream] = sub_items  # type: ignore[assignment]
+        return sub_items  # type: ignore[return-value]
+
     async def _count_items(self) -> int:
         try:
             recorded = await self._client.get_stream(self._stream)
         except NotFoundError:
             return 0
-        return sum(
-            1 for r in recorded if r.type not in _LIFECYCLE_EVENT_TYPES
-        )
+        skip = _LIFECYCLE_EVENT_TYPES | {"SubagentStarted", "SubagentCompleted"}
+        return sum(1 for r in recorded if r.type not in skip)
 
     async def _emit_session_started_if_missing(self) -> None:
         started = SessionStarted()
