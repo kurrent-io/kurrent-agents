@@ -75,6 +75,18 @@ Events (see §4.2 for field definitions):
 
 Stream retention is a deployment concern, not a schema concern — see §10 Q3.
 
+### 2.4 Identifier conventions for stream names
+
+All variable-substitution components of stream names (`session_id`, `parent_session_id`, `agent_id`, `app_name`, `user_id`, `scope`, `filename`, `run_id`) MUST conform to the rules below. The shared `kurrent_agent_schema` / `Kurrent.Agent.Schema` packages provide builders that enforce these rules; producers SHOULD call those builders rather than concatenating strings.
+
+**Character set.** ASCII `[A-Za-z0-9._-]+`, max 128 bytes per component. Producers MUST reject or URL-encode anything outside that set.
+
+**GUID-shaped values.** When a component value parses as a UUID/GUID, producers MUST emit it in **lowercase, dashless** form (the .NET `"N"` format, e.g. `8d77fd28fda0485f9ae18ee9c7fc3751`). Readers MUST also accept the hyphenated `"D"` form as a legacy-compat fallback (matches Capacitor's `SessionStreamCandidates`). Lowercase only — case-sensitivity differences between writers would split a single conversation across two streams.
+
+**Non-GUID values.** Used verbatim after the character-set check. Case-preserved.
+
+**Compound suffix separators.** Where a stream name has two components joined by `-` (e.g. `AgentSubsession-{parent}-{agent_id}`, `AgentMemory-{app}-{user}`), the separator is a single `-`. Neither component may begin or end with `-`. Inner `-` characters within a component are permitted (so `agent_id = "sub-research-x9k2"` is valid; consumers parse right-to-left from the prefix to locate the component boundary).
+
 ---
 
 ## 3. Canonical events
@@ -185,17 +197,19 @@ Framework-specific resolution details (e.g. `permission_decision` enum values, u
 
 Subagent transcripts live in their own streams: `AgentSubsession-{parent_session_id}-{agent_id}`. The parent session stream records subagent lifecycle:
 
-**`SubagentStarted`** (written to parent `AgentSession-` stream)
+**`SubagentStarted`** (written **atomically to BOTH** the parent `AgentSession-` stream and the `AgentSubsession-` stream via `multi_append`)
 
-| Field | Type | Req |
-|---|---|---|
-| `agent_id` | string | yes (opaque subagent identifier) |
-| `agent_type` | string? | no (e.g. `"research"`, `"code-reviewer"`) |
-| `prompt` | string? | no |
-| `subsession_stream` | string? | no (full stream name, for reader convenience) |
-| `timestamp` | datetime | yes |
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| `agent_id` | string | yes | Opaque, producer-chosen, unique-per-invocation. Recommended shape: `{role_slug}-{short_unique}`. Must satisfy §2.4 character set. |
+| `agent_type` | string? | no | Producer-defined role/category string; opaque to canonical readers. Examples: `research`, `code-reviewer`, `general-purpose`, `TriageAgent`. |
+| `prompt` | string? | no | |
+| `subsession_stream` | string? | no | Full stream name, for reader convenience. |
+| `timestamp` | datetime | yes | |
 
-**`SubagentCompleted`** (written to parent `AgentSession-` stream)
+The dual-stream write lets a reader landing on the subsession stream learn its lifecycle without joining back to the parent (Capacitor's trace-tree projector and per-agent eval queries depend on this). The two appends MUST happen in a single `multi_append` call — partial states (parent marker without subsession marker) are not a supported reader state.
+
+**`SubagentCompleted`** (written **atomically to BOTH** the parent `AgentSession-` stream and the `AgentSubsession-` stream via `multi_append`)
 
 | Field | Type | Req |
 |---|---|---|
