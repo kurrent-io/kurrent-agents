@@ -30,6 +30,8 @@ from kurrent_agent_schema import (
     AssistantToolCallsGenerated,
     InterruptIssued,
     InterruptResolved,
+    SubagentCompleted,
+    SubagentStarted,
     ToolCallInfo,
     ToolResultReceived,
     UserMessageReceived,
@@ -288,6 +290,69 @@ def _map_mcp_approval_response(
     return evt
 
 
+def _map_handoff_call(
+    *,
+    item: dict[str, Any],
+    agent_id: str,
+    agent_type: str,
+    source_agent: str,
+    subsession_stream: str,
+    message_index: int,
+    timestamp: datetime,
+) -> SubagentStarted:
+    """Map an OpenAI ``handoff_call`` (a ``function_call`` whose target is a
+    subagent) to canonical ``SubagentStarted``.
+
+    The ``agent_id`` is precomputed by ``_handoffs.derive_agent_id`` so this
+    mapper stays a pure formatter — no slug logic leaks into the codec.
+    SCHEMA_v2 §3.5.
+    """
+    evt = SubagentStarted(
+        agent_id=agent_id,
+        agent_type=agent_type,
+        subsession_stream=subsession_stream,
+    )
+    prompt = item.get("arguments")
+    if isinstance(prompt, str) and prompt:
+        evt.prompt = prompt
+    evt.timestamp.FromDatetime(timestamp.replace(tzinfo=None))
+    _set_openai_extension(evt, {
+        "raw_item": dict(item),
+        "item_type": "handoff_call",
+        "handoff": {"source_agent": source_agent},
+    })
+    del message_index  # SubagentStarted has no message_index field; reserved for future
+    return evt
+
+
+def _map_handoff_output(
+    *,
+    item: dict[str, Any],
+    agent_id: str,
+    message_index: int,
+    timestamp: datetime,
+) -> SubagentCompleted:
+    """Map an OpenAI ``handoff_output`` (the synthetic ack for a handoff) to
+    canonical ``SubagentCompleted``.
+
+    Outcome defaults to ``"success"`` — the SDK doesn't surface error/cancel
+    state on the handoff_output dict. ``summary`` is the truncated text view
+    of the output; the full original rides under ``extensions.openai.raw_item``.
+    """
+    summary = _serialize_output(item.get("output")) or ""
+    summary = summary[:512]
+    evt = SubagentCompleted(agent_id=agent_id, outcome="success")
+    if summary:
+        evt.summary = summary
+    evt.timestamp.FromDatetime(timestamp.replace(tzinfo=None))
+    _set_openai_extension(evt, {
+        "raw_item": dict(item),
+        "item_type": "handoff_output",
+    })
+    del message_index
+    return evt
+
+
 def _extract_reasoning_text(blocks: Any) -> str | None:
     """Pull plaintext from a ``reasoning.content`` or ``reasoning.summary`` list.
 
@@ -453,4 +518,15 @@ def _fallback_reconstruct(event: ProtoMessage) -> dict[str, Any] | None:
         if event.HasField("response"):
             resolved_item["reason"] = event.response
         return resolved_item
+    if isinstance(event, SubagentStarted):
+        return {
+            "type": "function_call",
+            "call_id": event.agent_id,
+            "name": f"transfer_to_{event.agent_type.lower()}" if event.HasField("agent_type") else "transfer",
+            "arguments": event.prompt if event.HasField("prompt") else "{}",
+        }
+    # SubagentCompleted has no flat-list correlate under the new model — the
+    # synthetic close is a lifecycle marker only. Cross-framework readers
+    # should skip it; the subsession's ToolResultReceived for the handoff_output
+    # is the SDK-visible "transfer" record and appears inline via SubagentStarted.
     return None

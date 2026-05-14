@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
 from google.protobuf.json_format import MessageToDict
 from kurrent_agent_schema import (
+    EVENT_TYPE_BY_NAME,
     AssistantTextGenerated,
     AssistantThinkingGenerated,
     AssistantToolCallsGenerated,
@@ -15,6 +18,7 @@ from kurrent_agent_schema import (
     InterruptResolved,
     ToolResultReceived,
     UserMessageReceived,
+    from_json,
 )
 
 from kurrent_openai_agents import _serialization
@@ -408,3 +412,32 @@ class TestMcpApprovalMapping:
         events = items_to_canonical(items, start_index=0, timestamp=TS)
         restored = canonical_to_items(events)
         assert restored == items
+
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.mark.parametrize("fixture_name", [
+    "subagent_started_openai.json",
+    "subagent_completed_openai.json",
+])
+def test_extensions_openai_fixture_round_trip(fixture_name: str) -> None:
+    """OpenAI-flavored lifecycle fixtures preserve extensions.openai shape across serialize."""
+    raw = (FIXTURES_DIR / fixture_name).read_text(encoding="utf-8")
+    original = json.loads(raw)
+
+    proto_name = "SubagentStarted" if "started" in fixture_name else "SubagentCompleted"
+    proto_cls = EVENT_TYPE_BY_NAME[proto_name]
+    parsed = from_json(proto_cls, raw)
+
+    serialized = _serialization.serialize(parsed)
+    round_tripped = json.loads(serialized.data)
+
+    def _norm(obj):
+        if isinstance(obj, dict):
+            return {k: _norm(obj[k]) for k in sorted(obj)}
+        if isinstance(obj, list):
+            return [_norm(x) for x in obj]
+        return obj
+
+    assert _norm(round_tripped) == _norm(original)
