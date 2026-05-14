@@ -9,13 +9,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageReference Include="Kurrent.Agent.Schema" Version="0.4.0" />
-        <PackageReference Include="TUnit" Version="1.43.11" />
+        <ProjectReference Include="$(MafDotnetSrcDir)Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
+        <PackageReference Include="TUnit" Version="1.44.0" />
         <PackageReference Include="Testcontainers.KurrentDb" Version="4.11.0" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     </ItemGroup>
 </Project>

@@ -1,0 +1,7 @@
+<Project>
+    <PropertyGroup>
+        <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+        <SchemaDotnetDir>$(RepoRoot)schema/dotnet/</SchemaDotnetDir>
+        <MafDotnetSrcDir>$(RepoRoot)microsoft-agent-framework/dotnet/src/</MafDotnetSrcDir>
+    </PropertyGroup>
+</Project>

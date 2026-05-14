@@ -8,10 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
-    <PackageReference Include="Kurrent.Agent.Schema" Version="0.4.0" />
+    <ProjectReference Include="$(MafDotnetSrcDir)Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
     <PackageReference Include="Microsoft.Agents.AI.Anthropic" Version="1.0.0-rc6" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
   </ItemGroup>
 
   <ItemGroup>

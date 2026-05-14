@@ -36,6 +36,26 @@ public class KurrentDBChatHistoryProviderTests(KurrentDbFixture db) {
     }
 
     [Test]
+    public async Task EndSessionAsync_HyphenatedGuidSessionId_WritesToDashlessStream() {
+        // AFW's runtime renders Guid.SessionId with the default "D" (hyphenated)
+        // form. SCHEMA_v2 §2.4 mandates GUID-shaped components be emitted dashless
+        // so writers and Capacitor's readers converge on the same stream.
+        await using var client       = db.CreateClient();
+        var             guid         = Guid.NewGuid();
+        var             hyphenatedId = guid.ToString("D");
+        var             dashlessId   = guid.ToString("N");
+        var             provider     = new KurrentDBChatHistoryProvider(client, hyphenatedId);
+
+        await provider.EndSessionAsync("completed");
+
+        var read = await client
+            .ReadStreamAsync(Direction.Forwards, $"AgentSession-{dashlessId}", StreamPosition.Start)
+            .SingleAsync();
+
+        await Assert.That(read.Event.EventType).IsEqualTo("SessionEnded");
+    }
+
+    [Test]
     public async Task EndSessionAsync_WithNullReason_StillAppends() {
         await using var client    = db.CreateClient();
         var             sessionId = Guid.NewGuid().ToString("N");
