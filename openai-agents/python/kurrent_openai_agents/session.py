@@ -29,7 +29,7 @@ from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
 from ._codec import canonical_to_items
-from ._handoffs import ExpectedHandoff, _HandoffLedger
+from ._handoffs import ExpectedHandoff, PendingHandoffCall, _HandoffLedger
 from ._stream_names import for_session
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -240,20 +240,80 @@ class KurrentDBSession(SessionABC, RunHooksBase):
 
     # ----- RunHooksBase overrides -------------------------------------------
 
+    async def on_llm_end(
+        self,
+        context: Any,
+        agent: Any,
+        response: Any,
+    ) -> None:
+        """Capture every handoff function_call in the model response.
+
+        The SDK fires this hook with the raw ``ModelResponse`` immediately
+        after the LLM call returns, BEFORE the SDK resolves which handoff to
+        invoke and BEFORE ``on_handoff`` fires. We walk ``response.output``
+        and stash a ``PendingHandoffCall(tool_name, call_id)`` for each
+        function call whose name matches one of the source agent's registered
+        handoff tool names. ``on_handoff`` then pops the matching entry to
+        build a precisely-scoped ``ExpectedHandoff``.
+
+        The list is rebuilt per LLM response — unchosen candidates from a
+        previous response are dropped here so they don't drift forward.
+        """
+        # Drop stale candidates from the previous LLM response.
+        self._ledger.pending_calls.clear()
+
+        tool_map = self._handoff_tool_map(agent)
+        if not tool_map:
+            return
+
+        from_name = getattr(agent, "name", "") or ""
+        outputs = getattr(response, "output", None) or []
+        for output in outputs:
+            name = (
+                output.get("name") if isinstance(output, dict) else getattr(output, "name", None)
+            )
+            call_id = (
+                output.get("call_id")
+                if isinstance(output, dict)
+                else getattr(output, "call_id", None)
+            )
+            if not name or not call_id:
+                continue
+            target_name_hint = tool_map.get(name)
+            if target_name_hint is None:
+                continue
+            self._ledger.pending_calls.append(
+                PendingHandoffCall(
+                    from_name=from_name,
+                    target_name_hint=target_name_hint,
+                    tool_name=name,
+                    call_id=call_id,
+                )
+            )
+
     async def on_handoff(
         self,
         context: Any,
         from_agent: Any,
         to_agent: Any,
     ) -> None:
-        """Stash the expected handoff target until the next ``function_call`` arrives.
+        """Stash the expected handoff target until the matching ``function_call`` arrives.
 
-        Idempotent while ``expected`` is already pending — duplicate hook delivery
-        from streaming retries or replay doesn't double-emit ``SubagentStarted``.
+        When ``on_llm_end`` populated a matching ``PendingHandoffCall``, we
+        copy its exact ``(tool_name, call_id)`` into ``ExpectedHandoff`` so
+        ``route_items`` can promote on a strict match. Without that entry
+        (e.g. ``on_llm_end`` not wired in tests), fall back to resolving
+        ``tool_name`` from ``from_agent.handoffs`` directly — name-only
+        matching with the ``transfer_to_`` prefix as a final safety net.
+
+        Idempotent while ``expected`` is already pending — duplicate hook
+        delivery from streaming retries or replay doesn't double-emit.
         """
+        from_name = getattr(from_agent, "name", "") or ""
+        to_name = getattr(to_agent, "name", "") or ""
+
         if self._ledger.expected is not None:
-            new_target = getattr(to_agent, "name", "") or ""
-            if new_target and new_target != self._ledger.expected.to_name:
+            if to_name and to_name != self._ledger.expected.to_name:
                 # Same expected slot held by a different prior handoff —
                 # likely a nested handoff, which the schema's flat-only
                 # stance does not support yet. Drop the second target;
@@ -261,44 +321,73 @@ class KurrentDBSession(SessionABC, RunHooksBase):
                 logger.warning(
                     "on_handoff dropped nested target %r — prior expected %r still pending. "
                     "Nested handoffs are not yet canonicalised (schema flat-only stance).",
-                    new_target, self._ledger.expected.to_name,
+                    to_name, self._ledger.expected.to_name,
                 )
             return
+
+        match = self._ledger.pop_pending_call(from_name=from_name, to_name=to_name)
+        if match is not None:
+            tool_name: str | None = match.tool_name
+            call_id: str | None = match.call_id
+        else:
+            tool_name = self._resolve_handoff_tool_name(from_agent, to_agent)
+            call_id = None
+
         self._ledger.expected = ExpectedHandoff(
-            from_name=getattr(from_agent, "name", "") or "",
-            to_name=getattr(to_agent, "name", "") or "",
+            from_name=from_name,
+            to_name=to_name,
             to_agent=to_agent,
-            tool_name=self._resolve_handoff_tool_name(from_agent, to_agent),
+            tool_name=tool_name,
+            call_id=call_id,
         )
 
     @staticmethod
-    def _resolve_handoff_tool_name(from_agent: Any, to_agent: Any) -> str | None:
-        """Best-effort lookup of ``Handoff.tool_name`` for the from→to pair.
+    def _handoff_tool_map(agent: Any) -> dict[str, str]:
+        """Map ``Handoff.tool_name`` → target agent name for ``agent.handoffs``.
 
-        Iterates ``from_agent.handoffs`` (a mix of ``Agent`` and ``Handoff``
-        instances per the SDK) and returns the tool name that would trigger
-        this handoff. Falls back to the SDK's default convention when only an
-        ``Agent`` instance was registered. Returns ``None`` when nothing
-        matches, in which case ``route_items`` accepts any ``transfer_to_``
-        prefixed function call.
+        Mirrors the SDK's own handoff registration: ``Handoff`` instances
+        expose ``tool_name`` directly; bare ``Agent`` entries get the
+        default ``transfer_to_<slug>`` name via ``Handoff.default_tool_name``.
+        Returns an empty dict when the agent registers no handoffs or when
+        the agent type isn't recognisable.
         """
-        import re as _re
-
-        handoffs = getattr(from_agent, "handoffs", None) or []
-        to_name = getattr(to_agent, "name", "") or ""
+        result: dict[str, str] = {}
+        handoffs = getattr(agent, "handoffs", None) or []
         for entry in handoffs:
             entry_agent_name = (
                 getattr(entry, "agent_name", None) or getattr(entry, "name", None)
             )
-            if entry_agent_name != to_name:
+            if not entry_agent_name:
                 continue
             tool_name = getattr(entry, "tool_name", None)
             if tool_name:
+                result[tool_name] = entry_agent_name
+                continue
+            # Bare Agent — synthesise the default tool name.
+            try:
+                from agents.handoffs import Handoff as _Handoff
+
+                result[_Handoff.default_tool_name(entry)] = entry_agent_name
+            except Exception:  # pragma: no cover — defensive fallback
+                import re as _re
+
+                slug = _re.sub(r"[^a-zA-Z0-9_]", "_", entry_agent_name).lower()
+                result[f"transfer_to_{slug}"] = entry_agent_name
+        return result
+
+    @staticmethod
+    def _resolve_handoff_tool_name(from_agent: Any, to_agent: Any) -> str | None:
+        """Fallback resolution when on_llm_end didn't capture a pending call.
+
+        Used only for callers that wire ``on_handoff`` without ``on_llm_end``
+        (mainly tests). Production paths populate ``ExpectedHandoff`` from a
+        ``PendingHandoffCall`` and never reach this branch.
+        """
+        tool_map = KurrentDBSession._handoff_tool_map(from_agent)
+        to_name = getattr(to_agent, "name", "") or ""
+        for tool_name, target in tool_map.items():
+            if target == to_name:
                 return tool_name
-            # Agent passed directly — mirror the SDK's default-naming convention:
-            # transform_string_function_style(`transfer_to_<agent.name>`).
-            slug = _re.sub(r"[^a-zA-Z0-9_]", "_", to_name).lower()
-            return f"transfer_to_{slug}"
         return None
 
     async def on_agent_end(

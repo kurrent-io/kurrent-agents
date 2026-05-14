@@ -54,21 +54,42 @@ def derive_agent_id(target_name: str, call_id: str) -> str:
 
 
 @dataclass(slots=True)
-class ExpectedHandoff:
-    """Stashed by ``on_handoff`` until the next matching ``function_call`` arrives.
+class PendingHandoffCall:
+    """A handoff function_call observed in an LLM response, awaiting on_handoff.
 
-    ``tool_name`` is the SDK's ``Handoff.tool_name`` (e.g. ``transfer_to_<slug>``
-    by default or a ``tool_name_override``). It scopes the function_call
-    promotion: an unrelated tool call from the same LLM response is left as a
-    canonical ``AssistantToolCallsGenerated`` instead of being mis-promoted.
-    ``None`` means we couldn't resolve the Handoff config — fall back to the
-    ``transfer_to_`` prefix heuristic in ``route_items``.
+    Populated by ``on_llm_end`` for every function call in the model's output
+    whose ``name`` matches one of the source agent's registered handoff tool
+    names. The SDK may emit multiple handoff calls per response and pick one;
+    the chosen one is resolved by ``on_handoff`` matching on (from_name,
+    target_name_hint) and the unchosen ones are dropped on the next
+    ``on_llm_end`` (the list is rebuilt per LLM response).
+    """
+
+    from_name: str
+    target_name_hint: str
+    tool_name: str
+    call_id: str
+
+
+@dataclass(slots=True)
+class ExpectedHandoff:
+    """Stashed by ``on_handoff`` until the matching ``function_call`` arrives.
+
+    ``tool_name`` and ``call_id`` come from a ``PendingHandoffCall`` captured
+    in ``on_llm_end``. ``route_items`` requires both to match exactly,
+    eliminating the ambiguity of name-only matching when the model emits
+    several function calls in one response. When the on_llm_end path didn't
+    populate a pending call (e.g. tests that build ExpectedHandoff directly),
+    ``call_id`` may be ``None``: ``route_items`` then falls back to name-only
+    matching (with the ``transfer_to_`` prefix heuristic when ``tool_name``
+    is also ``None``).
     """
 
     from_name: str
     to_name: str
     to_agent: Any  # agents.Agent — kept as Any to avoid an import cycle
     tool_name: str | None = None
+    call_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -92,6 +113,10 @@ class _HandoffLedger:
     parent_stream: str
     expected: ExpectedHandoff | None = None
     active: dict[str, ActiveHandoff] = field(default_factory=dict)
+    # Handoff function calls observed in the most recent on_llm_end. Rebuilt
+    # per LLM response; on_handoff pops the chosen entry to resolve
+    # (tool_name, call_id) for the pending ExpectedHandoff.
+    pending_calls: list[PendingHandoffCall] = field(default_factory=list)
     # call_id → summary: populated by on_agent_end, drained at the end of
     # route_items so SubagentCompleted lands AFTER the target's final items.
     pending_close: dict[str, str] = field(default_factory=dict)
@@ -100,6 +125,22 @@ class _HandoffLedger:
     def __post_init__(self) -> None:
         if not self.current_owner:
             self.current_owner = self.parent_stream
+
+    def pop_pending_call(
+        self, *, from_name: str, to_name: str
+    ) -> PendingHandoffCall | None:
+        """Remove and return the first matching pending handoff call.
+
+        Match is on (from_name, target_name_hint=to_name) — the
+        ``from_agent`` that fired the handoff and the target's name. The SDK
+        picks one handoff out of any candidates the model emitted, and that
+        one is what on_handoff is called with, so this single-shot pop is
+        the right shape.
+        """
+        for i, entry in enumerate(self.pending_calls):
+            if entry.from_name == from_name and entry.target_name_hint == to_name:
+                return self.pending_calls.pop(i)
+        return None
 
 
 # ----- write-op types -------------------------------------------------------
@@ -189,14 +230,23 @@ def route_items(
         if kind == "function_call" and ledger.expected is not None:
             expected = ledger.expected
             func_name = item.get("name") or ""
-            # Tool-name scoped match: if we resolved the Handoff.tool_name in
-            # on_handoff, the function_call.name must equal it. Otherwise fall
-            # back to the SDK's default-naming prefix `transfer_to_`.
-            name_match = (
-                func_name == expected.tool_name
-                if expected.tool_name
-                else func_name.startswith("transfer_to_")
-            )
+            func_call_id = item.get("call_id") or ""
+            # Strictest match first: when on_llm_end captured the exact
+            # (tool_name, call_id) for this handoff, both must match. This is
+            # robust against parallel tool calls in the same response.
+            # Otherwise fall back to name-only matching, finally the
+            # transfer_to_ prefix heuristic when no Handoff config was
+            # resolvable at all.
+            if expected.call_id is not None:
+                exact_match = (
+                    func_call_id == expected.call_id
+                    and func_name == expected.tool_name
+                )
+                name_match = exact_match
+            elif expected.tool_name:
+                name_match = func_name == expected.tool_name
+            else:
+                name_match = func_name.startswith("transfer_to_")
             if not name_match:
                 # An unrelated tool call slipped in before the actual handoff
                 # call. Persist it as a canonical tool call on current_owner;
@@ -204,7 +254,7 @@ def route_items(
                 canonical_events = items_to_canonical([item], start_index=message_index, timestamp=timestamp)
                 queue_single(ledger.current_owner, canonical_events)
                 continue
-            call_id = item.get("call_id") or ""
+            call_id = func_call_id
             if not call_id:
                 # Malformed handoff_call (no call_id) — fall through to the
                 # normal codec rather than crashing. Keep the expected entry

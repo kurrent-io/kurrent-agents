@@ -370,3 +370,130 @@ async def test_duplicate_on_handoff_is_idempotent_while_expected_set() -> None:
     await session.on_handoff(context=None, from_agent=a, to_agent=b)
     # Second call is dropped while expected is still pending.
     assert session._ledger.expected is first
+
+
+# ----- on_llm_end → on_handoff capture ----------------------------------
+
+
+class _StubHandoffAgent:
+    """Agent stub with a ``handoffs`` list that can include ``Handoff`` shims."""
+
+    def __init__(self, name: str, handoffs: list | None = None) -> None:
+        self.name = name
+        self.handoffs = handoffs or []
+
+
+class _StubHandoffEntry:
+    """Mimics ``agents.handoffs.Handoff`` enough for ``_handoff_tool_map``."""
+
+    def __init__(self, tool_name: str, agent_name: str) -> None:
+        self.tool_name = tool_name
+        self.agent_name = agent_name
+
+
+class _StubResponse:
+    def __init__(self, output: list) -> None:
+        self.output = output
+
+
+async def test_on_llm_end_captures_handoff_calls_with_exact_call_id() -> None:
+    """When the model emits a function_call matching a registered handoff tool,
+    on_llm_end appends a PendingHandoffCall carrying the exact (name, call_id)."""
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    triage = _StubHandoffAgent(
+        "Triage", handoffs=[_StubHandoffEntry("transfer_to_specialist", "Specialist")]
+    )
+    response = _StubResponse(
+        output=[
+            {"type": "function_call", "name": "lookup_weather", "call_id": "call_weather"},
+            {"type": "function_call", "name": "transfer_to_specialist", "call_id": "call_handoff_xyz"},
+        ]
+    )
+    await session.on_llm_end(context=None, agent=triage, response=response)
+
+    assert len(session._ledger.pending_calls) == 1
+    entry = session._ledger.pending_calls[0]
+    assert entry.from_name == "Triage"
+    assert entry.target_name_hint == "Specialist"
+    assert entry.tool_name == "transfer_to_specialist"
+    assert entry.call_id == "call_handoff_xyz"
+
+
+async def test_on_llm_end_drops_stale_candidates_from_previous_response() -> None:
+    """Each on_llm_end rebuilds pending_calls from the new response — unchosen
+    candidates from a previous response don't drift forward."""
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    triage = _StubHandoffAgent(
+        "Triage", handoffs=[_StubHandoffEntry("transfer_to_specialist", "Specialist")]
+    )
+    await session.on_llm_end(
+        context=None, agent=triage,
+        response=_StubResponse(output=[
+            {"type": "function_call", "name": "transfer_to_specialist", "call_id": "call_old"},
+        ]),
+    )
+    assert len(session._ledger.pending_calls) == 1
+
+    # Second response has no handoff calls — pending_calls must be cleared.
+    await session.on_llm_end(
+        context=None, agent=triage,
+        response=_StubResponse(output=[
+            {"type": "message", "role": "assistant", "content": "hello"},
+        ]),
+    )
+    assert session._ledger.pending_calls == []
+
+
+async def test_on_handoff_consumes_pending_call_and_carries_call_id() -> None:
+    """on_handoff pops the matching PendingHandoffCall and copies its
+    (tool_name, call_id) into ExpectedHandoff so route_items can enforce
+    an exact match."""
+    session = KurrentDBSession(session_id="sess-1", client=None)  # type: ignore[arg-type]
+    triage = _StubHandoffAgent(
+        "Triage", handoffs=[_StubHandoffEntry("transfer_to_specialist", "Specialist")]
+    )
+    target = _StubHandoffAgent("Specialist")
+
+    await session.on_llm_end(
+        context=None, agent=triage,
+        response=_StubResponse(output=[
+            {"type": "function_call", "name": "transfer_to_specialist", "call_id": "call_pinpoint_123"},
+        ]),
+    )
+    await session.on_handoff(context=None, from_agent=triage, to_agent=target)
+
+    expected = session._ledger.expected
+    assert expected is not None
+    assert expected.tool_name == "transfer_to_specialist"
+    assert expected.call_id == "call_pinpoint_123"
+    # The pending entry should be consumed.
+    assert session._ledger.pending_calls == []
+
+
+def test_route_items_requires_exact_call_id_when_expected_carries_one() -> None:
+    """When ExpectedHandoff.call_id is set, route_items promotes ONLY the
+    function_call whose call_id matches — even if another transfer_to_*
+    name appears in the same batch."""
+    ledger = _make_ledger("AgentSession-sess-1")
+    ledger.expected = ExpectedHandoff(
+        from_name="Triage",
+        to_name="Specialist",
+        to_agent=_StubAgent("Specialist"),
+        tool_name="transfer_to_specialist",
+        call_id="call_real_handoff",
+    )
+
+    items = [
+        # A different call_id with the same name — must NOT promote.
+        {
+            "type": "function_call", "call_id": "call_wrong_id",
+            "name": "transfer_to_specialist", "arguments": "{}",
+        },
+    ]
+    ops = route_items(
+        items, ledger=ledger, session_id="sess-1", start_index=0, timestamp=_ts()
+    )
+
+    # Falls through to canonical tool call; no SubagentStarted, expected stays set.
+    assert not any(isinstance(op, DualAppend) for op in ops)
+    assert ledger.expected is not None
