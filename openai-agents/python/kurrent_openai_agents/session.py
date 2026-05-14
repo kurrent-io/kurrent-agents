@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 from agents.lifecycle import RunHooksBase
 from agents.memory.session import SessionABC
 from kurrent_agent_schema import (
-    USAGE_METADATA_KEY,
     SessionContinuedAs,
     SessionEnded,
     SessionStarted,
@@ -81,6 +80,10 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         self._agent_name = agent_name
         self._stream = for_session(session_id)
         self._ledger = _HandoffLedger(parent_stream=self._stream)
+        # Session-wide monotonic counter for message_index. None = not yet
+        # initialised; lazily seeded from the union of parent + subsession
+        # streams on the first add_items call.
+        self._next_item_index: int | None = None
 
     # ----- Session protocol --------------------------------------------------
 
@@ -139,7 +142,9 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         if not items:
             return
 
-        start_index = await self._count_items()
+        await self._init_next_index_if_needed()
+        start_index = self._next_item_index  # guaranteed non-None after init
+        assert start_index is not None
 
         from ._handoffs import route_items
 
@@ -157,6 +162,10 @@ class KurrentDBSession(SessionABC, RunHooksBase):
             await self._emit_session_started_if_missing()
 
         await self._write_ops(ops)
+        # Advance the session-wide counter by the number of items processed.
+        # handoff_call/output items each consume one offset slot even though
+        # they emit a lifecycle event without a message_index field.
+        self._next_item_index = start_index + len(items)
 
     async def _write_ops(self, ops: list[Any]) -> None:
         """Walk the route_items output in order, dispatching each op.
@@ -344,13 +353,46 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         cache[subsession_stream] = sub_items  # type: ignore[assignment]
         return sub_items  # type: ignore[return-value]
 
-    async def _count_items(self) -> int:
+    async def _init_next_index_if_needed(self) -> None:
+        """Lazily seed ``_next_item_index`` from the session-wide event count.
+
+        Scans the parent stream for non-lifecycle events, then follows every
+        ``SubagentStarted.subsession_stream`` reference to count non-lifecycle
+        events there too. The sum is the correct session-wide monotonic offset
+        for the next ``add_items`` batch.
+
+        After the first call this is a no-op (counter is already set).
+        """
+        if self._next_item_index is not None:
+            return
+
+        skip = _LIFECYCLE_EVENT_TYPES | {"SubagentStarted", "SubagentCompleted"}
+        count = 0
+        subsession_streams: list[str] = []
+
         try:
             recorded = await self._client.get_stream(self._stream)
         except NotFoundError:
-            return 0
-        skip = _LIFECYCLE_EVENT_TYPES | {"SubagentStarted", "SubagentCompleted"}
-        return sum(1 for r in recorded if r.type not in skip)
+            self._next_item_index = 0
+            return
+
+        for record in recorded:
+            if record.type not in skip:
+                count += 1
+            elif record.type == "SubagentStarted":
+                # Track referenced subsession streams for counting their events.
+                evt = _serialization.deserialize(record)
+                if evt is not None and isinstance(evt, SubagentStarted) and evt.subsession_stream:
+                    subsession_streams.append(evt.subsession_stream)
+
+        for sub_stream in subsession_streams:
+            try:
+                sub_recorded = await self._client.get_stream(sub_stream)
+            except NotFoundError:
+                continue
+            count += sum(1 for r in sub_recorded if r.type not in skip)
+
+        self._next_item_index = count
 
     async def _emit_session_started_if_missing(self) -> None:
         started = SessionStarted()
@@ -371,15 +413,3 @@ class KurrentDBSession(SessionABC, RunHooksBase):
             # Stream exists — SessionStarted already written. Benign.
             pass
 
-    def _event_metadata_for(
-        self, item: Any, event: Any
-    ) -> dict[str, Any] | None:
-        """Build the KurrentDB event metadata dict for an OpenAI item.
-
-        v0: no automatic ``$usage`` mapping. The SDK aggregates usage at the
-        run level, not per-item. ``USAGE_METADATA_KEY`` is imported here for
-        subclassers who want to attach per-item usage from out-of-band data.
-        """
-        del item, event
-        _ = USAGE_METADATA_KEY  # imported for subclassers
-        return None

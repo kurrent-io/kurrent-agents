@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 import pytest
 from agents import Agent, Runner
+from kurrent_agent_schema import SubagentCompleted, SubagentStarted
 from kurrentdbclient import AsyncKurrentDBClient, StreamState
 
 from kurrent_openai_agents import KurrentDBSession
@@ -223,3 +224,75 @@ async def test_duplicate_on_handoff_emits_single_subagent_started(
     parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
     started_count = sum(1 for t, _ in parent_events if t == "SubagentStarted")
     assert started_count == 1
+
+
+async def test_message_index_is_session_wide_monotonic_across_handoffs(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    """After a handoff completes, follow-up parent items use indices that
+    do NOT collide with indices already consumed on the subsession stream."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    # Pre-seed the ledger with an active handoff so route_items emits
+    # SubagentStarted on the first item.
+    class _A:
+        name = "A"
+
+    class _B:
+        name = "B"
+
+    await session.on_handoff(context=None, from_agent=_A(), to_agent=_B())
+
+    # First batch: handoff_call, sub_msg, handoff_output (handoff lifecycle + 1 subagent message).
+    await session.add_items([
+        {"type": "function_call", "call_id": "call_w001", "name": "transfer_to_b", "arguments": "{}"},
+        {"type": "message", "role": "assistant",
+         "content": [{"type": "output_text", "text": "sub-reply"}]},
+        {"type": "function_call_output", "call_id": "call_w001", "output": "ok"},
+    ])  # type: ignore[list-item]
+
+    # Second batch: a plain user message back on the parent stream.
+    await session.add_items([
+        {"type": "message", "role": "user", "content": "follow-up"},
+    ])  # type: ignore[list-item]
+
+    # Read all canonical events and assert message_index is strictly increasing
+    # across the union of parent + subsession streams.
+    parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
+    sub_started_evt = next(evt for t, evt in parent_events if t == "SubagentStarted")
+    sub_events = await _stream_events(kurrentdb_client, sub_started_evt.subsession_stream)
+
+    indices = []
+    for _t, evt in parent_events + sub_events:
+        if hasattr(evt, "message_index") and not isinstance(evt, (SubagentStarted, SubagentCompleted)):
+            indices.append(evt.message_index)
+    # No duplicate session-wide indices.
+    assert len(indices) == len(set(indices)), f"Duplicate message_indices: {indices}"
+
+
+async def test_function_call_missing_call_id_falls_through_to_canonical(
+    kurrentdb_client: AsyncKurrentDBClient,
+) -> None:
+    """A function_call with no call_id should not crash add_items, even when
+    a handoff is expected — it should fall through to the canonical codec."""
+    session_id = f"sess-{uuid.uuid4().hex[:8]}"
+    session = KurrentDBSession(session_id=session_id, client=kurrentdb_client)
+
+    class _A:
+        name = "A"
+
+    class _B:
+        name = "B"
+
+    await session.on_handoff(context=None, from_agent=_A(), to_agent=_B())
+
+    # Malformed function_call — no call_id.
+    await session.add_items([
+        {"type": "function_call", "name": "transfer_to_b", "arguments": "{}"},
+    ])  # type: ignore[list-item]
+
+    parent_events = await _stream_events(kurrentdb_client, for_session(session_id))
+    types = [t for t, _ in parent_events]
+    assert "SubagentStarted" not in types
+    assert "AssistantToolCallsGenerated" in types
