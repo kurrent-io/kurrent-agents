@@ -32,7 +32,8 @@ OpenAI session items are Responses API dicts with a discriminated `type` field (
 | `reasoning` | `AssistantThinkingGenerated` | Plaintext content, or `encrypted=true` + `signature` for o-series; opaque blob in `extensions.openai.thinking.raw`. SCHEMA_v2 §3.2. |
 | `mcp_approval_request` | `InterruptIssued` (`kind="approval"`) | Proposed call under `extensions.openai.interrupt.proposed_call`; post-hoc gate (`request_id == call_id`). SCHEMA_v2 §3.3. |
 | `mcp_approval_response` | `InterruptResolved` | `outcome=allow|deny` from `approve`; `response` from `reason`. |
-| `handoff_call` / `handoff_output` | `OpenAIItem` | Deferred — see DEV-1684 for the canonical `SubagentStarted` / `SubagentCompleted` promotion. |
+| `handoff_call` | `SubagentStarted` (when hooks=session) | else canonical `AssistantToolCallsGenerated` on the parent stream. `agent_id` derived as `sub-{slug(target.name)}-{call_id[-6:]}` per SCHEMA_v2 §2.4. |
+| `handoff_output` | `SubagentCompleted` (when hooks=session) | else canonical `ToolResultReceived` on the parent stream. `outcome="success"`; `summary` is the truncated tool output. |
 | `computer_call`, `shell_call`, `web_search`, … | `OpenAIItem` | No canonical analogue. |
 
 **Every emitted event also stashes the full original item under `extensions.openai.raw_item`** — lossless reconstruction regardless of which branch it took.
@@ -63,7 +64,7 @@ supported on this code path. Each event's metadata carries
 
 ## 4. OpenAI-specific concepts
 
-- **Handoffs** — `handoff_call` and `handoff_output` items. LLM-driven nested agent invocation. Currently ride as `OpenAIItem`; promotion to canonical `SubagentStarted` / `SubagentCompleted` (with separate `AgentSubsession-` streams) is tracked under DEV-1684.
+- **Handoffs** — `handoff_call` and `handoff_output` items. LLM-driven nested agent invocation. Promoted to canonical `SubagentStarted` / `SubagentCompleted` per SCHEMA_v2 §3.5 when `Runner.run(..., session=s, hooks=s)` is wired (the session itself implements `RunHooksBase`). The subagent's transcript lands on `AgentSubsession-{session_id}-{agent_id}`; the parent and subsession copies of the lifecycle events are written atomically via `multi_append_to_stream`. Without `hooks=s` wired, handoffs still persist (the tool call surfaces as canonical `AssistantToolCallsGenerated` / `ToolResultReceived` on the parent stream), but the `SubagentStarted` / `SubagentCompleted` lifecycle and the dedicated subsession transcript stream are not emitted — cross-framework readers won't see the subagent boundary. See AI-471.
 - **Guardrails** — runtime checks, not session items; nothing for us to persist.
 - **MCP approvals** — `mcp_approval_request` / `mcp_approval_response` decompose into canonical `InterruptIssued` / `InterruptResolved` (`kind="approval"`). Proposed call rides under `extensions.openai.interrupt.proposed_call`; post-hoc gate (request_id == call_id) per SCHEMA_v2 §3.3.
 - **Computer / shell tools** — `computer_call`, `shell_call`. First-class tool types specific to OpenAI's sandbox extensions; ride as `OpenAIItem`.
@@ -96,4 +97,4 @@ SDK consumers call `add_items` serially during a run (one append per turn, not p
 
 1. **`pop_item` semantics** — the SDK uses it for the compaction path (`OpenAIResponsesCompactionSession`). Need a concrete "pop" definition (tombstone marker event? Rewind-style marker?). Probably won't block v1 since most users don't exercise this path directly.
 2. **Per-turn usage capture** — add a callback/hook so the caller can attach `$usage` to specific items? Or extend `add_items` with a parallel `usage_per_item` argument? Revisit once there's a concrete need.
-3. **Handoff visibility** — handled in DEV-1684. Promotion to canonical `SubagentStarted` / `SubagentCompleted` requires routing the handoff target's items to a separate `AgentSubsession-{parent}-{agent_id}` stream and re-flattening on `get_items`. Out of scope for the schema-v2 cutover.
+3. ~~**Handoff visibility.**~~ ✅ Resolved AI-471. Promotion via `RunHooksBase` on `KurrentDBSession` itself; the parent's `SubagentStarted` carries the original `handoff_call` dict under `extensions.openai.raw_item` so OpenAI's flat-replay invariant is preserved. Subsession streams are atomically dual-written for self-describing reads. Nested handoffs deliberately deferred per the schema's flat-only stance.
