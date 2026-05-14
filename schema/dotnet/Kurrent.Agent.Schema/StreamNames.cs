@@ -20,17 +20,17 @@ public static class StreamNames {
         Guid.TryParse(id, out var guid) ? guid.ToString("N") : id;
 
     public static string AgentSession(string sessionId) =>
-        $"{AgentSessionPrefix}{sessionId}";
+        $"{AgentSessionPrefix}{NormalizeId(sessionId)}";
 
     public static string AgentSubsession(string parentSessionId, string agentId) =>
-        $"{AgentSubsessionPrefix}{parentSessionId}-{agentId}";
+        $"{AgentSubsessionPrefix}{NormalizeId(parentSessionId)}-{NormalizeId(agentId)}";
 
     public static string AgentMemory(string appName, string userId) =>
-        $"{AgentMemoryPrefix}{appName}-{userId}";
+        $"{AgentMemoryPrefix}{NormalizeId(appName)}-{NormalizeId(userId)}";
 
     public static string AgentArtifact(string scope, string filename) =>
-        $"{AgentArtifactPrefix}{scope}-{filename}";
+        $"{AgentArtifactPrefix}{NormalizeId(scope)}-{NormalizeId(filename)}";
 
     public static string EvalRun(string runId) =>
-        $"{EvalRunPrefix}{runId}";
+        $"{EvalRunPrefix}{NormalizeId(runId)}";
 }

@@ -43,7 +43,7 @@ public sealed class KurrentDBChatHistoryProvider(
             CancellationToken cancellationToken = default
         ) {
         var state      = _sessionState.GetOrInitializeState(context.Session);
-        var streamName = StreamNames.AgentSession(StreamNames.NormalizeId(state.SessionId));
+        var streamName = StreamNames.AgentSession(state.SessionId);
 
         var messages = new List<ChatMessage>();
         var maxIndex = -1;
@@ -105,7 +105,7 @@ public sealed class KurrentDBChatHistoryProvider(
     /// </summary>
     protected override async ValueTask StoreChatHistoryAsync(InvokedContext context, CancellationToken cancellationToken = default) {
         var state      = _sessionState.GetOrInitializeState(context.Session);
-        var streamName = StreamNames.AgentSession(StreamNames.NormalizeId(state.SessionId));
+        var streamName = StreamNames.AgentSession(state.SessionId);
 
         var now          = DateTimeOffset.UtcNow;
         var events       = new List<EventData>();
@@ -163,7 +163,7 @@ public sealed class KurrentDBChatHistoryProvider(
     /// Write a SessionEnded event to close the session stream.
     /// </summary>
     public async Task EndSessionAsync(string? reason = null, CancellationToken cancellationToken = default) {
-        var streamName = StreamNames.AgentSession(StreamNames.NormalizeId(sessionId));
+        var streamName = StreamNames.AgentSession(sessionId);
 
         var ended = new SessionEnded { Timestamp = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
 
@@ -194,7 +194,7 @@ public sealed class KurrentDBChatHistoryProvider(
             string            sessionId,
             CancellationToken cancellationToken = default
         ) {
-        var streamName = StreamNames.AgentSession(StreamNames.NormalizeId(sessionId));
+        var streamName = StreamNames.AgentSession(sessionId);
         var maxIndex   = -1;
 
         try {

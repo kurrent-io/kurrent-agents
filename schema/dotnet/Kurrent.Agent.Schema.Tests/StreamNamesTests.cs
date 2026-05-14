@@ -56,14 +56,44 @@ public class StreamNamesTests {
     }
 
     [Fact]
-    public void AgentSession_does_not_normalize_internally() {
-        // Builders are intentionally pass-through — callers are responsible for
-        // normalising id components per SCHEMA_v2.md §2.4 (typically by composing
-        // StreamNames.AgentSession(StreamNames.NormalizeId(sessionId))). This test
-        // pins that contract so the symmetry with Python's streams.py is not
-        // broken silently.
+    public void AgentSession_normalizes_hyphenated_guid_to_dashless_stream() {
+        // Builders apply NormalizeId so every .NET producer and reader converges
+        // on the canonical dashless form for GUID-shaped components without each
+        // call site having to remember. Non-GUID values pass through verbatim
+        // because NormalizeId is idempotent on non-Guids.
         var streamName = StreamNames.AgentSession("8d77fd28-fda0-485f-9ae1-8ee9c7fc3751");
 
-        Assert.Equal("AgentSession-8d77fd28-fda0-485f-9ae1-8ee9c7fc3751", streamName);
+        Assert.Equal("AgentSession-8d77fd28fda0485f9ae18ee9c7fc3751", streamName);
+    }
+
+    [Fact]
+    public void AgentSession_passes_through_non_guid_session_id() {
+        var streamName = StreamNames.AgentSession("user-supplied-session");
+
+        Assert.Equal("AgentSession-user-supplied-session", streamName);
+    }
+
+    [Fact]
+    public void AgentSubsession_normalizes_both_components() {
+        var streamName = StreamNames.AgentSubsession(
+            "8d77fd28-fda0-485f-9ae1-8ee9c7fc3751",
+            "1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D"
+        );
+
+        Assert.Equal(
+            "AgentSubsession-8d77fd28fda0485f9ae18ee9c7fc3751-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+            streamName
+        );
+    }
+
+    [Fact]
+    public void AgentSubsession_preserves_opaque_agent_id() {
+        // Producer-chosen ids like "research-x9k2" don't parse as Guid and stay verbatim.
+        var streamName = StreamNames.AgentSubsession(
+            "8d77fd28-fda0-485f-9ae1-8ee9c7fc3751",
+            "research-x9k2"
+        );
+
+        Assert.Equal("AgentSubsession-8d77fd28fda0485f9ae18ee9c7fc3751-research-x9k2", streamName);
     }
 }
