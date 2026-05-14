@@ -29,7 +29,7 @@ from kurrentdbclient import AsyncKurrentDBClient, StreamState
 from kurrentdbclient.exceptions import NotFoundError
 
 from . import _serialization
-from ._codec import canonical_to_items, items_to_canonical
+from ._codec import canonical_to_items
 from ._handoffs import ExpectedHandoff, _HandoffLedger
 from ._stream_names import for_session
 
@@ -114,34 +114,69 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         return items  # type: ignore[return-value]
 
     async def add_items(self, items: list[TResponseInputItem]) -> None:
-        """Append items to the session stream, emitting canonical events."""
+        """Append items to the session stream(s), routing handoff-target items
+        to ``AgentSubsession-{parent}-{agent_id}`` per SCHEMA_v2 §3.5."""
         if not items:
             return
 
         start_index = await self._count_items()
 
-        canonical_events = items_to_canonical(
+        from ._handoffs import route_items
+
+        ops = route_items(
             [dict(item) for item in items],  # type: ignore[arg-type]
+            ledger=self._ledger,
+            session_id=self.session_id,
             start_index=start_index,
+            timestamp=datetime.now(UTC),
         )
-        if not canonical_events:
+        if not ops:
             return
 
         if start_index == 0:
             await self._emit_session_started_if_missing()
 
-        new_events = [
-            _serialization.serialize(
-                event,
-                metadata=self._event_metadata_for(item, event),
-            )
-            for item, event in zip(items, canonical_events, strict=False)
-        ]
-        await self._client.append_to_stream(
-            self._stream,
-            events=new_events,
-            current_version=StreamState.ANY,
-        )
+        await self._write_ops(ops)
+
+    async def _write_ops(self, ops: list[Any]) -> None:
+        """Walk the route_items output in order, dispatching each op.
+
+        ``SingleAppend`` → ``append_to_stream`` with int-typed metadata
+        (existing serializer). ``DualAppend`` → atomic
+        ``multi_append_to_stream`` with string-typed metadata
+        (``serialize_for_multi_append``) so the v2 multi-append's
+        string-only constraint is satisfied. Ordering is preserved exactly
+        as route_items emitted, so subagent body items always land after
+        their ``SubagentStarted`` lifecycle marker.
+        """
+        from kurrentdbclient import NewEvents
+
+        from ._handoffs import DualAppend, SingleAppend
+
+        for op in ops:
+            if isinstance(op, SingleAppend):
+                new_events = [_serialization.serialize(evt) for evt in op.events]
+                await self._client.append_to_stream(
+                    op.stream,
+                    events=new_events,
+                    current_version=StreamState.ANY,
+                )
+            elif isinstance(op, DualAppend):
+                parent_stream, sub_stream = op.streams
+                await self._client.multi_append_to_stream([
+                    NewEvents(
+                        stream_name=parent_stream,
+                        events=[_serialization.serialize_for_multi_append(op.event)],
+                        current_version=StreamState.ANY,
+                    ),
+                    NewEvents(
+                        stream_name=sub_stream,
+                        events=[_serialization.serialize_for_multi_append(op.event)],
+                        current_version=StreamState.ANY,
+                    ),
+                ])
+            else:
+                logger.error("Unknown WriteOp type %r — dropping", type(op).__name__)
 
     async def pop_item(self) -> TResponseInputItem | None:
         """Best-effort pop — returns the last item but does not remove it.
@@ -209,9 +244,37 @@ class KurrentDBSession(SessionABC, RunHooksBase):
     async def _emit_deferred_subagent_completed(
         self, call_id: str, output: Any
     ) -> None:
-        """Implementation lands in Task 7 once add_items has the multi-append wiring."""
-        # Placeholder kept to satisfy on_agent_end's call site; Task 7 fills in.
-        del call_id, output
+        """Emit a SubagentCompleted to BOTH streams when the target ended
+        without producing a handoff_output (one-way handoff)."""
+        from kurrentdbclient import NewEvents
+
+        from ._codec import _map_handoff_output
+
+        active = self._ledger.active.pop(call_id, None)
+        if active is None:
+            return
+        synthetic_item = {
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": output if isinstance(output, str) else str(output or ""),
+        }
+        evt = _map_handoff_output(
+            item=synthetic_item, agent_id=active.agent_id,
+            message_index=-1, timestamp=datetime.now(UTC),
+        )
+        await self._client.multi_append_to_stream([
+            NewEvents(
+                stream_name=self._stream,
+                events=[_serialization.serialize_for_multi_append(evt)],
+                current_version=StreamState.ANY,
+            ),
+            NewEvents(
+                stream_name=active.subsession_stream,
+                events=[_serialization.serialize_for_multi_append(evt)],
+                current_version=StreamState.ANY,
+            ),
+        ])
+        self._ledger.current_owner = self._stream
 
     # ----- internals ---------------------------------------------------------
 
