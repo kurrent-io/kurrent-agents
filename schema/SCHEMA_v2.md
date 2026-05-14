@@ -77,7 +77,7 @@ Stream retention is a deployment concern, not a schema concern — see §10 Q3.
 
 ### 2.4 Identifier conventions for stream names
 
-All variable-substitution components of stream names (`session_id`, `parent_session_id`, `agent_id`, `app_name`, `user_id`, `scope`, `filename`, `run_id`) MUST conform to the rules below. The shared `kurrent_agent_schema` / `Kurrent.Agent.Schema` packages provide builders that enforce these rules; producers SHOULD call those builders rather than concatenating strings.
+All variable-substitution components of canonical stream names (`session_id`, `parent_session_id`, `agent_id`, `app_name`, `user_id`, `scope`, `filename`, `run_id`) MUST conform to the rules below. Framework-specific streams (§2.2) SHOULD follow the same rules where applicable. The shared `kurrent_agent_schema` / `Kurrent.Agent.Schema` packages provide builders that enforce these rules; producers SHOULD call those builders rather than concatenating strings.
 
 **Character set.** ASCII `[A-Za-z0-9._-]+`, max 128 bytes per component. Producers MUST reject or URL-encode anything outside that set.
 
@@ -85,7 +85,7 @@ All variable-substitution components of stream names (`session_id`, `parent_sess
 
 **Non-GUID values.** Used verbatim after the character-set check. Case-preserved.
 
-**Compound suffix separators.** Where a stream name has two components joined by `-` (e.g. `AgentSubsession-{parent}-{agent_id}`, `AgentMemory-{app}-{user}`), the separator is a single `-`. Neither component may begin or end with `-`. Inner `-` characters within a component are permitted (so `agent_id = "sub-research-x9k2"` is valid; consumers parse right-to-left from the prefix to locate the component boundary).
+**Compound suffix separators.** Where a stream name has two components joined by `-` (e.g. `AgentSubsession-{parent_session_id}-{agent_id}`, `AgentMemory-{app_name}-{user_id}`), the separator is a single `-`. Neither component may begin or end with `-`. Inner `-` characters within a component are permitted (so `agent_id = "sub-research-x9k2"` is valid). Cross-framework consumers SHOULD identify a subsession via the `SubagentStarted.subsession_stream` event payload field rather than parsing stream names back into components.
 
 ---
 
@@ -211,12 +211,12 @@ The dual-stream write lets a reader landing on the subsession stream learn its l
 
 **`SubagentCompleted`** (written **atomically to BOTH** the parent `AgentSession-` stream and the `AgentSubsession-` stream via `multi_append`)
 
-| Field | Type | Req |
-|---|---|---|
-| `agent_id` | string | yes |
-| `outcome` | string? | no (`"success"`, `"error"`, `"cancelled"`) |
-| `summary` | string? | no |
-| `timestamp` | datetime | yes |
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| `agent_id` | string | yes | Same value as on the matching `SubagentStarted`. |
+| `outcome` | string? | no | `"success"`, `"error"`, or `"cancelled"`. |
+| `summary` | string? | no | Free-text rationale; producers MAY truncate. |
+| `timestamp` | datetime | yes | |
 
 Subagent streams carry the full canonical vocabulary (`UserMessageReceived`, `AssistantTextGenerated`, ...). They do **not** carry their own `SessionStarted` / `SessionEnded` — the parent's `SubagentStarted` / `SubagentCompleted` events fulfil that role.
 
