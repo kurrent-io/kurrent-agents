@@ -1,0 +1,21 @@
+{
+  "agent_id": "sub-specialist-abc123",
+  "agent_type": "Specialist",
+  "prompt": "{\"reason\": \"forwarded for expert review\"}",
+  "subsession_stream": "AgentSubsession-sess-1-sub-specialist-abc123",
+  "timestamp": "2026-05-14T12:00:00Z",
+  "extensions": {
+    "openai": {
+      "raw_item": {
+        "type": "function_call",
+        "call_id": "call_xyzabc123",
+        "name": "transfer_to_specialist",
+        "arguments": "{\"reason\": \"forwarded for expert review\"}"
+      },
+      "item_type": "handoff_call",
+      "handoff": {
+        "source_agent": "TriageAgent"
+      }
+    }
+  }
+}
