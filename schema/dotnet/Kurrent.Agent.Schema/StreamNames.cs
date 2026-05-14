@@ -10,6 +10,15 @@ public static class StreamNames {
     public const string AgentArtifactPrefix   = "AgentArtifact-";
     public const string EvalRunPrefix         = "EvalRun-";
 
+    /// <summary>
+    /// Normalises a stream-name id component per <c>SCHEMA_v2.md §2.4</c>: a GUID-shaped
+    /// value is rewritten to the lowercase, dashless 32-char form (.NET <c>"N"</c> format);
+    /// any other value is returned verbatim. Mirrors Capacitor's
+    /// <c>EventStoreReadExtensions.NormalizeId</c>.
+    /// </summary>
+    public static string NormalizeId(string id) =>
+        Guid.TryParse(id, out var guid) ? guid.ToString("N") : id;
+
     public static string AgentSession(string sessionId) =>
         $"{AgentSessionPrefix}{sessionId}";
 

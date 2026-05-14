@@ -8,8 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
-    <PackageReference Include="Kurrent.Agent.Schema" Version="0.4.0" />
+    <ProjectReference Include="$(MafDotnetSrcDir)Kurrent.AgentFramework/Kurrent.AgentFramework.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
   </ItemGroup>
 
