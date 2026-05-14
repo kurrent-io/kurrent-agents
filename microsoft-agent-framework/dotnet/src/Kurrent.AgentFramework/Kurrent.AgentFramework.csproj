@@ -8,7 +8,7 @@
     <RootNamespace>Kurrent.AgentFramework</RootNamespace>
 
     <PackageId>Kurrent.AgentFramework</PackageId>
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <Authors>Kurrent, Inc.</Authors>
     <Description>KurrentDB-backed Microsoft Agent Framework integration: chat history, evals (per-turn and session-level), memory, and workflow checkpointing.</Description>
     <PackageTags>kurrentdb;eventsourcing;agents;llm;maf;microsoft-agent-framework</PackageTags>
