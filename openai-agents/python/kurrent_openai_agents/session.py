@@ -237,6 +237,17 @@ class KurrentDBSession(SessionABC, RunHooksBase):
         from streaming retries or replay doesn't double-emit ``SubagentStarted``.
         """
         if self._ledger.expected is not None:
+            new_target = getattr(to_agent, "name", "") or ""
+            if new_target and new_target != self._ledger.expected.to_name:
+                # Same expected slot held by a different prior handoff —
+                # likely a nested handoff, which the schema's flat-only
+                # stance does not support yet. Drop the second target;
+                # log so the next agent debugging this knows where it went.
+                logger.warning(
+                    "on_handoff dropped nested target %r — prior expected %r still pending. "
+                    "Nested handoffs are not yet canonicalised (schema flat-only stance).",
+                    new_target, self._ledger.expected.to_name,
+                )
             return
         self._ledger.expected = ExpectedHandoff(
             from_name=getattr(from_agent, "name", "") or "",

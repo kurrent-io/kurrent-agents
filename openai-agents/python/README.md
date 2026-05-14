@@ -29,7 +29,10 @@ session = KurrentDBSession(
 )
 
 agent = Agent(name="assistant", instructions="...")
-result = await Runner.run(agent, "Hello", session=session)
+# Pass `hooks=session` too to enable canonical handoff promotion
+# (SubagentStarted/Completed + per-subagent stream). Without hooks the
+# handoff still persists as a regular tool call on the parent stream.
+result = await Runner.run(agent, "Hello", session=session, hooks=session)
 ```
 
 ## Run tests

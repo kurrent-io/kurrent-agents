@@ -22,7 +22,11 @@ _AGENT_ID_TAIL_LEN = 6
 
 
 def slug(value: str) -> str:
-    """Lowercase + replace any run of non-`[a-z0-9]` with a single `-`; strip ends."""
+    """Lowercase + replace any run of non-`[a-z0-9_]` with a single `-`; strip ends.
+
+    Underscore is preserved because SCHEMA_v2 §2.4's stream-name char set
+    is `[A-Za-z0-9._-]+` (underscore included).
+    """
     return _SLUG_NON_ALNUM.sub("-", value.lower()).strip("-")
 
 
@@ -170,6 +174,9 @@ def route_items(
         if kind == "function_call" and ledger.expected is not None:
             flush_pending()
             evt = _emit_subagent_started(item, ledger, session_id, message_index, timestamp)
+            # NOTE: ledger.current_owner has just been flipped to the
+            # new subsession by _emit_subagent_started — that's the
+            # second stream we want on the DualAppend.
             ops.append(DualAppend(
                 streams=(ledger.parent_stream, ledger.current_owner),
                 event=evt,
