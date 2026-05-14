@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kurrent_openai_agents._stream_names import for_session, for_subsession
+from kurrent_openai_agents._stream_names import for_subsession
 
 
 def test_for_subsession_uses_canonical_builder() -> None:
