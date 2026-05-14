@@ -10,12 +10,15 @@ No I/O here. ``session.py`` owns all KurrentDB interactions.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from google.protobuf.message import Message as ProtoMessage
+
+logger = logging.getLogger(__name__)
 
 _SLUG_NON_ALNUM = re.compile(r"[^a-z0-9_]+")
 _AGENT_ID_TAIL_LEN = 6
@@ -172,6 +175,19 @@ def route_items(
         kind = item.get("type")
 
         if kind == "function_call" and ledger.expected is not None:
+            call_id = item.get("call_id") or ""
+            if not call_id:
+                # Malformed handoff_call (no call_id) — fall through to the
+                # normal codec rather than crashing. Keep the expected entry
+                # pending so a later well-formed call_id can still promote.
+                logger.warning(
+                    "function_call missing call_id while handoff %r→%r is expected; "
+                    "falling through to canonical tool call (no SubagentStarted emitted).",
+                    ledger.expected.from_name, ledger.expected.to_name,
+                )
+                canonical_events = items_to_canonical([item], start_index=message_index, timestamp=timestamp)
+                queue_single(ledger.current_owner, canonical_events)
+                continue
             flush_pending()
             evt = _emit_subagent_started(item, ledger, session_id, message_index, timestamp)
             # NOTE: ledger.current_owner has just been flipped to the
