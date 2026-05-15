@@ -545,6 +545,35 @@ def _deserialize_tool_result_content(value: str | None) -> Any:
         return value
 
 
+# Keys that identify a Strands content block. Mirrors
+# ``strands.types.content.ContentBlock`` (a total=False TypedDict). A
+# tool-result content list is "already Strands-shaped" only when every
+# element is a dict carrying one of these.
+_STRANDS_CONTENT_BLOCK_KEYS = frozenset(
+    {
+        "text",
+        "json",
+        "image",
+        "document",
+        "video",
+        "toolUse",
+        "toolResult",
+        "reasoningContent",
+        "guardContent",
+        "cachePoint",
+    }
+)
+
+
+def _is_strands_content_block(value: Any) -> bool:
+    """True when ``value`` looks like a Strands content block — a dict
+    carrying at least one recognised content-block key (``text``,
+    ``json``, ``image``, …)."""
+    return isinstance(value, dict) and any(
+        key in _STRANDS_CONTENT_BLOCK_KEYS for key in value
+    )
+
+
 def _normalise_tool_result_content(value: Any) -> list[dict[str, Any]]:
     """Coerce a deserialised ``ToolResultReceived.result`` payload into the
     list-of-content-blocks shape Strands' model adapters require.
@@ -552,28 +581,40 @@ def _normalise_tool_result_content(value: Any) -> list[dict[str, Any]]:
     Strands writers serialise ``ToolResult.content`` as a JSON-encoded list
     of content blocks (``[{"text": ...}, {"json": ...}, ...]``); reading
     back is lossless. Other framework writers (e.g. MAF Python's
-    ``KurrentDBHistoryProvider``) write the raw tool return — typically a
-    JSON-encoded dict or string — directly into the canonical
+    ``KurrentDBHistoryProvider``) write the raw tool return —
+    ``json.dumps`` of *any* non-string value, so a dict, a string, a
+    number, OR an array — directly into the canonical
     ``ToolResultReceived.result`` field. When Strands then reads such a
-    session, ``toolResult.content`` ends up as a plain dict / string,
-    and Strands' model adapters (e.g. ``AnthropicModel.format_request``)
+    session, ``toolResult.content`` ends up as a non-block shape, and
+    Strands' model adapters (e.g. ``AnthropicModel.format_request``)
     raise ``TypeError: content_type=<...> | unsupported type`` because
     they iterate ``content`` expecting block dicts.
 
-    Normalise so cross-framework reads don't crash:
+    Normalise so cross-framework reads don't crash. A ``list`` is trusted
+    *only* when every element is a recognised Strands content block — a
+    MAF tool that returned ``[{"status": "ok"}]`` serialises to a list
+    whose element is **not** a content block, so that whole list is
+    wrapped rather than trusted:
 
     * ``None`` → ``[]``
-    * already a ``list`` → trust it (Strands-shaped or close enough)
-    * ``dict`` → wrap as ``[{"json": value}]`` (Strands' ``json`` content
-      block type matches structured tool returns from non-Strands writers)
-    * any primitive (str/int/bool/...) → wrap as ``[{"text": str(value)}]``
+    * ``list`` of all content blocks (incl. empty) → trusted as-is
+    * ``list`` with any non-block element → wrapped as ``[{"json": value}]``
+    * ``dict`` that is itself a content block → wrapped as ``[value]``
+    * any other ``dict`` → wrapped as ``[{"json": value}]``
+    * any primitive (str/int/bool/...) → wrapped as ``[{"text": str(value)}]``
 
     See https://github.com/kurrent-io/kurrent-agents/issues/58.
     """
     if value is None:
         return []
     if isinstance(value, list):
-        return value
+        # `all()` is True for the empty list — an empty tool-result
+        # content list round-trips unchanged.
+        if all(_is_strands_content_block(el) for el in value):
+            return value
+        return [{"json": value}]
     if isinstance(value, dict):
+        if _is_strands_content_block(value):
+            return [value]
         return [{"json": value}]
     return [{"text": str(value)}]

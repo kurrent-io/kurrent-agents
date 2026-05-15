@@ -370,6 +370,58 @@ class TestToolResult:
         content = restored["content"][0]["toolResult"]["content"]
         assert content == [{"text": "just a plain string"}]
 
+    def test_tool_result_content_json_array_of_objects_wrapped(self) -> None:
+        """MAF ``json.dumps`` *any* non-string tool return, arrays included.
+        A list whose elements are NOT Strands content blocks (e.g. a tool
+        that returned ``[{"status": "ok"}]``) must be wrapped as a whole —
+        trusting it as-is would still crash the model adapter.
+
+        See https://github.com/kurrent-io/kurrent-agents/issues/58.
+        """
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                result='[{"status":"ok"},{"status":"done"}]',
+                message_index=0,
+                timestamp=TS,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        content = restored["content"][0]["toolResult"]["content"]
+        assert content == [
+            {"json": [{"status": "ok"}, {"status": "done"}]}
+        ]
+
+    def test_tool_result_content_json_array_of_scalars_wrapped(self) -> None:
+        """A JSON array of scalars (``[1, 2, 3]``) is likewise wrapped as a
+        single ``json`` block rather than trusted as a content-block list."""
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                result="[1,2,3]",
+                message_index=0,
+                timestamp=TS,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        content = restored["content"][0]["toolResult"]["content"]
+        assert content == [{"json": [1, 2, 3]}]
+
+    def test_tool_result_content_block_list_trusted(self) -> None:
+        """A genuine Strands content-block list (every element carries a
+        recognised block key) is trusted and passed through unchanged."""
+        events = [
+            ToolResultReceived(
+                call_id="c1",
+                result='[{"text":"hit 1"},{"json":{"x":1}}]',
+                message_index=0,
+                timestamp=TS,
+            )
+        ]
+        [restored] = canonical_to_messages(events)
+        content = restored["content"][0]["toolResult"]["content"]
+        assert content == [{"text": "hit 1"}, {"json": {"x": 1}}]
+
     def test_tool_result_round_trip(self) -> None:
         original = _msg(
             "user",
