@@ -34,17 +34,17 @@ namespace Kurrent.Agent.Schema.Events {
             "AygJUgdwbHVnaW5zEkoKFGNvbnZlcnNhdGlvbl9tYW5hZ2VyGAMgASgLMhcu",
             "Z29vZ2xlLnByb3RvYnVmLlN0cnVjdFITY29udmVyc2F0aW9uTWFuYWdlchJC",
             "ChBtb2RlbF9wYXJhbWV0ZXJzGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0",
-            "cnVjdFIPbW9kZWxQYXJhbWV0ZXJzInsKDFRvb2xDYWxsSW5mbxIXCgdjYWxs",
-            "X2lkGAEgASgJUgZjYWxsSWQSGwoJdG9vbF9uYW1lGAIgASgJUgh0b29sTmFt",
-            "ZRI1Cglhcmd1bWVudHMYAyABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0",
-            "Uglhcmd1bWVudHNCHqoCG0t1cnJlbnQuQWdlbnQuU2NoZW1hLkV2ZW50c2II",
-            "ZWRpdGlvbnNw6Qc="));
+            "cnVjdFIPbW9kZWxQYXJhbWV0ZXJzIpgBCgxUb29sQ2FsbEluZm8SFwoHY2Fs",
+            "bF9pZBgBIAEoCVIGY2FsbElkEhsKCXRvb2xfbmFtZRgCIAEoCVIIdG9vbE5h",
+            "bWUSNQoJYXJndW1lbnRzGAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVj",
+            "dFIJYXJndW1lbnRzEhsKCXRvb2xfa2luZBgEIAEoCVIIdG9vbEtpbmRCHqoC",
+            "G0t1cnJlbnQuQWdlbnQuU2NoZW1hLkV2ZW50c2IIZWRpdGlvbnNw6Qc="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.StructReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolSpec), global::Kurrent.Agent.Schema.Events.ToolSpec.Parser, new[]{ "Name", "Description", "InputSchema", "Source" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.AgentConfig), global::Kurrent.Agent.Schema.Events.AgentConfig.Parser, new[]{ "Tools", "Plugins", "ConversationManager", "ModelParameters" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolCallInfo), global::Kurrent.Agent.Schema.Events.ToolCallInfo.Parser, new[]{ "CallId", "ToolName", "Arguments" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Kurrent.Agent.Schema.Events.ToolCallInfo), global::Kurrent.Agent.Schema.Events.ToolCallInfo.Parser, new[]{ "CallId", "ToolName", "Arguments", "ToolKind" }, null, null, null, null)
           }));
     }
     #endregion
@@ -773,6 +773,7 @@ namespace Kurrent.Agent.Schema.Events {
       callId_ = other.callId_;
       toolName_ = other.toolName_;
       arguments_ = other.arguments_ != null ? other.arguments_.Clone() : null;
+      toolKind_ = other.toolKind_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -850,6 +851,44 @@ namespace Kurrent.Agent.Schema.Events {
       }
     }
 
+    /// <summary>Field number for the "tool_kind" field.</summary>
+    public const int ToolKindFieldNumber = 4;
+    private readonly static string ToolKindDefaultValue = "";
+
+    private string toolKind_;
+    /// <summary>
+    /// Vendor-neutral counterpart of tool_name, so a consumer that wants to know
+    /// what a call DID needs no per-vendor name table. ACP's ToolKind vocabulary:
+    /// read | edit | delete | move | search | execute | think | fetch |
+    /// switch_mode | other.
+    ///
+    /// ABSENT and "other" are different answers and MUST stay distinguishable:
+    /// absent means no producer classified this call (a framework with no mapping
+    /// table yet, or an ACP agent that sent no kind); "other" means classified,
+    /// and none of the above (a subagent, a skill, an MCP tool). Edition 2024
+    /// gives this field explicit presence, and unset is omitted from JSON.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ToolKind {
+      get { return toolKind_ ?? ToolKindDefaultValue; }
+      set {
+        toolKind_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "tool_kind" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasToolKind {
+      get { return toolKind_ != null; }
+    }
+    /// <summary>Clears the value of the "tool_kind" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearToolKind() {
+      toolKind_ = null;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -868,6 +907,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (CallId != other.CallId) return false;
       if (ToolName != other.ToolName) return false;
       if (!object.Equals(Arguments, other.Arguments)) return false;
+      if (ToolKind != other.ToolKind) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -878,6 +918,7 @@ namespace Kurrent.Agent.Schema.Events {
       if (HasCallId) hash ^= CallId.GetHashCode();
       if (HasToolName) hash ^= ToolName.GetHashCode();
       if (arguments_ != null) hash ^= Arguments.GetHashCode();
+      if (HasToolKind) hash ^= ToolKind.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -908,6 +949,10 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(26);
         output.WriteMessage(Arguments);
       }
+      if (HasToolKind) {
+        output.WriteRawTag(34);
+        output.WriteString(ToolKind);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -930,6 +975,10 @@ namespace Kurrent.Agent.Schema.Events {
         output.WriteRawTag(26);
         output.WriteMessage(Arguments);
       }
+      if (HasToolKind) {
+        output.WriteRawTag(34);
+        output.WriteString(ToolKind);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -948,6 +997,9 @@ namespace Kurrent.Agent.Schema.Events {
       }
       if (arguments_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Arguments);
+      }
+      if (HasToolKind) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ToolKind);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -972,6 +1024,9 @@ namespace Kurrent.Agent.Schema.Events {
           Arguments = new global::Google.Protobuf.WellKnownTypes.Struct();
         }
         Arguments.MergeFrom(other.Arguments);
+      }
+      if (other.HasToolKind) {
+        ToolKind = other.ToolKind;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1007,6 +1062,10 @@ namespace Kurrent.Agent.Schema.Events {
             input.ReadMessage(Arguments);
             break;
           }
+          case 34: {
+            ToolKind = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -1039,6 +1098,10 @@ namespace Kurrent.Agent.Schema.Events {
               Arguments = new global::Google.Protobuf.WellKnownTypes.Struct();
             }
             input.ReadMessage(Arguments);
+            break;
+          }
+          case 34: {
+            ToolKind = input.ReadString();
             break;
           }
         }

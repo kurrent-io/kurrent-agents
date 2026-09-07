@@ -5,7 +5,13 @@
       "tool_name": "search",
       "arguments": {
         "query": "weather Oslo"
-      }
+      },
+      "tool_kind": "search"
+    },
+    {
+      "call_id": "call-002",
+      "tool_name": "unmapped_vendor_tool",
+      "arguments": {}
     }
   ],
   "content": "Let me look that up.",

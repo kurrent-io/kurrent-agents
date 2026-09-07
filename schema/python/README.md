@@ -54,5 +54,5 @@ pytest
 
 ## Version
 
-- Package: `0.4.0` (Protobuf-generated source; see [`CHANGELOG.md`](./CHANGELOG.md) for breaking changes).
+- Package: `0.5.0` (Protobuf-generated source; see [`CHANGELOG.md`](./CHANGELOG.md) for breaking changes).
 - Schema: `SCHEMA_VERSION = 2`, stamped on KurrentDB metadata under `$schema_version` by integration writers.

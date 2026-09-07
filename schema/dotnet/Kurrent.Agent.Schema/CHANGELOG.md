@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0
+
+- Add `ToolCallInfo.ToolKind` (field 4, `string`) — a vendor-neutral
+  classification of what a tool call does, using ACP's `ToolKind`
+  vocabulary (`read`, `edit`, `delete`, `move`, `search`, `execute`,
+  `think`, `fetch`, `switch_mode`, `other`). Consumers that need to know
+  what a call *did* read this instead of keeping a per-vendor tool-name
+  table; `ToolName` stays raw vendor fidelity.
+- The field has explicit presence (`HasToolKind` / `ClearToolKind`), so
+  **absent stays distinguishable from `"other"`**: absent means nobody
+  classified the call, `"other"` means classified and none of the above.
+  Producers with no classification leave the field unset (`ToolKind` is
+  then omitted by `SchemaJsonOptions.ToJson`) — they must not write `""`
+  or substitute `"other"`. See `SCHEMA_v2.md §3.4.1`.
+- Additive and optional: existing writers and readers are unaffected,
+  and 0.4.1 payloads parse unchanged.
+
 ## 0.3.0
 
 - Migrate v2 protos from `proto3` to `edition = "2024"`. Edition 2024
