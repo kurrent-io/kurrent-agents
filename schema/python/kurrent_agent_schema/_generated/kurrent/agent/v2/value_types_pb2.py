@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"kurrent/agent/v2/value_types.proto\x12\x10kurrent.agent.v2\x1a\x1cgoogle/protobuf/struct.proto\"\x94\x01\n\x08ToolSpec\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12 \n\x0b\x64\x65scription\x18\x02 \x01(\tR\x0b\x64\x65scription\x12:\n\x0cinput_schema\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\x0binputSchema\x12\x16\n\x06source\x18\x04 \x01(\tR\x06source\"\xe9\x01\n\x0b\x41gentConfig\x12\x30\n\x05tools\x18\x01 \x03(\x0b\x32\x1a.kurrent.agent.v2.ToolSpecR\x05tools\x12\x18\n\x07plugins\x18\x02 \x03(\tR\x07plugins\x12J\n\x14\x63onversation_manager\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\x13\x63onversationManager\x12\x42\n\x10model_parameters\x18\x04 \x01(\x0b\x32\x17.google.protobuf.StructR\x0fmodelParameters\"{\n\x0cToolCallInfo\x12\x17\n\x07\x63\x61ll_id\x18\x01 \x01(\tR\x06\x63\x61llId\x12\x1b\n\ttool_name\x18\x02 \x01(\tR\x08toolName\x12\x35\n\targuments\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\targumentsB\x1e\xaa\x02\x1bKurrent.Agent.Schema.Eventsb\x08\x65\x64itionsp\xe9\x07')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"kurrent/agent/v2/value_types.proto\x12\x10kurrent.agent.v2\x1a\x1cgoogle/protobuf/struct.proto\"\x94\x01\n\x08ToolSpec\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12 \n\x0b\x64\x65scription\x18\x02 \x01(\tR\x0b\x64\x65scription\x12:\n\x0cinput_schema\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\x0binputSchema\x12\x16\n\x06source\x18\x04 \x01(\tR\x06source\"\xe9\x01\n\x0b\x41gentConfig\x12\x30\n\x05tools\x18\x01 \x03(\x0b\x32\x1a.kurrent.agent.v2.ToolSpecR\x05tools\x12\x18\n\x07plugins\x18\x02 \x03(\tR\x07plugins\x12J\n\x14\x63onversation_manager\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\x13\x63onversationManager\x12\x42\n\x10model_parameters\x18\x04 \x01(\x0b\x32\x17.google.protobuf.StructR\x0fmodelParameters\"\x98\x01\n\x0cToolCallInfo\x12\x17\n\x07\x63\x61ll_id\x18\x01 \x01(\tR\x06\x63\x61llId\x12\x1b\n\ttool_name\x18\x02 \x01(\tR\x08toolName\x12\x35\n\targuments\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructR\targuments\x12\x1b\n\ttool_kind\x18\x04 \x01(\tR\x08toolKindB\x1e\xaa\x02\x1bKurrent.Agent.Schema.Eventsb\x08\x65\x64itionsp\xe9\x07')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,6 +37,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_TOOLSPEC']._serialized_end=235
   _globals['_AGENTCONFIG']._serialized_start=238
   _globals['_AGENTCONFIG']._serialized_end=471
-  _globals['_TOOLCALLINFO']._serialized_start=473
-  _globals['_TOOLCALLINFO']._serialized_end=596
+  _globals['_TOOLCALLINFO']._serialized_start=474
+  _globals['_TOOLCALLINFO']._serialized_end=626
 # @@protoc_insertion_point(module_scope)

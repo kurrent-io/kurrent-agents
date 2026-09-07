@@ -33,4 +33,15 @@ message ToolCallInfo {
   // Free-form JSON arguments. Empty object preserved (Pydantic codec
   // empty-args bug — see commit ff1540d).
   google.protobuf.Struct arguments = 3;
+  // Vendor-neutral counterpart of tool_name, so a consumer that wants to know
+  // what a call DID needs no per-vendor name table. ACP's ToolKind vocabulary:
+  // read | edit | delete | move | search | execute | think | fetch |
+  // switch_mode | other.
+  //
+  // ABSENT and "other" are different answers and MUST stay distinguishable:
+  // absent means no producer classified this call (a framework with no mapping
+  // table yet, or an ACP agent that sent no kind); "other" means classified,
+  // and none of the above (a subagent, a skill, an MCP tool). Edition 2024
+  // gives this field explicit presence, and unset is omitted from JSON.
+  string tool_kind = 4;
 }

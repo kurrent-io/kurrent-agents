@@ -1505,7 +1505,7 @@ wheels = [
 
 [[package]]
 name = "kurrent-agent-schema"
-version = "0.1.2"
+version = "0.5.0"
 source = { editable = "../../schema/python" }
 dependencies = [
     { name = "pydantic" },

@@ -10,7 +10,7 @@ No formal migration plan for existing Capacitor streams is required: Capacitor i
 
 ## 1. What's new in v2
 
-Canonical event vocabulary gains four promotions from v1's reserved list (`SCHEMA.md §3.8`) and two new structural concepts:
+Canonical event vocabulary gains four promotions from v1's reserved list (`SCHEMA.md §3.8`), two new structural concepts, and one additive field:
 
 1. **`AssistantThinkingGenerated`** — promoted from reserved. Reasoning-token output is now standard across Claude, Gemini, o-series, DeepSeek R1 — no longer a Claude-specific concern. (§3.2)
 2. **`InterruptIssued` / `InterruptResolved`** — promoted from reserved, made load-bearing. Unified model for mid-turn human-in-the-loop: Claude Code permission prompts, Strands `Interrupt`, ADK `requested_tool_confirmations`, and generic approval gates. (§3.3)
@@ -19,6 +19,7 @@ Canonical event vocabulary gains four promotions from v1's reserved list (`SCHEM
 5. **`extensions.claude_code`** — new documented extension slug for Capacitor and for the Claude Agent SDK integration. Carries coding-agent-specific fields (cwd, git branch, repo/PR, plan content, permission tool_input, etc.). (§5.3)
 6. **Capacitor-owned streams** admitted as framework-specific streams ignored by non-owners, same pattern as ADK's `AppState-` / `UserState-`. (§2.2)
 7. **Hosted-agent runtime** as a distinct non-canonical concern. `AgentRun-{agent_id}` streams model daemon-managed CLI processes — orthogonal to the conversational session model, with late-bound `session_id` linking. (§2.3)
+8. **`ToolCallInfo.tool_kind`** — new optional field carrying a vendor-neutral classification of what a tool call does, drawn from ACP's `ToolKind` vocabulary. Lets a consumer read one closed set instead of maintaining a per-vendor tool-name table. Absent stays distinguishable from `other`. (§3.4.1)
 
 No canonical field names are renamed. No canonical field semantics change. v1 writers remain forward-compatible: v2 readers see v1 events unchanged. v1 readers see v2 events under `extra="ignore"` semantics; new canonical event types will be skipped (unknown) but will not cause errors.
 
@@ -189,9 +190,48 @@ Framework-specific resolution details (e.g. `permission_decision` enum values, u
 
 **Pre-hoc:** no rule applies. `request_id` is opaque (a synthetic id is fine). Cross-event linkage, when needed, is reconstructed downstream from sequence + `tool_name` or from per-framework extension fields.
 
-### 3.4 Conversation events (unchanged)
+### 3.4 Conversation events (one addition)
 
-`UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived` — identical to v1 §3.2.
+`UserMessageReceived`, `AssistantTextGenerated`, `AssistantToolCallsGenerated`, `ToolResultReceived` — identical to v1 §3.2, with one addition to `ToolCallInfo`:
+
+**`ToolCallInfo`** = `{ call_id: string, tool_name: string, arguments: object?, tool_kind: string? }`
+
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| `call_id` | string | yes | Correlates with `ToolResultReceived.call_id`. |
+| `tool_name` | string | yes | Raw vendor name, verbatim. Never normalised. |
+| `arguments` | object? | no | Free-form JSON. An empty object is preserved as `{}`, not dropped. |
+| `tool_kind` | string? | no | Vendor-neutral classification of what the call *does*. New in v2. |
+
+#### 3.4.1 `tool_kind`
+
+`tool_name` is raw vendor fidelity: `Bash`, `shell`, `apply_patch`, `str_replace_editor` all mean "run a command" or "edit a file" but share no vocabulary. `tool_kind` is the vendor-neutral counterpart, so a consumer that wants to know what a call *did* — a trace UI picking an icon, an eval counting file writes, a policy engine gating execution — reads one closed set instead of maintaining its own per-vendor name table.
+
+The vocabulary is [ACP](https://agentclientprotocol.com)'s `ToolKind`, reused verbatim so ACP-native agents pass their own kind straight through:
+
+| Value | Meaning |
+|---|---|
+| `read` | Reads a file or resource. |
+| `edit` | Creates or modifies a file or resource. |
+| `delete` | Removes a file or resource. |
+| `move` | Moves or renames a file or resource. |
+| `search` | Searches for files or content. |
+| `execute` | Runs a command or script. |
+| `think` | Internal reasoning or planning. |
+| `fetch` | Retrieves external content (web, remote API). |
+| `switch_mode` | Changes the agent's operating mode. |
+| `other` | Classified, and none of the above. |
+
+**Absent and `other` are different answers and MUST stay distinguishable.**
+
+- **absent** — nobody classified this call. The producing integration has no mapping table for this framework yet, or an ACP agent sent no kind. "We don't know."
+- **`other`** — classified, and deliberately none of the above: a subagent invocation, a skill, an MCP tool. "We know, and it's none of these."
+
+Collapsing the two is what would stop a consumer trusting the field: a reader counting unclassified calls to decide whether a mapping table is missing cannot tell the cases apart. Producers therefore **omit the field entirely** when they have no classification — never `""`, and never `"other"` as a stand-in for "unknown". Edition-2024 explicit presence plus the `formatDefaultValues: false` / `always_print_fields_with_no_presence=False` writer settings make absence the JSON default; a producer has to go out of its way to emit an empty string.
+
+Unrecognised values are not an error. A reader that receives a token outside the ten above SHOULD treat it as `other` rather than dropping the call — the same normalisation the producing side applies.
+
+`tool_kind` classifies the call, not its outcome. A `read` that failed is still `read`; failure lives on the matching `ToolResultReceived`.
 
 ### 3.5 Subagents (new)
 

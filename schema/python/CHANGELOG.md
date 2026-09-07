@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0
+
+- Add `ToolCallInfo.tool_kind` (field 4, `string`) — a vendor-neutral
+  classification of what a tool call does, using ACP's `ToolKind`
+  vocabulary (`read`, `edit`, `delete`, `move`, `search`, `execute`,
+  `think`, `fetch`, `switch_mode`, `other`). Consumers that need to know
+  what a call *did* read this instead of keeping a per-vendor tool-name
+  table; `tool_name` stays raw vendor fidelity.
+- The field has explicit presence, so **absent stays distinguishable from
+  `"other"`**: absent means nobody classified the call, `"other"` means
+  classified and none of the above. Producers with no classification omit
+  the field (`HasField("tool_kind")` is false and `to_json` drops it) —
+  they must not emit `""` or substitute `"other"`. See `SCHEMA_v2.md
+  §3.4.1`.
+- Additive and optional: existing writers and readers are unaffected,
+  and 0.4.0 payloads parse unchanged.
+
 ## 0.3.1
 
 - Tighten declared `protobuf` floor from `>= 6.32` to `>= 6.32.1`. The

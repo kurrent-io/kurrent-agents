@@ -32,11 +32,13 @@ class AgentConfig(_message.Message):
     def __init__(self, tools: _Optional[_Iterable[_Union[ToolSpec, _Mapping]]] = ..., plugins: _Optional[_Iterable[str]] = ..., conversation_manager: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., model_parameters: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
 
 class ToolCallInfo(_message.Message):
-    __slots__ = ("call_id", "tool_name", "arguments")
+    __slots__ = ("call_id", "tool_name", "arguments", "tool_kind")
     CALL_ID_FIELD_NUMBER: _ClassVar[int]
     TOOL_NAME_FIELD_NUMBER: _ClassVar[int]
     ARGUMENTS_FIELD_NUMBER: _ClassVar[int]
+    TOOL_KIND_FIELD_NUMBER: _ClassVar[int]
     call_id: str
     tool_name: str
     arguments: _struct_pb2.Struct
-    def __init__(self, call_id: _Optional[str] = ..., tool_name: _Optional[str] = ..., arguments: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    tool_kind: str
+    def __init__(self, call_id: _Optional[str] = ..., tool_name: _Optional[str] = ..., arguments: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., tool_kind: _Optional[str] = ...) -> None: ...
